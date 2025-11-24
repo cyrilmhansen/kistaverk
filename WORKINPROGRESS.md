@@ -59,13 +59,13 @@ Tech: Complex binary parsing.
 ## Snapshot
 - Kotlin now launches the system file picker, copies the chosen URI to cache, and sends the path to Rust via JSON (escaped with `JSONObject`). Renderer buttons support `requires_file_picker`; the sample screen shows “Select file and hash” and renders the resulting SHA-256 or an error message.
 - Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Counter stub remains but is unused. Added Shader demo screen emitting a GLSL fragment for a simple cosine color wave; shader screen can load a fragment from file.
-- Home menu now comes from a feature dictionary grouped by categories (Hashes, Graphics); hash buttons request file picker, shader opens demo.
+- Home menu now comes from a feature dictionary grouped by categories (Hashes, Graphics, Media); hash buttons request file picker, shader opens demo, and Kotlin image conversion lives under a Media group with its own sub-screen.
 - Build: release now shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused Rust profile, excludes unused META-INF resources, disables BuildConfig, and targets arm64-v8a only (APK ~0.5 MB). Cargo.lock still not refreshed after adding `sha2`; cargo path remains hardcoded. Gradle density splits removed (AAB handles density).
 
 ## Known Issues / Risks
 - JNI dispatch can unwind or abort: `STATE.lock().unwrap()` plus no `catch_unwind` means any panic poisons the mutex and may crash the VM (rust/src/lib.rs).
 - Renderer still trusts incoming JSON and will crash on malformed output; no panic guard in JNI to backstop it.
-- State is ephemeral; no serialization/restoration path; no tests around dispatch or renderer parsing; Cargo.lock not updated for `sha2`. Cargo build task still compiles armeabi-v7a even though APK is arm64-only; stale armeabi-v7a .so remains on disk (not packaged).
+- State is ephemeral; no serialization/restoration path; no tests around dispatch or renderer parsing; Cargo.lock not updated for `sha2`. Cargo build task still compiles armeabi-v7a even though APK is arm64-only; stale armeabi-v7a .so remains on disk (not packaged). Image conversion flow depends on MediaStore/SAF; needs on-device verification for picker permissions.
 
 ## Next Implementation Step
 1. Harden JNI dispatch: wrap `Java_aeska_kistaverk_MainActivity_dispatch` in `catch_unwind`, replace `unwrap` with error propagation, and return a minimal error-screen JSON instead of letting panics cross the boundary.
@@ -80,6 +80,15 @@ Tech: Complex binary parsing.
 - Add a text input widget to the renderer with a simple binding map so Rust can ask for “Enter hash to compare” and receive it on submit.
 - Add lightweight unit tests for Rust dispatch/state transitions and Kotlin renderer JSON parsing to lock in behavior as widgets expand.
 
+## Feature Ideas (low dependency)
+- QR code generator: Rust `qrcode` crate (tiny), output PNG bytes; Kotlin decodes with `BitmapFactory.decodeByteArray` and renders in `ImageView`.
+- Text tools: word/char/line counts via Rust std; Base64/hex/URL encode-decode with `data-encoding` or `percent-encoding` (small); UTF-8/UTF-16 conversions via std.
+- Compression: Zip list/extract/create with `zip` crate (deflate/store only). Tar/gzip via `tar` + `flate2` if needed; avoid 7z/rar.
+- Image conversion: prefer Kotlin `BitmapFactory`/`Bitmap.compress` for PNG/JPEG/WebP to avoid new Rust crates; Rust std has no codecs.
+- Hash/Checksum expansion: add CRC32/CRC64 (`crc32fast`/`crc`) or BLAKE3 (`blake3` crate, small/fast).
+- File info: MIME sniff via `infer` (light), hex viewer via std IO, file metadata via std.
+- Sensor logging: Kotlin `SensorManager` on a background thread, log to CSV in app storage; no new deps.
+- Color/encoding utilities: color conversions (hex/RGB/HSL) via std math; password/random bytes with `rand` minimal features.
 
 
 Phase 1: Stability & Foundation (Immediate)

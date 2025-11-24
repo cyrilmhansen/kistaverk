@@ -1,9 +1,11 @@
+use crate::features::kotlin_image::KotlinImageState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Screen {
     Home,
     ShaderDemo,
+    KotlinImage,
 }
 
 pub struct AppState {
@@ -13,6 +15,7 @@ pub struct AppState {
     pub last_error: Option<String>,
     pub last_shader: Option<String>,
     pub last_hash_algo: Option<String>,
+    pub image: KotlinImageState,
 }
 
 impl AppState {
@@ -25,6 +28,7 @@ impl AppState {
             last_error: None,
             last_shader: None,
             last_hash_algo: None,
+            image: KotlinImageState::new(),
         }
     }
 }

@@ -1,6 +1,11 @@
 mod features;
 mod state;
 use features::hashes::{handle_hash_action, HashAlgo};
+use features::kotlin_image::{
+    handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
+    handle_output_dir as handle_kotlin_image_output_dir, parse_image_target,
+    render_kotlin_image_screen, ImageConversionResult, ImageTarget,
+};
 use features::{render_menu, Feature};
 
 use jni::objects::{JClass, JString};
@@ -25,6 +30,11 @@ struct Command {
     path: Option<String>,
     fd: Option<i32>,
     error: Option<String>,
+    target: Option<String>,
+    result_path: Option<String>,
+    result_size: Option<String>,
+    result_format: Option<String>,
+    output_dir: Option<String>,
 }
 
 struct FdHandle(Option<i32>);
@@ -64,6 +74,11 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             path: None,
             fd: None,
             error: Some("invalid_json".into()),
+            target: None,
+            result_path: None,
+            result_size: None,
+            result_format: None,
+            output_dir: None,
         });
 
         handle_command(command)
@@ -93,6 +108,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
         path,
         fd,
         error,
+        target,
+        result_path,
+        result_size,
+        result_format,
+        output_dir,
     } = command;
 
     let mut fd_handle = FdHandle::new(fd);
@@ -108,6 +128,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.current_screen = Screen::Home;
             state.last_shader = None;
             state.last_hash_algo = None;
+            state.image.reset();
         }
         "shader_demo" => state.current_screen = Screen::ShaderDemo,
         "load_shader_file" => {
@@ -134,6 +155,34 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 state.last_error = Some("missing_shader_path".into());
             }
+        }
+        "kotlin_image_screen_webp" => handle_kotlin_image_screen(&mut state, ImageTarget::Webp),
+        "kotlin_image_screen_png" => handle_kotlin_image_screen(&mut state, ImageTarget::Png),
+        "kotlin_image_result" => handle_kotlin_image_result(
+            &mut state,
+            target.as_deref().and_then(parse_image_target),
+            if let Some(err) = command_error {
+                ImageConversionResult {
+                    path: None,
+                    size: None,
+                    format: None,
+                    error: Some(err),
+                }
+            } else {
+                ImageConversionResult {
+                    path: result_path,
+                    size: result_size,
+                    format: result_format,
+                    error: None,
+                }
+            },
+        ),
+        "kotlin_image_output_dir" => {
+            handle_kotlin_image_output_dir(
+                &mut state,
+                target.as_deref().and_then(parse_image_target),
+                output_dir,
+            );
         }
         "hash_file_sha256" => {
             state.current_screen = Screen::Home;
@@ -255,6 +304,7 @@ fn render_ui(state: &AppState) -> Value {
                 ]
             })
         }
+        Screen::KotlinImage => render_kotlin_image_screen(state),
     }
 }
 
@@ -305,6 +355,22 @@ fn feature_catalog() -> Vec<Feature> {
             description: "legacy hash",
         },
         Feature {
+            id: "image_to_webp_kotlin",
+            name: "🖼️ Image → WebP (Kotlin)",
+            category: "📸 Media",
+            action: "kotlin_image_screen_webp",
+            requires_file_picker: false,
+            description: "Kotlin conversion with Rust UI",
+        },
+        Feature {
+            id: "image_to_png_kotlin",
+            name: "🖼️ Image → PNG (Kotlin)",
+            category: "📸 Media",
+            action: "kotlin_image_screen_png",
+            requires_file_picker: false,
+            description: "Kotlin conversion with Rust UI",
+        },
+        Feature {
             id: "shader_demo",
             name: "Shader demo",
             category: "Graphics",
@@ -332,14 +398,22 @@ mod tests {
     const SHA1_ABC: &str = "a9993e364706816aba3e25717850c26c9cd0d89d";
     const MD5_ABC: &str = "900150983cd24fb0d6963f7d28e17f72";
 
-    fn reset_state() {
-        handle_command(Command {
-            action: "reset".into(),
+    fn make_command(action: &str) -> Command {
+        Command {
+            action: action.into(),
             path: None,
             fd: None,
             error: None,
-        })
-        .expect("reset command should succeed");
+            target: None,
+            result_path: None,
+            result_size: None,
+            result_format: None,
+            output_dir: None,
+        }
+    }
+
+    fn reset_state() {
+        handle_command(make_command("reset")).expect("reset command should succeed");
     }
 
     fn extract_texts(ui: &Value) -> Vec<String> {
@@ -369,13 +443,10 @@ mod tests {
         file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
         file.flush().unwrap();
 
-        let ui = handle_command(Command {
-            action: "hash_file_sha256".into(),
-            path: Some(file.path().to_string_lossy().into_owned()),
-            fd: None,
-            error: None,
-        })
-        .expect("hash command should succeed");
+        let mut command = make_command("hash_file_sha256");
+        command.path = Some(file.path().to_string_lossy().into_owned());
+
+        let ui = handle_command(command).expect("hash command should succeed");
 
         assert_contains_text(&ui, &format!("SHA-256: {SHA256_ABC}"));
 
@@ -396,13 +467,10 @@ mod tests {
 
         let fd = File::open(file.path()).unwrap().into_raw_fd();
 
-        let ui = handle_command(Command {
-            action: "hash_file_sha1".into(),
-            path: None,
-            fd: Some(fd),
-            error: None,
-        })
-        .expect("hash command should succeed");
+        let mut command = make_command("hash_file_sha1");
+        command.fd = Some(fd);
+
+        let ui = handle_command(command).expect("hash command should succeed");
 
         assert_contains_text(&ui, &format!("SHA-1: {SHA1_ABC}"));
 
@@ -421,13 +489,10 @@ mod tests {
         file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
         file.flush().unwrap();
 
-        handle_command(Command {
-            action: "hash_file_md5".into(),
-            path: Some(file.path().to_string_lossy().into_owned()),
-            fd: None,
-            error: None,
-        })
-        .expect("initial hash should succeed");
+        let mut initial = make_command("hash_file_md5");
+        initial.path = Some(file.path().to_string_lossy().into_owned());
+
+        handle_command(initial).expect("initial hash should succeed");
 
         {
             let state = STATE.lock().unwrap();
@@ -435,13 +500,8 @@ mod tests {
             assert_eq!(state.last_hash_algo.as_deref(), Some("MD5"));
         }
 
-        let ui = handle_command(Command {
-            action: "hash_file_md4".into(),
-            path: None,
-            fd: None,
-            error: None,
-        })
-        .expect("hash command should still return UI even when failing");
+        let ui = handle_command(make_command("hash_file_md4"))
+            .expect("hash command should still return UI even when failing");
 
         assert_contains_text(&ui, "missing_path");
 
