@@ -104,6 +104,35 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
                 state.text_operation = Some("URL decode failed".into());
             }
         },
+        "text_tools_hex_encode" => {
+            state.text_output = Some(hex_encode(input.as_bytes()));
+            state.text_operation = Some("Hex encode".into());
+        }
+        "text_tools_hex_decode" => match hex_decode(&input) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(s) => {
+                    state.text_output = Some(s);
+                    state.text_operation = Some("Hex decode".into());
+                }
+                Err(_) => {
+                    state.text_output = Some("<non-UTF8 data>".into());
+                    state.text_operation = Some("Hex decode (binary)".into());
+                }
+            },
+            Err(e) => {
+                state.text_output = Some(format!("Decode error: {e}"));
+                state.text_operation = Some("Hex decode failed".into());
+            }
+        },
+        "text_tools_copy_to_input" => {
+            if let Some(result) = state.text_output.clone() {
+                state.text_input = Some(result);
+                state.text_operation = Some("Result copied to input".into());
+            }
+        }
+        "text_tools_share_result" => {
+            state.text_operation = Some("Share result tapped".into());
+        }
         "text_tools_clear" => {
             state.text_input = Some(String::new());
             state.text_output = None;
@@ -263,6 +292,33 @@ fn url_decode(input: &str) -> Result<String, String> {
     String::from_utf8(out).map_err(|_| "invalid_utf8_output".into())
 }
 
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
+    let trimmed = input.trim();
+    if trimmed.len() % 2 != 0 {
+        return Err("invalid_hex_length".into());
+    }
+    let mut out = Vec::with_capacity(trimmed.len() / 2);
+    let chars: Vec<char> = trimmed.chars().collect();
+    for i in (0..chars.len()).step_by(2) {
+        let hi = chars[i].to_digit(16).ok_or_else(|| "invalid_hex_digit")?;
+        let lo = chars[i + 1]
+            .to_digit(16)
+            .ok_or_else(|| "invalid_hex_digit")?;
+        out.push(((hi << 4) | lo) as u8);
+    }
+    Ok(out)
+}
+
 pub fn render_text_tools_screen(state: &AppState) -> Value {
     let input = state.text_input.clone().unwrap_or_default();
     let mut children = vec![
@@ -313,6 +369,8 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
                 { "type": "Button", "text": "Base64 decode", "action": "text_tools_base64_decode" },
                 { "type": "Button", "text": "URL encode", "action": "text_tools_url_encode" },
                 { "type": "Button", "text": "URL decode", "action": "text_tools_url_decode" },
+                { "type": "Button", "text": "Hex encode", "action": "text_tools_hex_encode" },
+                { "type": "Button", "text": "Hex decode", "action": "text_tools_hex_decode" },
                 { "type": "Button", "text": "Clear", "action": "text_tools_clear" }
             ]
         }),
@@ -333,6 +391,15 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
             "children": [
                 { "type": "Text", "text": "Result", "size": 14.0 },
                 { "type": "Text", "text": result, "size": 16.0 }
+            ]
+        }));
+        children.push(json!({
+            "type": "Column",
+            "padding": 8,
+            "children": [
+                { "type": "Text", "text": "Result actions", "size": 14.0 },
+                { "type": "Button", "text": "Copy to input", "action": "text_tools_copy_to_input" },
+                { "type": "Button", "text": "Share result", "action": "text_tools_share_result" }
             ]
         }));
     }
