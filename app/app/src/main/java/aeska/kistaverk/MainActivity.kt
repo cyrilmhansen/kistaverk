@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val entry = intent?.getStringExtra("entry")
+        val entry = resolveEntry(intent)
 
         renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
             if (action == "kotlin_image_pick_dir") {
@@ -261,6 +261,14 @@ class MainActivity : ComponentActivity() {
         }
         if (snapshot != null) {
             outState.putString(snapshotKey, snapshot)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        val entry = resolveEntry(intent)
+        if (entry == "pdf_signature") {
+            refreshUi("pdf_tools_screen")
         }
     }
 
@@ -361,6 +369,16 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun resolveEntry(intent: Intent?): String? {
+        if (intent == null) return null
+        val explicit = intent.getStringExtra("entry")
+        if (!explicit.isNullOrEmpty()) return explicit
+        if (intent.action == "aeska.kistaverk.PDF_SIGN") return "pdf_signature"
+        val componentName = intent.component?.className.orEmpty()
+        if (componentName.endsWith("PdfSignLauncher")) return "pdf_signature"
+        return null
     }
 
     private fun dispatchPdfAction(action: String, bindings: Map<String, String>) {

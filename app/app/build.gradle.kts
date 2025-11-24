@@ -151,3 +151,19 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
+
+// Generate deps metadata from Cargo before build
+tasks.register<Exec>("generateDepsMetadata") {
+    group = "build"
+    description = "Generate deps.json from cargo metadata"
+    val repoRoot = rootProject.rootDir.parentFile
+    workingDir = File(repoRoot, "rust")
+    commandLine = listOf("./scripts/generate_deps_metadata.sh")
+    doFirst {
+        println("Generating deps metadata in ${workingDir.absolutePath}")
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("generateDepsMetadata")
+}
