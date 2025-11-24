@@ -1,4 +1,6 @@
 use crate::state::AppState;
+use blake3::Hasher as Blake3;
+use crc32fast::Hasher as Crc32;
 use md4::Md4;
 use md5::Md5;
 use sha1::Sha1;
@@ -13,6 +15,8 @@ pub enum HashAlgo {
     Sha1,
     Md5,
     Md4,
+    Crc32,
+    Blake3,
 }
 
 pub fn handle_hash_action(
@@ -112,6 +116,32 @@ fn hash_stream<R: Read>(reader: R, algo: HashAlgo) -> Result<String, String> {
                 hasher.update(&buffer[..read]);
             }
             Ok(format!("{:x}", hasher.finalize()))
+        }
+        HashAlgo::Crc32 => {
+            let mut hasher = Crc32::new();
+            loop {
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            Ok(format!("{:08x}", hasher.finalize()))
+        }
+        HashAlgo::Blake3 => {
+            let mut hasher = Blake3::new();
+            loop {
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
+            Ok(hasher.finalize().to_hex().to_string())
         }
     }
 }

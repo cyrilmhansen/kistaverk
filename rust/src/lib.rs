@@ -234,6 +234,36 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), HashAlgo::Md4);
             }
         }
+        "hash_file_crc32" => {
+            state.current_screen = Screen::Home;
+            state.last_hash_algo = Some("CRC32".into());
+            if let Some(err) = command_error.as_ref() {
+                state.last_error = Some(err.clone());
+                state.last_hash = None;
+            } else {
+                handle_hash_action(
+                    &mut state,
+                    fd_handle.take(),
+                    path.as_deref(),
+                    HashAlgo::Crc32,
+                );
+            }
+        }
+        "hash_file_blake3" => {
+            state.current_screen = Screen::Home;
+            state.last_hash_algo = Some("BLAKE3".into());
+            if let Some(err) = command_error.as_ref() {
+                state.last_error = Some(err.clone());
+                state.last_hash = None;
+            } else {
+                handle_hash_action(
+                    &mut state,
+                    fd_handle.take(),
+                    path.as_deref(),
+                    HashAlgo::Blake3,
+                );
+            }
+        }
         "increment" => state.counter += 1,
         _ => {
             if let Some(err) = command_error {
@@ -377,6 +407,22 @@ fn feature_catalog() -> Vec<Feature> {
             action: "shader_demo",
             requires_file_picker: false,
             description: "GLSL sample",
+        },
+        Feature {
+            id: "hash_crc32",
+            name: "📏 CRC32",
+            category: "🔐 Hashes",
+            action: "hash_file_crc32",
+            requires_file_picker: true,
+            description: "checksum",
+        },
+        Feature {
+            id: "hash_blake3",
+            name: "⚡ BLAKE3",
+            category: "🔐 Hashes",
+            action: "hash_file_blake3",
+            requires_file_picker: true,
+            description: "fast hash",
         },
     ]
 }
