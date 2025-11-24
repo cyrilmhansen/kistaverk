@@ -78,6 +78,7 @@ class UiRenderer(
             "TextInput" -> createTextInput(data)
             "Checkbox" -> createCheckbox(data)
             "Progress" -> createProgress(data)
+            "Grid" -> createGrid(data)
             else -> createErrorView("Unknown: $type")
         }
     }
@@ -263,6 +264,39 @@ class UiRenderer(
             }
         }
         return checkBox
+    }
+
+    private fun createGrid(data: JSONObject): View {
+        val columns = data.optInt("columns", 2).coerceAtLeast(1)
+        val children = data.optJSONArray("children") ?: return createErrorView("Grid missing children")
+        val wrapper = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        }
+        val padding = data.optInt("padding", 0)
+        if (padding > 0) {
+            wrapper.setPadding(padding, padding, padding, padding)
+        }
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            wrapper.contentDescription = contentDescription
+        }
+
+        var row: LinearLayout? = null
+        for (i in 0 until children.length()) {
+            val childView = createView(children.getJSONObject(i))
+            if (i % columns == 0) {
+                row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                }
+                wrapper.addView(row)
+            }
+            val lp = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+            childView.layoutParams = lp
+            row?.addView(childView)
+        }
+        return wrapper
     }
 
     private class ShaderToyView(context: Context, fragmentSrc: String) : GLSurfaceView(context) {
