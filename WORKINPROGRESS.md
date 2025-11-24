@@ -120,3 +120,78 @@ Phase 3: Packaging
 Cleanup Gradle:
 Translate comments.
 Remove the armeabi-v7a build argument from build.gradle.kts if the target is strictly arm64-v8a to speed up compilation.
+
+
+
+Voici une synthèse structurée et priorisée des nouvelles fonctionnalités identifiées lors de nos échanges, intégrée à la vision globale du projet Kistaverk.
+Cette liste est filtrée par notre philosophie : Rust Core (Logique) + Kotlin Native (UI/System) + Zero-Bloat (< 5MB).
+🟢 Priorité 1 : Le "Cœur" (MVP Consolidation)
+Ces fonctionnalités complètent la base actuelle pour rendre l'outil indispensable au quotidien.
+Gestion PDF "Chirurgicale"
+Besoin : Extraire/Supprimer des pages, Fusionner.
+Tech (Kotlin) : Utiliser l'API native android.graphics.pdf.PdfRenderer (dispo depuis Android 5.0) pour générer les aperçus (Bitmap) des pages afin que l'utilisateur puisse les sélectionner dans l'UI. Pas de WebView (trop lourd/imprévisible).
+Tech (Rust) : Utiliser la crate lopdf pour manipuler la structure du fichier PDF et sauvegarder le résultat sans perte de qualité.
+Gestionnaire d'Archives (Beyond Zip)
+Besoin : Ouvrir des tar.gz, tar.bz2, xz sur Android.
+Tech (Rust) : Les crates tar, flate2, bzip2, xz2 sont performantes et sûres.
+UI : Une vue arborescente simple (Tree View) générée via le JSON.
+Dithering (Tramage) Rétro
+Besoin : Esthétique "Pixel Art", préparation d'images pour écrans e-ink ou imprimantes thermiques.
+Tech (Rust) : Implémentation des algorithmes Floyd-Steinberg, Atkinson et Ordered Dithering. C'est du calcul pur sur les pixels, parfait pour Rust.
+🟡 Priorité 2 : La "Geek Suite" (Developer Tools)
+Outils spécialisés pour les développeurs, accessibles via le mode standard ou Geek.
+Solveur d'Équations (Style "Mercury/Eureka")
+Besoin : Résoudre des systèmes d'équations (
+2
+x
++
+y
+=
+10
+2x+y=10
+) ou trouver des racines (
+x
+2
+−
+4
+=
+0
+x 
+2
+ −4=0
+).
+Tech (Rust) : Plutôt que d'intégrer un énorme moteur C++ comme Giac/Xcas (trop gros), nous implémenterons un solveur numérique itératif (Méthode de Newton-Raphson) ou un petit moteur symbolique en pur Rust.
+Input : Un champ texte multi-lignes où l'utilisateur tape ses équations comme dans le manuel Mercury fourni.
+Convertisseur Vectoriel (SVG <-> VectorDrawable)
+Besoin : Les devs Android détestent convertir manuellement des SVG en XML VectorDrawable.
+Tech (Rust) : Parsing XML du SVG et réécriture en XML Android. Utilité immédiate pour le dev mobile.
+Simplificateur Logique (Tableau de Karnaugh)
+Besoin : Simplifier des expressions booléennes ((A AND B) OR (A AND NOT B) -> A).
+Tech (Rust) : Algorithme de Quine-McCluskey.
+UI : Une grille interactive représentant le tableau de Karnaugh où l'utilisateur toggle les 0 et 1.
+Calculatrice RPN & Convertisseur de Base
+Validé précédemment : Pile infinie, conversion Hex/Bin/Dec en temps réel.
+🔴 Priorité 3 : Le "Labo" (Mode Expert / Easter Eggs)
+Fonctionnalités cachées derrière les "7 taps", expérimentales ou très avancées.
+Kista-Forth (Langage de Script)
+Validé précédemment : Interpréteur Forth complet pour scripter les fonctions internes de l'app (hash, convert, math).
+Automata Lab (Wolfram NKS)
+Validé précédemment : Génération d'automates cellulaires 1D (Rule 30, 110) avec rendu Bitmap.
+Transfert de Données Haute Densité (Color QR / JAB Code)
+Besoin : Transférer un fichier (ex: une clé GPG, un petit fichier de conf) d'un écran à un autre sans réseau (AirGap).
+Tech (Rust) : Encodage binaire vers une matrice de couleurs (Cyan, Magenta, Jaune, Noir).
+Tech (Kotlin) : Affichage plein écran haute luminosité. Note : La lecture (scan caméra) est complexe à faire en "Zero-Bloat", on se limitera peut-être à la génération (émetteur) dans un premier temps.
+Capteurs & Hardware (Système Android)
+Besoin : Debugger le matériel.
+Tech (Kotlin) : Utiliser SensorManager pour lire Magnétomètre, Gyroscope, Pression, et BatteryManager.
+Tech (Rust) : Recevoir les données brutes, appliquer des filtres (Kalman ?) ou des stats, et renvoyer le JSON pour afficher des graphiques en temps réel.
+❌ Idées écartées (Pour l'instant)
+WebView pour le PDF : Trop lourd, trop variable selon les versions d'Android, risque de failles de sécurité. On préfère PdfRenderer (natif).
+Intégration Giac/Xcas complète : Trop lourd (plusieurs Mo). On préfère un solveur Rust léger "fait maison" inspiré de Mercury.
+🗺️ Synthèse de la Roadmap Technique
+Architecture : Finaliser la machine à état Rust (Stack de navigation).
+UI Engine : Ajouter les widgets manquants (TreeView pour archives, Canvas/Bitmap pour Dithering/Automates).
+Implémentation P1 : PDF + Archives + Dithering.
+Implémentation P2 : Solveur + Logic tools.
+Implémentation P3 : Le "Mode Geek" (Forth + Automates).
+
