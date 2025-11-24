@@ -2,12 +2,21 @@ package aeska.kistaverk
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.pdf.PdfRenderer
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.util.Base64
 import android.view.View
+import android.view.MotionEvent
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -16,7 +25,9 @@ import android.widget.LinearLayout.LayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.ImageView
 import android.widget.TextView
+import java.io.ByteArrayOutputStream
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.ProgressBar
@@ -40,7 +51,9 @@ class UiRenderer(
         "Progress",
         "Grid",
         "ImageBase64",
-        "ColorSwatch"
+        "ColorSwatch",
+        "PdfPagePicker",
+        "SignaturePad"
     )
 
     fun render(jsonString: String): View {
@@ -113,6 +126,8 @@ class UiRenderer(
             "Grid" -> createGrid(data)
             "ImageBase64" -> createImageBase64(data)
             "ColorSwatch" -> createColorSwatch(data)
+            "PdfPagePicker" -> createPdfPagePicker(data)
+            "SignaturePad" -> createSignaturePad(data)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -130,6 +145,14 @@ class UiRenderer(
         }
         if (type == "ColorSwatch" && !node.has("color")) {
             return "ColorSwatch missing color"
+        }
+        if (type == "PdfPagePicker") {
+            if (!node.has("page_count")) return "PdfPagePicker missing page_count"
+            if (!node.has("source_uri")) return "PdfPagePicker missing source_uri"
+            if (!node.has("bind_key")) return "PdfPagePicker missing bind_key"
+        }
+        if (type == "SignaturePad") {
+            if (!node.has("bind_key")) return "SignaturePad missing bind_key"
         }
         if (type == "Grid") {
             val children = node.optJSONArray("children") ?: return "Grid missing children"
@@ -422,6 +445,200 @@ class UiRenderer(
             row?.addView(childView)
         }
         return wrapper
+    }
+
+    private fun createPdfPagePicker(data: JSONObject): View {
+        val pageCount = data.optInt("page_count", 0)
+        val bindKey = data.optString("bind_key", "")
+        val sourceUri = data.optString("source_uri", "")
+        if (pageCount <= 0 || sourceUri.isBlank()) return createErrorView("PDF picker missing data")
+        val uri = runCatching { Uri.parse(sourceUri) }.getOrNull() ?: return createErrorView("Invalid PDF URI")
+
+        val selected = mutableSetOf<Int>()
+        val selectedArr = data.optJSONArray("selected_pages")
+        if (selectedArr != null) {
+            for (i in 0 until selectedArr.length()) {
+                val valNum = selectedArr.optInt(i, -1)
+                if (valNum > 0) selected.add(valNum)
+            }
+        }
+
+        fun pushSelection() {
+            if (bindKey.isNotEmpty()) {
+                bindings[bindKey] = selected.sorted().joinToString(",")
+            }
+        }
+
+        val thumbnails = renderPdfThumbnails(uri, pageCount)
+        val wrapper = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            val pad = dpToPx(context, 8f)
+            setPadding(pad, pad, pad, pad)
+        }
+        val cd = data.optString("content_description", "")
+        if (cd.isNotEmpty()) wrapper.contentDescription = cd
+
+        val columns = computeColumns(data)
+        var row: LinearLayout? = null
+        for (i in 0 until pageCount) {
+            if (i % columns == 0) {
+                row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                }
+                wrapper.addView(row)
+            }
+            val pageNumber = i + 1
+            val cell = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val lp = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
+                lp.marginEnd = dpToPx(context, 6f)
+                layoutParams = lp
+            }
+            val thumb = thumbnails.getOrNull(i)
+            if (thumb != null) {
+                val iv = ImageView(context).apply {
+                    setImageBitmap(thumb)
+                    adjustViewBounds = true
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    val lp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                    lp.bottomMargin = dpToPx(context, 6f)
+                    layoutParams = lp
+                }
+                cell.addView(iv)
+            } else {
+                cell.addView(createErrorView("Preview $pageNumber"))
+            }
+            val check = CheckBox(context).apply {
+                text = "Page $pageNumber"
+                isChecked = selected.contains(pageNumber)
+                setOnCheckedChangeListener { _, isChecked ->
+                    if (isChecked) selected.add(pageNumber) else selected.remove(pageNumber)
+                    pushSelection()
+                }
+            }
+            cell.addView(check)
+            row?.addView(cell)
+        }
+
+        pushSelection()
+        return wrapper
+    }
+
+    private fun renderPdfThumbnails(uri: Uri, pageCount: Int): List<Bitmap?> {
+        val thumbs = mutableListOf<Bitmap?>()
+        val pfd: ParcelFileDescriptor = try {
+            context.contentResolver.openFileDescriptor(uri, "r") ?: return List(pageCount) { null }
+        } catch (_: Exception) {
+            return List(pageCount) { null }
+        }
+        pfd.use { descriptor ->
+            try {
+                PdfRenderer(descriptor).use { renderer ->
+                    val count = minOf(pageCount, renderer.pageCount)
+                    for (i in 0 until count) {
+                        thumbs.add(renderSinglePage(renderer, i))
+                    }
+                    if (count < pageCount) {
+                        repeat(pageCount - count) { thumbs.add(null) }
+                    }
+                }
+            } catch (_: Exception) {
+                return List(pageCount) { null }
+            }
+        }
+        return thumbs
+    }
+
+    private fun renderSinglePage(renderer: PdfRenderer, index: Int): Bitmap? {
+        if (index >= renderer.pageCount) return null
+        return try {
+            renderer.openPage(index).use { page ->
+                val targetWidth = dpToPx(context, 140f)
+                val aspect = page.height / page.width.toFloat()
+                val targetHeight = (targetWidth * aspect).toInt().coerceAtLeast(24)
+                val bmp = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bmp
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun createSignaturePad(data: JSONObject): View {
+        val bindKey = data.optString("bind_key", "")
+        val heightDp = data.optInt("height_dp", 180)
+        val cd = data.optString("content_description", "")
+        val pad = SignaturePadView(context) { b64 ->
+            if (bindKey.isNotEmpty()) {
+                bindings[bindKey] = b64
+            }
+        }
+        val lp = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, heightDp.toFloat()))
+        lp.topMargin = dpToPx(context, 8f)
+        lp.bottomMargin = dpToPx(context, 8f)
+        pad.layoutParams = lp
+        if (cd.isNotEmpty()) pad.contentDescription = cd
+        return pad
+    }
+
+    private class SignaturePadView(
+        context: Context,
+        private val onUpdate: (String) -> Unit
+    ) : View(context) {
+        private val path = Path()
+        private val paint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = dpToPxInternal(2f).toFloat()
+            isAntiAlias = true
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawColor(Color.WHITE)
+            canvas.drawPath(path, paint)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            val x = event.x
+            val y = event.y
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    path.moveTo(x, y)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    path.lineTo(x, y)
+                }
+                MotionEvent.ACTION_UP -> {
+                    path.lineTo(x, y)
+                    exportAndSend()
+                }
+            }
+            invalidate()
+            return true
+        }
+
+        private fun exportAndSend() {
+            if (width <= 0 || height <= 0) return
+            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            canvas.drawColor(Color.WHITE)
+            canvas.drawPath(path, paint)
+            val stream = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            val b64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+            onUpdate(b64)
+        }
+
+        private fun dpToPxInternal(dp: Float): Int {
+            val density = resources.displayMetrics.density
+            return (dp * density).toInt()
+        }
     }
 
     private fun computeColumns(data: JSONObject): Int {

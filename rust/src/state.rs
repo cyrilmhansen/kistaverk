@@ -1,4 +1,5 @@
 use crate::features::kotlin_image::KotlinImageState;
+use crate::features::pdf::PdfState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -12,6 +13,7 @@ pub enum Screen {
     ProgressDemo,
     Qr,
     ColorTools,
+    PdfTools,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +34,7 @@ pub struct AppState {
     pub progress_status: Option<String>,
     pub loading_with_spinner: bool,
     pub last_qr_base64: Option<String>,
+    pub pdf: PdfState,
 }
 
 impl AppState {
@@ -54,6 +57,7 @@ impl AppState {
             progress_status: None,
             loading_with_spinner: true,
             last_qr_base64: None,
+            pdf: PdfState::new(),
         }
     }
 
@@ -117,5 +121,6 @@ impl AppState {
         self.progress_status = None;
         self.loading_with_spinner = true;
         self.last_qr_base64 = None;
+        self.pdf.reset();
     }
 }

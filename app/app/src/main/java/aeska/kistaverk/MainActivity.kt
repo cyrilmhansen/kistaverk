@@ -6,6 +6,7 @@ import android.os.Environment
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
+    private var pdfSourceUri: Uri? = null
     private var rootContainer: FrameLayout? = null
     private var contentHolder: FrameLayout? = null
     private var overlayView: View? = null
@@ -50,21 +52,57 @@ class MainActivity : ComponentActivity() {
             return@registerForActivityResult
         }
 
-        val fd = openFdForUri(uri)
-        if (fd != null) {
-            dispatchWithOptionalLoading(
-                action = action,
-                bindings = bindings,
-                extras = mapOf("fd" to fd)
-            )
-        } else {
-            // Notify Rust about the failure so it can surface an error state
-            dispatchWithOptionalLoading(
-                action = action,
-                bindings = bindings,
-                extras = mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed")
-            )
+        if (action == "pdf_select") {
+            pdfSourceUri = uri
         }
+
+        if (action == "pdf_signature_load") {
+            val bytes = readBytes(uri)
+            val b64 = bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+            if (b64 != null) {
+                refreshUi(
+                    "pdf_signature_store",
+                    bindings = mapOf("signature_base64" to b64)
+                )
+            } else {
+                refreshUi(
+                    "pdf_signature_store",
+                    bindings = emptyMap(),
+                    extras = mapOf("error" to "signature_load_failed")
+                )
+            }
+            return@registerForActivityResult
+        }
+
+        val fd = openFdForUri(uri)
+        val extras = mutableMapOf<String, Any?>()
+        if (fd != null) {
+            extras["fd"] = fd
+        } else {
+            extras["fd"] = JSONObject.NULL
+            extras["error"] = "open_fd_failed"
+        }
+        if (action.startsWith("pdf_")) {
+            extras["path"] = uri.toString()
+            if (action == "pdf_merge") {
+                val primaryUri = pdfSourceUri
+                if (primaryUri != null) {
+                    extras["primary_path"] = primaryUri.toString()
+                    val pfd = openFdForUri(primaryUri)
+                    if (pfd != null) {
+                        extras["primary_fd"] = pfd
+                    }
+                } else {
+                    extras["error"] = "select_pdf_first"
+                }
+            }
+        }
+
+        dispatchWithOptionalLoading(
+            action = action,
+            bindings = bindings,
+            extras = extras
+        )
     }
 
     private fun cacheLastResult(json: String) {
@@ -173,14 +211,24 @@ class MainActivity : ComponentActivity() {
                 dispatchWithOptionalLoading(action, bindings = merged)
                 return@UiRenderer
             }
+            if (action == "pdf_extract" || action == "pdf_delete" || action == "pdf_sign") {
+                dispatchPdfAction(action, bindings)
+                return@UiRenderer
+            }
+            if (action == "pdf_set_title") {
+                dispatchPdfAction(action, bindings)
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
                 pendingBindingsAfterPicker = bindings
-                pickFileLauncher.launch(arrayOf("*/*"))
+                val mimeTypes = if (action.startsWith("pdf_")) arrayOf("application/pdf") else arrayOf("*/*")
+                pickFileLauncher.launch(mimeTypes)
             } else {
                 if (action == "reset") {
                     selectedOutputDir = null
+                    pdfSourceUri = null
                 }
                 dispatchWithOptionalLoading(action, bindings = bindings)
             }
@@ -302,6 +350,38 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun readBytes(uri: Uri): ByteArray? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun dispatchPdfAction(action: String, bindings: Map<String, String>) {
+        val uri = pdfSourceUri
+        if (uri == null) {
+            refreshUi(
+                "pdf_select",
+                bindings = bindings,
+                extras = mapOf("error" to "select_pdf_first")
+            )
+            return
+        }
+
+        val fd = openFdForUri(uri)
+        val extras = mutableMapOf<String, Any?>(
+            "path" to uri.toString()
+        )
+        if (fd != null) {
+            extras["fd"] = fd
+        } else {
+            extras["fd"] = JSONObject.NULL
+            extras["error"] = "open_fd_failed"
+        }
+        dispatchWithOptionalLoading(action, bindings = bindings, extras = extras)
     }
 
     private fun handleKotlinImageConversion(uri: Uri, action: String) {
