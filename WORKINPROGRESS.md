@@ -57,8 +57,8 @@ Tech: Complex binary parsing.
 - Kotlin now launches the system file picker (detaching FDs), forwards a `bindings` map with UI state, and renders Text/Button/ShaderToy/TextInput/Checkbox/Progress; Columns wrap in ScrollView and Grids auto-pick columns (1/2). Overlay spinner keeps prior screen visible during loading-only calls.
 - Rust owns UI and navigation via a `Vec<Screen>` stack with typed `Action`/`TextAction`; hardware Back from Kotlin calls `back` and Rust pops safely (Home is root). Inline Back buttons only appear when depth > 1. `snapshot`/`restore_state` serialize/rehydrate AppState; Kotlin persists the snapshot in the Activity bundle.
 - Features: streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), Shader demo, Kotlin image conversion flow with output dir selection, Text Tools (upper/lower/title/wrap/trim/count/Base64/URL/Hex) with copy/share hooks, Progress demo, File info.
-- Renderer guardrails render inline errors for unknown/malformed widgets. Accessibility strings flow through `content_description`.
-- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases + snapshot/restore coverage with JNI mocked) pass.
+- Renderer guardrails: Kotlin validates JSON with a widget whitelist/required children before rendering; malformed payloads fall back to an inline error screen. Accessibility strings flow through `content_description`.
+- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases + snapshot/restore + validation fallback with JNI mocked) pass.
 
 ## Known Issues / Risks
 - Renderer still trusts incoming JSON and can crash on malformed output; Kotlin has a fallback but we lack schema validation and more granular error UI.
@@ -67,7 +67,7 @@ Tech: Complex binary parsing.
 - Gradle wrapper download may hit filesystem permission errors on some hosts; rerun with writable ~/.gradle or vendored distribution (current run succeeded with permissions).
 
 ## Next Implementation Step
-1. Add schema validation for renderer JSON (Rust/Kotlin) and move UI generation toward typed builders to reduce malformed output risk.
+1. Extend typed UI builders/serde structs to remaining screens (text tools, progress, Kotlin image), and align Kotlin validator with those shapes (optional fields, content descriptions).
 
 ## Near-Term Tasks
 - Kotlin side: add schema validation/guardrails for renderer JSON; add a small loading indicator while hashing or converting; ensure fallback renders on malformed JSON.

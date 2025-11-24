@@ -18,6 +18,7 @@ There are no classic XML layout files for individual screens.
 - **Grid layout:** The home menu renders categories as 2-column grids (auto-falls back to 1 column on narrow screens unless `columns` is set explicitly) to reduce scroll.
 - **Hardware Back:** `OnBackPressedDispatcher` sends a `back` action into Rust, which pops the navigation stack and returns the previous screen JSON; inline Back buttons are only shown when stack depth > 1.
 - **State persistence:** `MainActivity` saves a Rust snapshot during `onSaveInstanceState` and restores it on recreate. Robolectric tests cover the snapshot/restore path with JNI loading stubbed to avoid native deps.
+- **Schema guardrails:** Renderer validates incoming JSON (widget whitelist + required children for Column/Grid) before rendering and falls back to an inline error screen if malformed.
 - **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, Checkbox, Grid, and Progress to cover TalkBack without XML layouts.
 - **Tests:** Robolectric tests exercise `UiRenderer` TextInput/Checkbox/Progress parsing and binding delivery to actions to catch JSON/render regressions early.
 - **Renderer guardrails:** Unknown or malformed widgets render error TextViews instead of crashing; missing children in columns/grids show a clear error row.
@@ -77,6 +78,7 @@ Instead of C/C++, we choose **Rust** for the low-level core.
     *   It handles navigation, state, and pure-Rust features (streaming hashes) and also orchestrates screens whose heavy lifting happens in Kotlin (image conversion).
     *   Navigation uses a `Vec<Screen>` stack managed in Rust; typed `Action`/`TextAction` enums replace stringly dispatch, and back pops safely without underflow.
     *   Snapshot/restore: Rust serializes `AppState` to JSON on `snapshot`, and `restore_state` rehydrates with navigation guarded; Kotlin persists this in the Activity bundle.
+    *   Typed UI builders: Core screens (home, loading, shader, file info) now emit JSON via serde-backed structs to reduce malformed output risk and align with renderer validation.
     *   Panic Strategy: The Rust core catches panics (`std::panic::catch_unwind`), recovers from poisoned state locks, and returns error JSON to the UI instead of crashing.
     *   Android build uses Gradle to call Cargo; cargo path is resolved from `CARGO` env or PATH (not hardcoded), keeping NDK/strip settings intact and building arm64-v8a only.
     *   Example: the Text Tools screen is rendered fully from Rust (TextInput + grouped action buttons for uppercase/lower/title/wrap/trim/count), and Kotlin simply renders native views and relays bindings.
