@@ -143,3 +143,157 @@ C. Navigation & Feature Ownership
 - **Screens:** `AppState` now keeps a stack of `Screen` values (Home, Shader demo, Kotlin image flow, etc.) rather than a single current_screen. Back pops to the prior screen; Home is the root and is never underflown.
 - **Feature isolation:** Rust modules own state and rendering. Kotlin feature helpers own platform work (e.g., bitmap codecs) but send outcomes back through `dispatch`, so Rust drives UI and history.
 - **Menu/actions:** Buttons carry an `id` and `action`. Actions are parsed into typed enums (e.g., `Action::Hash(HashAlgo)`, `Action::TextTools(TextAction)`) to avoid stringly routing. Some actions open sub-screens (like the Kotlin image screen) and then request the picker; results flow back to Rust to render success/error, display chosen MediaStore/SAF targets, and keep navigation consistent.
+
+
+
+
+This project demonstrates a very strong adherence to the "Zero-Bloat" and "Backend-Driven UI" philosophy. The separation of concerns is clean, and the code is remarkably readable for a JNI project.
+However, moving from a "Prototype" to a "Production Engine" requires addressing specific architectural bottlenecks, particularly regarding state management and type safety.
+Here is the review of the architecture, bugs, and the i18n strategy.
+1. Architecture Review & Improvements
+A. State Management: The "God Object" Problem
+Current Status: AppState is a massive struct containing fields for every single feature (pdf, image, text_input, sensor_...).
+Risk: As you add features (Archives, Math, Logic), this struct will become unmaintainable. Every time you touch state.rs, you risk breaking unrelated features.
+Improvement: Implement a Modular State / Feature Trait.
+Define a Feature trait in Rust that handles its own state reduction and UI rendering.
+AppState should hold a generic Box<dyn Feature> or an enum of active features, plus a shared GlobalState (navigation stack, clipboard).
+Benefit: features/pdf.rs would own PdfState completely. lib.rs wouldn't need to know about pdf.source_uri.
+B. The JSON "Stringly Typed" Weakness
+Current Status: You are constructing JSON using json!({ "type": "Button", ... }) macros.
+Risk: It is extremely easy to make a typo in "bind_key" or "action", causing the Kotlin renderer to fail silently or fallback to error views.
+Improvement: Use Strongly Typed Structs for the UI DSL in Rust.
+You already started this in src/ui.rs (Button, Column), but it's not used everywhere (e.g., render_pdf_screen uses raw json!).
+Enforce usage of ui::Button::new(...) everywhere.
+Benefit: Compile-time verification of your UI schema. If you change a widget field, the Rust compiler will yell at you.
+C. Navigation Data Passing
+Current Status: To pass data from the File Picker back to the screen, you rely on global fields like state.pdf.source_uri.
+Risk: Race conditions or stale state if the user navigates away and back quickly, or if two features use similar fields.
+Improvement: Implement Action payloads.
+When Action::PdfSelect is fired, the result should not just update a global variable; it should ideally transition the state machine specific to that screen.
+Consider making the Screen enum hold data: Screen::PdfTools(PdfState).
+2. Obvious Bugs & Fixes
+🐛 Bug 1 : Sensor Logger Race Condition (Threading)
+Location: MainActivity.kt
+Description: In stopSensorLogging, you close logWriter and set it to null. However, the SensorEventListener runs on a separate HandlerThread. It is possible for onSensorChanged to fire one last time after logWriter is nulled/closed but before the listener is fully unregistered.
+Fix:
+Add a synchronization block or a volatile flag, and check safety inside the listener.
+code
+Kotlin
+// In MainActivity.kt
+@Volatile private var isLogging = false
+
+// In startSensorLogging
+isLogging = true
+sensorListener = object : SensorEventListener {
+    override fun onSensorChanged(event: SensorEvent) {
+        if (!isLogging || logWriter == null) return // Fast exit
+        // ... write logic
+    }
+}
+
+// In stopSensorLogging
+isLogging = false // Signal stop first
+sensorManager?.unregisterListener(sensorListener)
+// ... then close writer
+🐛 Bug 2 : PDF Coordinate System Mismatch
+Location: features/pdf.rs & MainActivity.kt (SignaturePad)
+Description: Android views (and your SignaturePad) work in Pixels (px) relative to the top-left. PDF documents use Points (pt) (1/72 inch) relative to the bottom-left (usually).
+Consequence: The signature will appear upside down or at the wrong Y location on the PDF.
+Fix:
+Rust: You need to know the page height to flip the Y coordinate: pdf_y = page_height - view_y_converted.
+Kotlin: Send the aspect ratio or image dimensions of the signature so Rust can scale it appropriately, rather than hardcoding 180.0 width.
+🐛 Bug 3 : ScrollView Logic in Renderer
+Location: UiRenderer.kt -> render()
+Description:
+code
+Kotlin
+return if (root is LinearLayout) { ScrollView(...) } else { root }
+If the root element is a Grid (which returns a LinearLayout wrapper), it gets wrapped in a ScrollView. This is generally fine.
+However, if you implement a ListView or RecyclerView later (for the Archive viewer), wrapping it in a ScrollView will break scrolling (nested scrolling conflict).
+Fix: Add a property scrollable to the Column/Grid JSON schema. Only wrap in ScrollView if scrollable: true (defaulting to true for now is fine, but needs explicit 
+
+
+. Internationalization (i18n) Strategy
+Since you want the Core to remain the "Single Source of Truth", Rust must handle translations. Do not use Android's strings.xml.
+Here is the most extensible way to implement this without bloating the binary:
+Step 1: Define Locales in Rust
+Create a lightweight translation module. Avoid heavy crates like gettext. Use a compile-time map or rust-i18n.
+rust/src/i18n.rs
+code
+Rust
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+// Simple Key-Value store. 
+// For <5MB, we can embed strings directly or load them from a JSON asset at runtime.
+// Embedding is faster and safer.
+
+pub enum Locale {
+    En,
+    Fr,
+    Is, // Icelandic
+}
+
+impl Locale {
+    pub fn from_str(s: &str) -> Self {
+        if s.starts_with("fr") { Locale::Fr }
+        else if s.starts_with("is") { Locale::Is }
+        else { Locale::En }
+    }
+}
+
+pub fn t(key: &str, locale: &Locale) -> String {
+    match locale {
+        Locale::En => match key {
+            "app_name" => "Kistaverk",
+            "menu_hash" => "Hash Tools",
+            _ => key,
+        },
+        Locale::Fr => match key {
+            "app_name" => "Kistaverk",
+            "menu_hash" => "Outils de Hachage",
+            _ => key,
+        },
+        _ => key, // Fallback
+    }.to_string()
+}
+Step 2: Inject Locale from Kotlin
+In MainActivity.kt, detect the system locale and send it during the init action.
+code
+Kotlin
+// MainActivity.kt
+private fun getSystemLocale(): String {
+    return resources.configuration.locales[0].language
+}
+
+// In onCreate or initial dispatch
+val initData = mapOf("locale" to getSystemLocale())
+dispatchWithOptionalLoading("init", bindings = initData)
+Step 3: Store Locale in AppState
+Update AppState to hold the current Locale.
+code
+Rust
+// state.rs
+pub struct AppState {
+    pub locale: Locale,
+    // ... other fields
+}
+Step 4: Use it in UI Generation
+Update your render functions to accept the state (which they already do) and use a helper macro or function.
+code
+Rust
+// features/mod.rs
+pub fn render_menu(state: &AppState) -> Value {
+    let l = &state.locale;
+    let mut children = vec![
+        // "Tool menu" becomes dynamic
+        serde_json::to_value(UiText::new(&t("menu_title", l)).size(22.0)).unwrap(), 
+    ];
+    // ...
+}
+Why this is best for Kistaverk:
+Extensible: Adding a language is just adding a match arm or a file in Rust.
+Hot-Swap: You can change the language instantly without restarting the Android Activity (just re-render the JSON).
+Consistency: The same Rust core can be compiled for iOS or Desktop later, and the translations travel with it.
+Use Arrow Up and Arrow Down to select a turn, Enter to jump to it, and Escape to return to the chat.
+control for lists).
