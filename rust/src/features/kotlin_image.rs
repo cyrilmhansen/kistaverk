@@ -41,7 +41,7 @@ impl KotlinImageState {
 }
 
 pub fn handle_screen_entry(state: &mut AppState, target: ImageTarget) {
-    state.current_screen = Screen::KotlinImage;
+    state.push_screen(Screen::KotlinImage);
     state.image.target = Some(target);
     state.image.result = None;
     state.image.output_dir = None;
@@ -53,7 +53,7 @@ pub fn handle_result(
     target: Option<ImageTarget>,
     result: ImageConversionResult,
 ) {
-    state.current_screen = Screen::KotlinImage;
+    state.replace_current(Screen::KotlinImage);
     if let Some(t) = target {
         state.image.target = Some(t);
     }
@@ -61,7 +61,7 @@ pub fn handle_result(
 }
 
 pub fn handle_output_dir(state: &mut AppState, target: Option<ImageTarget>, dir: Option<String>) {
-    state.current_screen = Screen::KotlinImage;
+    state.replace_current(Screen::KotlinImage);
     if let Some(t) = target {
         state.image.target = Some(t);
     }
@@ -137,12 +137,14 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
         }
     }
 
-    children.push(json!({
-        "type": "Button",
-        "text": "Back",
-        "action": "reset",
-        "requires_file_picker": false
-    }));
+    if state.nav_depth() > 1 {
+        children.push(json!({
+            "type": "Button",
+            "text": "Back",
+            "action": "back",
+            "requires_file_picker": false
+        }));
+    }
 
     json!({
         "type": "Column",

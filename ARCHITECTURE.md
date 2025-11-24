@@ -16,6 +16,7 @@ There are no classic XML layout files for individual screens.
 - **Loading/Progress:** `UiRenderer` renders a `Progress` widget (indeterminate spinner + optional label) for loading states; used by Rust “Computing…” screens.
 - **Overlay spinner:** MainActivity wraps content in a frame with a translucent overlay spinner for loading-only calls (hashes, progress demo) so the prior screen stays visible.
 - **Grid layout:** The home menu renders categories as 2-column grids (auto-falls back to 1 column on narrow screens unless `columns` is set explicitly) to reduce scroll.
+- **Hardware Back:** `OnBackPressedDispatcher` sends a `back` action into Rust, which pops the navigation stack and returns the previous screen JSON; inline Back buttons are only shown when stack depth > 1.
 - **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, Checkbox, Grid, and Progress to cover TalkBack without XML layouts.
 - **Tests:** Robolectric tests exercise `UiRenderer` TextInput/Checkbox/Progress parsing and binding delivery to actions to catch JSON/render regressions early.
 - **Renderer guardrails:** Unknown or malformed widgets render error TextViews instead of crashing; missing children in columns/grids show a clear error row.
@@ -73,6 +74,7 @@ Instead of C/C++, we choose **Rust** for the low-level core.
 *   **Structure:**
     *   The core is a Rust library compiled as a JNI `.so`.
     *   It handles navigation, state, and pure-Rust features (streaming hashes) and also orchestrates screens whose heavy lifting happens in Kotlin (image conversion).
+    *   Navigation uses a `Vec<Screen>` stack managed in Rust; typed `Action`/`TextAction` enums replace stringly dispatch, and back pops safely without underflow.
     *   Panic Strategy: The Rust core catches panics (`std::panic::catch_unwind`), recovers from poisoned state locks, and returns error JSON to the UI instead of crashing.
     *   Android build uses Gradle to call Cargo; cargo path is resolved from `CARGO` env or PATH (not hardcoded), keeping NDK/strip settings intact and building arm64-v8a only.
     *   Example: the Text Tools screen is rendered fully from Rust (TextInput + grouped action buttons for uppercase/lower/title/wrap/trim/count), and Kotlin simply renders native views and relays bindings.
@@ -124,6 +126,6 @@ let file = unsafe { File::from_raw_fd(fd) };
 // std::mem::forget(file) // logic to prevent Rust from closing the FD if Kotlin owns it
 
 C. Navigation & Feature Ownership
-- **Screens:** `AppState` tracks the current screen (Home, Shader demo, Kotlin image flow). Feature state lives in dedicated modules under `features/` (e.g., `features::hashes`, `features::kotlin_image`).
+- **Screens:** `AppState` now keeps a stack of `Screen` values (Home, Shader demo, Kotlin image flow, etc.) rather than a single current_screen. Back pops to the prior screen; Home is the root and is never underflown.
 - **Feature isolation:** Rust modules own state and rendering. Kotlin feature helpers own platform work (e.g., bitmap codecs) but send outcomes back through `dispatch`, so Rust drives UI and history.
-- **Menu actions:** Buttons carry an `id` and `action`. Some actions open sub-screens (like the Kotlin image screen) and then request the picker; results flow back to Rust to render success/error, display chosen MediaStore/SAF targets, and keep navigation consistent.
+- **Menu/actions:** Buttons carry an `id` and `action`. Actions are parsed into typed enums (e.g., `Action::Hash(HashAlgo)`, `Action::TextTools(TextAction)`) to avoid stringly routing. Some actions open sub-screens (like the Kotlin image screen) and then request the picker; results flow back to Rust to render success/error, display chosen MediaStore/SAF targets, and keep navigation consistent.

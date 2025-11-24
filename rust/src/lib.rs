@@ -7,7 +7,7 @@ use features::kotlin_image::{
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
-use features::text_tools::{handle_text_action, render_text_tools_screen};
+use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 
 use jni::objects::{JClass, JString};
@@ -42,6 +42,54 @@ struct Command {
     loading_only: Option<bool>,
 }
 
+#[derive(Debug)]
+enum Action {
+    Init,
+    Reset,
+    Back,
+    ShaderDemo,
+    LoadShader {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    KotlinImageScreen(ImageTarget),
+    KotlinImageResult {
+        target: Option<ImageTarget>,
+        result: ImageConversionResult,
+    },
+    KotlinImageOutputDir {
+        target: Option<ImageTarget>,
+        output_dir: Option<String>,
+    },
+    Hash {
+        algo: HashAlgo,
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+        loading_only: bool,
+    },
+    FileInfo {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    FileInfoScreen,
+    TextToolsScreen {
+        bindings: HashMap<String, String>,
+    },
+    TextTools {
+        action: TextAction,
+        bindings: HashMap<String, String>,
+    },
+    ProgressDemoScreen,
+    ProgressDemoStart {
+        loading_only: bool,
+    },
+    ProgressDemoFinish,
+    Increment,
+}
+
 struct FdHandle(Option<i32>);
 
 impl FdHandle {
@@ -59,6 +107,161 @@ impl Drop for FdHandle {
         if let Some(fd) = self.0.take() {
             unsafe { File::from_raw_fd(fd as RawFd) };
         }
+    }
+}
+
+fn parse_action(command: Command) -> Result<Action, String> {
+    let Command {
+        action,
+        path,
+        fd,
+        error,
+        target,
+        result_path,
+        result_size,
+        result_format,
+        output_dir,
+        bindings,
+        loading_only,
+    } = command;
+
+    let bindings = bindings.unwrap_or_default();
+    let loading_only = loading_only.unwrap_or(false);
+
+    match action.as_str() {
+        "init" => Ok(Action::Init),
+        "reset" => Ok(Action::Reset),
+        "back" => Ok(Action::Back),
+        "shader_demo" => Ok(Action::ShaderDemo),
+        "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
+        "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
+        "kotlin_image_screen_png" => Ok(Action::KotlinImageScreen(ImageTarget::Png)),
+        "kotlin_image_result" => Ok(Action::KotlinImageResult {
+            target: target.as_deref().and_then(parse_image_target),
+            result: if let Some(err) = error {
+                ImageConversionResult {
+                    path: None,
+                    size: None,
+                    format: None,
+                    error: Some(err),
+                }
+            } else {
+                ImageConversionResult {
+                    path: result_path,
+                    size: result_size,
+                    format: result_format,
+                    error: None,
+                }
+            },
+        }),
+        "kotlin_image_output_dir" => Ok(Action::KotlinImageOutputDir {
+            target: target.as_deref().and_then(parse_image_target),
+            output_dir,
+        }),
+        "hash_file_sha256" => Ok(Action::Hash {
+            algo: HashAlgo::Sha256,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "hash_file_sha1" => Ok(Action::Hash {
+            algo: HashAlgo::Sha1,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "hash_file_md5" => Ok(Action::Hash {
+            algo: HashAlgo::Md5,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "hash_file_md4" => Ok(Action::Hash {
+            algo: HashAlgo::Md4,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "hash_file_crc32" => Ok(Action::Hash {
+            algo: HashAlgo::Crc32,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "hash_file_blake3" => Ok(Action::Hash {
+            algo: HashAlgo::Blake3,
+            path,
+            fd,
+            error,
+            loading_only,
+        }),
+        "progress_demo_screen" => Ok(Action::ProgressDemoScreen),
+        "progress_demo_start" => Ok(Action::ProgressDemoStart { loading_only }),
+        "progress_demo_finish" => Ok(Action::ProgressDemoFinish),
+        "file_info_screen" => Ok(Action::FileInfoScreen),
+        "file_info" => Ok(Action::FileInfo { path, fd, error }),
+        "text_tools_screen" => Ok(Action::TextToolsScreen { bindings }),
+        "increment" => Ok(Action::Increment),
+        other => {
+            if let Some(text_action) = parse_text_action(other) {
+                Ok(Action::TextTools {
+                    action: text_action,
+                    bindings,
+                })
+            } else {
+                Err(error.unwrap_or_else(|| format!("unknown_action:{other}")))
+            }
+        }
+    }
+}
+
+fn parse_text_action(name: &str) -> Option<TextAction> {
+    match name {
+        "text_tools_upper" => Some(TextAction::Upper),
+        "text_tools_lower" => Some(TextAction::Lower),
+        "text_tools_title" => Some(TextAction::Title),
+        "text_tools_word_count" => Some(TextAction::WordCount),
+        "text_tools_char_count" => Some(TextAction::CharCount),
+        "text_tools_trim" => Some(TextAction::Trim),
+        "text_tools_wrap" => Some(TextAction::Wrap),
+        "text_tools_base64_encode" => Some(TextAction::Base64Encode),
+        "text_tools_base64_decode" => Some(TextAction::Base64Decode),
+        "text_tools_url_encode" => Some(TextAction::UrlEncode),
+        "text_tools_url_decode" => Some(TextAction::UrlDecode),
+        "text_tools_hex_encode" => Some(TextAction::HexEncode),
+        "text_tools_hex_decode" => Some(TextAction::HexDecode),
+        "text_tools_copy_to_input" => Some(TextAction::CopyToInput),
+        "text_tools_share_result" => Some(TextAction::ShareResult),
+        "text_tools_clear" => Some(TextAction::Clear),
+        "text_tools_refresh" => Some(TextAction::Refresh),
+        _ => None,
+    }
+}
+
+fn hash_label(algo: HashAlgo) -> &'static str {
+    match algo {
+        HashAlgo::Sha256 => "SHA-256",
+        HashAlgo::Sha1 => "SHA-1",
+        HashAlgo::Md5 => "MD5",
+        HashAlgo::Md4 => "MD4",
+        HashAlgo::Crc32 => "CRC32",
+        HashAlgo::Blake3 => "BLAKE3",
+    }
+}
+
+fn hash_loading_message(algo: HashAlgo) -> &'static str {
+    match algo {
+        HashAlgo::Sha256 => "Computing SHA-256...",
+        HashAlgo::Sha1 => "Computing SHA-1...",
+        HashAlgo::Md5 => "Computing MD5...",
+        HashAlgo::Md4 => "Computing MD4...",
+        HashAlgo::Crc32 => "Computing CRC32...",
+        HashAlgo::Blake3 => "Computing BLAKE3...",
     }
 }
 
@@ -110,24 +313,6 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
 }
 
 fn handle_command(command: Command) -> Result<Value, String> {
-    let Command {
-        action,
-        path,
-        fd,
-        error,
-        target,
-        result_path,
-        result_size,
-        result_format,
-        output_dir,
-        bindings,
-        loading_only,
-    } = command;
-
-    let mut fd_handle = FdHandle::new(fd);
-    let bindings = bindings.unwrap_or_default();
-    let loading_only = loading_only.unwrap_or(false);
-
     let mut lock_poisoned = false;
     let mut state = match STATE.lock() {
         Ok(guard) => guard,
@@ -137,38 +322,40 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
     };
 
-    let command_error = error;
+    state.ensure_navigation();
 
-    match action.as_str() {
-        "reset" => {
-            state.last_hash = None;
-            state.last_error = None;
-            state.current_screen = Screen::Home;
-            state.last_shader = None;
-            state.last_hash_algo = None;
-            state.image.reset();
-            state.text_input = None;
-            state.text_output = None;
-            state.text_operation = None;
-            state.text_aggressive_trim = false;
+    let action = match parse_action(command) {
+        Ok(action) => action,
+        Err(err) => {
+            state.last_error = Some(err);
+            return Ok(render_ui(&state));
+        }
+    };
+
+    match action {
+        Action::Init => {
+            // Keep current state; ensure navigation is initialized.
+            state.ensure_navigation();
+        }
+        Action::Reset => {
+            state.reset_runtime();
+            state.reset_navigation();
+        }
+        Action::Back => {
+            state.pop_screen();
             state.loading_message = None;
-            state.progress_status = None;
         }
-        "shader_demo" => state.current_screen = Screen::ShaderDemo,
-        "file_info_screen" => {
-            state.current_screen = Screen::FileInfo;
-            state.last_file_info = None;
-            state.last_error = None;
-        }
-        "load_shader_file" => {
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
+        Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
+        Action::LoadShader { path, fd, error } => {
+            let mut fd_handle = FdHandle::new(fd);
+            if let Some(err) = error {
+                state.last_error = Some(err);
             } else if let Some(fd) = fd_handle.take() {
                 match read_text_from_fd(fd as RawFd) {
                     Ok(src) => {
                         state.last_shader = Some(src);
                         state.last_error = None;
-                        state.current_screen = Screen::ShaderDemo;
+                        state.replace_current(Screen::ShaderDemo);
                     }
                     Err(e) => state.last_error = Some(format!("shader_read_failed:{e}")),
                 }
@@ -177,7 +364,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     Ok(src) => {
                         state.last_shader = Some(src);
                         state.last_error = None;
-                        state.current_screen = Screen::ShaderDemo;
+                        state.replace_current(Screen::ShaderDemo);
                     }
                     Err(e) => state.last_error = Some(format!("shader_read_failed:{e}")),
                 }
@@ -185,173 +372,67 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.last_error = Some("missing_shader_path".into());
             }
         }
-        "kotlin_image_screen_webp" => handle_kotlin_image_screen(&mut state, ImageTarget::Webp),
-        "kotlin_image_screen_png" => handle_kotlin_image_screen(&mut state, ImageTarget::Png),
-        "kotlin_image_result" => handle_kotlin_image_result(
-            &mut state,
-            target.as_deref().and_then(parse_image_target),
-            if let Some(err) = command_error {
-                ImageConversionResult {
-                    path: None,
-                    size: None,
-                    format: None,
-                    error: Some(err),
-                }
-            } else {
-                ImageConversionResult {
-                    path: result_path,
-                    size: result_size,
-                    format: result_format,
-                    error: None,
-                }
-            },
-        ),
-        "kotlin_image_output_dir" => {
-            handle_kotlin_image_output_dir(
-                &mut state,
-                target.as_deref().and_then(parse_image_target),
-                output_dir,
-            );
+        Action::KotlinImageScreen(target) => handle_kotlin_image_screen(&mut state, target),
+        Action::KotlinImageResult { target, result } => {
+            handle_kotlin_image_result(&mut state, target, result)
         }
-        "hash_file_sha256" => {
+        Action::KotlinImageOutputDir { target, output_dir } => {
+            handle_kotlin_image_output_dir(&mut state, target, output_dir);
+        }
+        Action::Hash {
+            algo,
+            path,
+            fd,
+            error,
+            loading_only,
+        } => {
+            let mut fd_handle = FdHandle::new(fd);
             if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing SHA-256...".into());
+                state.loading_with_spinner = false;
+                state.replace_current(Screen::Loading);
+                state.loading_message = Some(hash_loading_message(algo).into());
                 return Ok(render_ui(&state));
             }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("SHA-256".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
+            state.reset_navigation();
+            state.last_hash_algo = Some(hash_label(algo).into());
+            if let Some(err) = error {
+                state.last_error = Some(err);
                 state.last_hash = None;
             } else {
-                handle_hash_action(
-                    &mut state,
-                    fd_handle.take(),
-                    path.as_deref(),
-                    HashAlgo::Sha256,
-                );
+                handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), algo);
             }
             state.loading_message = None;
+            state.loading_with_spinner = true;
         }
-        "hash_file_sha1" => {
-            if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing SHA-1...".into());
-                return Ok(render_ui(&state));
-            }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("SHA-1".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
-                state.last_hash = None;
-            } else {
-                handle_hash_action(
-                    &mut state,
-                    fd_handle.take(),
-                    path.as_deref(),
-                    HashAlgo::Sha1,
-                );
-            }
-            state.loading_message = None;
-        }
-        "hash_file_md5" => {
-            if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing MD5...".into());
-                return Ok(render_ui(&state));
-            }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("MD5".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
-                state.last_hash = None;
-            } else {
-                handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), HashAlgo::Md5);
-            }
-            state.loading_message = None;
-        }
-        "hash_file_md4" => {
-            if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing MD4...".into());
-                return Ok(render_ui(&state));
-            }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("MD4".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
-                state.last_hash = None;
-            } else {
-                handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), HashAlgo::Md4);
-            }
-            state.loading_message = None;
-        }
-        "hash_file_crc32" => {
-            if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing CRC32...".into());
-                return Ok(render_ui(&state));
-            }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("CRC32".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
-                state.last_hash = None;
-            } else {
-                handle_hash_action(
-                    &mut state,
-                    fd_handle.take(),
-                    path.as_deref(),
-                    HashAlgo::Crc32,
-                );
-            }
-            state.loading_message = None;
-        }
-        "hash_file_blake3" => {
-            if loading_only {
-                state.current_screen = Screen::Loading;
-                state.loading_message = Some("Computing BLAKE3...".into());
-                return Ok(render_ui(&state));
-            }
-            state.current_screen = Screen::Home;
-            state.last_hash_algo = Some("BLAKE3".into());
-            if let Some(err) = command_error.as_ref() {
-                state.last_error = Some(err.clone());
-                state.last_hash = None;
-            } else {
-                handle_hash_action(
-                    &mut state,
-                    fd_handle.take(),
-                    path.as_deref(),
-                    HashAlgo::Blake3,
-                );
-            }
-            state.loading_message = None;
-        }
-        "progress_demo_screen" => {
-            state.current_screen = Screen::ProgressDemo;
+        Action::ProgressDemoScreen => {
+            state.push_screen(Screen::ProgressDemo);
             state.progress_status = None;
             state.loading_message = None;
         }
-        "progress_demo_start" => {
+        Action::ProgressDemoStart { loading_only } => {
             if loading_only {
-                state.current_screen = Screen::Loading;
+                state.replace_current(Screen::Loading);
                 state.loading_message = Some("Working...".into());
                 return Ok(render_ui(&state));
             } else {
-                state.current_screen = Screen::ProgressDemo;
+                state.replace_current(Screen::ProgressDemo);
                 state.progress_status = Some("Starting...".into());
             }
         }
-        "progress_demo_finish" => {
-            state.current_screen = Screen::ProgressDemo;
+        Action::ProgressDemoFinish => {
+            state.replace_current(Screen::ProgressDemo);
             state.progress_status = Some("Done after simulated delay.".into());
             state.loading_message = None;
         }
-        "file_info" => {
-            state.current_screen = Screen::FileInfo;
-            let info = if let Some(err) = command_error {
+        Action::FileInfoScreen => {
+            state.push_screen(Screen::FileInfo);
+            state.last_file_info = None;
+            state.last_error = None;
+        }
+        Action::FileInfo { path, fd, error } => {
+            let mut fd_handle = FdHandle::new(fd);
+            state.replace_current(Screen::FileInfo);
+            let info = if let Some(err) = error {
                 features::file_info::FileInfoResult {
                     path: path.map(|p| p.to_string()),
                     size_bytes: None,
@@ -372,40 +453,18 @@ fn handle_command(command: Command) -> Result<Value, String> {
             };
             state.last_file_info = Some(serde_json::to_string(&info).unwrap_or_default());
         }
-        "text_tools_screen" => {
-            state.current_screen = Screen::TextTools;
+        Action::TextToolsScreen { bindings } => {
+            state.push_screen(Screen::TextTools);
             state.text_output = None;
             state.text_operation = None;
             if let Some(input) = bindings.get("text_input") {
                 state.text_input = Some(input.clone());
             }
         }
-        "text_tools_upper"
-        | "text_tools_lower"
-        | "text_tools_title"
-        | "text_tools_word_count"
-        | "text_tools_char_count"
-        | "text_tools_trim"
-        | "text_tools_wrap"
-        | "text_tools_base64_encode"
-        | "text_tools_base64_decode"
-        | "text_tools_url_encode"
-        | "text_tools_url_decode"
-        | "text_tools_hex_encode"
-        | "text_tools_hex_decode"
-        | "text_tools_copy_to_input"
-        | "text_tools_share_result"
-        | "text_tools_clear"
-        | "text_tools_refresh" => {
-            handle_text_action(&mut state, &action, &bindings);
+        Action::TextTools { action, bindings } => {
+            handle_text_action(&mut state, action, &bindings);
         }
-        "increment" => state.counter += 1,
-        _ => {
-            if let Some(err) = command_error {
-                state.last_error = Some(err);
-                state.last_hash = None;
-            }
-        }
+        Action::Increment => state.counter += 1,
     }
 
     if lock_poisoned && state.last_error.is_none() {
@@ -439,45 +498,24 @@ fn error_ui(message: &str) -> Value {
 }
 
 fn render_ui(state: &AppState) -> Value {
-    match state.current_screen {
+    match state.current_screen() {
         Screen::Home => render_menu(state, &feature_catalog()),
-        Screen::ShaderDemo => {
-            let fragment = state
-                .last_shader
-                .as_ref()
-                .map(|s| s.as_str())
-                .unwrap_or(SAMPLE_SHADER);
-
-            json!({
-                "type": "Column",
-                "padding": 16,
-                "children": [
-                    { "type": "Text", "text": "Shader toy demo", "size": 20.0 },
-                    { "type": "Text", "text": "Simple fragment shader with time and resolution uniforms." },
-                    {
-                        "type": "ShaderToy",
-                        "fragment": fragment
-                    },
-                    {
-                        "type": "Button",
-                        "text": "Load shader from file",
-                        "action": "load_shader_file",
-                        "requires_file_picker": true
-                    },
-                    {
-                        "type": "Text",
-                        "text": "Sample syntax:\nprecision mediump float;\nuniform float u_time;\nuniform vec2 u_resolution;\nvoid main(){ vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec3 col=0.5+0.5*cos(u_time*0.2+uv.xyx+vec3(0.,2.,4.)); gl_FragColor=vec4(col,1.0); }",
-                        "size": 12.0
-                    },
-                    { "type": "Button", "text": "Back", "action": "reset" }
-                ]
-            })
-        }
+        Screen::ShaderDemo => render_shader_screen(state),
         Screen::KotlinImage => render_kotlin_image_screen(state),
         Screen::FileInfo => render_file_info_screen(state),
         Screen::TextTools => render_text_tools_screen(state),
         Screen::Loading => render_loading_screen(state),
         Screen::ProgressDemo => render_progress_demo_screen(state),
+    }
+}
+
+fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
+    if state.nav_depth() > 1 {
+        children.push(json!({
+            "type": "Button",
+            "text": "Back",
+            "action": "back"
+        }));
     }
 }
 
@@ -532,12 +570,7 @@ fn render_file_info_screen(state: &AppState) -> Value {
         }
     }
 
-    children.push(json!({
-        "type": "Button",
-        "text": "Back",
-        "action": "reset",
-        "requires_file_picker": false
-    }));
+    maybe_push_back(&mut children, state);
 
     json!({
         "type": "Column",
@@ -548,13 +581,51 @@ fn render_file_info_screen(state: &AppState) -> Value {
 
 fn render_loading_screen(state: &AppState) -> Value {
     let message = state.loading_message.as_deref().unwrap_or("Working...");
+    let mut children = vec![
+        json!({ "type": "Text", "text": message, "size": 16.0 }),
+    ];
+    if state.loading_with_spinner {
+        children.push(json!({ "type": "Progress", "content_description": "In progress" }));
+    }
     json!({
         "type": "Column",
         "padding": 24,
-        "children": [
-            { "type": "Text", "text": message, "size": 16.0 },
-            { "type": "Progress", "content_description": "In progress" },
-        ]
+        "children": children
+    })
+}
+
+fn render_shader_screen(state: &AppState) -> Value {
+    let fragment = state
+        .last_shader
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or(SAMPLE_SHADER);
+
+    let mut children = vec![
+        json!({ "type": "Text", "text": "Shader toy demo", "size": 20.0 }),
+        json!({ "type": "Text", "text": "Simple fragment shader with time and resolution uniforms." }),
+        json!({
+            "type": "ShaderToy",
+            "fragment": fragment
+        }),
+        json!({
+            "type": "Button",
+            "text": "Load shader from file",
+            "action": "load_shader_file",
+            "requires_file_picker": true
+        }),
+        json!({
+            "type": "Text",
+            "text": "Sample syntax:\nprecision mediump float;\nuniform float u_time;\nuniform vec2 u_resolution;\nvoid main(){ vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec3 col=0.5+0.5*cos(u_time*0.2+uv.xyx+vec3(0.,2.,4.)); gl_FragColor=vec4(col,1.0); }",
+            "size": 12.0
+        }),
+    ];
+    maybe_push_back(&mut children, state);
+
+    json!({
+        "type": "Column",
+        "padding": 16,
+        "children": children
     })
 }
 
@@ -585,11 +656,7 @@ fn render_progress_demo_screen(state: &AppState) -> Value {
         }));
     }
 
-    children.push(json!({
-        "type": "Button",
-        "text": "Back",
-        "action": "reset"
-    }));
+    maybe_push_back(&mut children, state);
 
     json!({
         "type": "Column",
@@ -822,7 +889,7 @@ mod tests {
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
         assert!(state.last_error.is_none());
-        assert!(matches!(state.current_screen, Screen::Home));
+        assert!(matches!(state.current_screen(), Screen::Home));
     }
 
     #[test]
@@ -864,7 +931,7 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.text_input.as_deref(), Some("Hello rust"));
         assert_eq!(state.text_output.as_deref(), Some("HELLO RUST"));
-        assert!(matches!(state.current_screen, Screen::TextTools));
+        assert!(matches!(state.current_screen(), Screen::TextTools));
     }
 
     #[test]
@@ -948,6 +1015,37 @@ mod tests {
         assert_contains_text(&ui2, "Trim edges");
         let state2 = STATE.lock().unwrap();
         assert_eq!(state2.text_output.as_deref(), Some("a   b"));
+    }
+
+    #[test]
+    fn back_from_home_does_not_underflow_stack() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let ui = handle_command(make_command("back")).expect("back should succeed");
+        assert_contains_text(&ui, "Tool menu");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.nav_depth(), 1);
+        assert!(matches!(state.current_screen(), Screen::Home));
+    }
+
+    #[test]
+    fn back_pops_to_previous_screen() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        handle_command(make_command("text_tools_screen")).expect("screen switch should work");
+        {
+            let state = STATE.lock().unwrap();
+            assert_eq!(state.nav_depth(), 2);
+            assert!(matches!(state.current_screen(), Screen::TextTools));
+        }
+
+        handle_command(make_command("back")).expect("back should succeed");
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.nav_depth(), 1);
+        assert!(matches!(state.current_screen(), Screen::Home));
     }
 
     #[test]
