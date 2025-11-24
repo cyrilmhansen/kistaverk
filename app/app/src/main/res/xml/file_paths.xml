@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths the FileProvider may serve.
+     Here we allow sharing files we place under app-private external files dir (Documents) and internal files. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- External app-specific files (e.g., /storage/emulated/0/Android/data/<pkg>/files/Documents/...) -->
+    <external-files-path
+        name="external_documents"
+        path="Documents/" />
+    <!-- Internal files dir fallback -->
+    <files-path
+        name="internal_files"
+        path="." />
+</paths>

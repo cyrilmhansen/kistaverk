@@ -77,6 +77,7 @@ Tech: Complex binary parsing.
 - Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; regenerate AAB and verify size with `scripts/size_report.sh`.
 - Add UI/UX for signature placement preview and validate PDF alias entry path (activity-alias); verify PdfRenderer/FD flows under TalkBack.
 - Ensure deps.json generation stays wired (rust/scripts/generate_deps_metadata.sh hooked to Gradle preBuild) and About shows scrollable deps list from assets.
+- Sensor logger: wire FileProvider for sharing CSV; validate start/stop lifecycle, TalkBack labels, and CSV content on-device.
 
 ## MVP / Easy Wins
 - Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput/Checkbox (e.g., unknown type handling).
