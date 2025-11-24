@@ -3,6 +3,9 @@ package aeska.kistaverk
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
@@ -17,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import android.content.Intent
 
 class MainActivity : ComponentActivity() {
 
@@ -28,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private var rootContainer: FrameLayout? = null
     private var contentHolder: FrameLayout? = null
     private var overlayView: View? = null
+    private var lastResult: String? = null
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -59,6 +62,38 @@ class MainActivity : ComponentActivity() {
                 extras = mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed")
             )
         }
+    }
+
+    private fun cacheLastResult(json: String) {
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return
+        fun findResult(o: JSONObject): String? {
+            val t = o.optString("text", "")
+            if (t.startsWith("Result")) {
+                return t.removePrefix("Result").trim().trimStart(':').trim()
+            }
+            val children = o.optJSONArray("children") ?: return null
+            for (i in 0 until children.length()) {
+                val maybe = findResult(children.getJSONObject(i))
+                if (maybe != null) return maybe
+            }
+            return null
+        }
+        lastResult = findResult(obj)
+    }
+
+    private fun copyResultToClipboard() {
+        val text = lastResult ?: return
+        val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        cm.setPrimaryClip(ClipData.newPlainText("text_tools_result", text))
+    }
+
+    private fun shareResult() {
+        val text = lastResult ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        startActivity(Intent.createChooser(intent, "Share result"))
     }
 
     private val pickDirLauncher = registerForActivityResult(
@@ -99,6 +134,13 @@ class MainActivity : ComponentActivity() {
                     refreshUi("progress_demo_finish")
                 }
                 return@UiRenderer
+            }
+            if (action == "text_tools_share_result") {
+                shareResult()
+                return@UiRenderer
+            }
+            if (action == "text_tools_copy_to_input") {
+                copyResultToClipboard()
             }
 
             if (needsFilePicker) {
@@ -158,6 +200,8 @@ class MainActivity : ComponentActivity() {
                 }
             attachContent(rootView)
             hideOverlay()
+
+            cacheLastResult(newUiJson)
         }
     }
 
