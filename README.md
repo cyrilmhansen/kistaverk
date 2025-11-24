@@ -49,10 +49,12 @@ Early scope (subject to change):
 
 - **Sensor logger**
   - Configurable sampling interval and sensor selection (accelerometer, gyroscope, magnetometer, barometer, GPS, battery stats).
-  - Logs to CSV in app-private storage with FileProvider sharing; GPS requires location permission.
+  - Logs to CSV in the user-visible Documents directory when available (falls back to app-private) with FileProvider sharing; GPS requires location permission.
+  - UI status updates are throttled to stay responsive while logging high-rate sensors.
 
 - **Text viewer**
   - Open and preview text/CSV files (256 KB cap) from the file picker with text-friendly MIME filters.
+  - Can be invoked from Android’s Files app via text/plain or text/csv "Open with" (intent filter); detached FD goes to Rust viewer.
 
 ---
 

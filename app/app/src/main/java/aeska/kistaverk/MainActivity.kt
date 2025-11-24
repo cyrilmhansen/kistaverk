@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private var overlayView: View? = null
     private var lastResult: String? = null
     private var lastSensorLogPath: String? = null
+    private var lastSensorUiTs: Long = 0L
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -284,9 +285,10 @@ class MainActivity : ComponentActivity() {
         }
 
         val restoredSnapshot = savedInstanceState?.getString(snapshotKey)
-        if (restoredSnapshot != null) {
+        val handledViewIntent = handleViewIntent(intent)
+        if (restoredSnapshot != null && !handledViewIntent) {
             lifecycleScope.launch { restoreSnapshotAndRender(restoredSnapshot) }
-        } else {
+        } else if (!handledViewIntent) {
             val initialAction = if (entry == "pdf_signature") "pdf_tools_screen" else "init"
             refreshUi(initialAction)
         }
@@ -319,6 +321,7 @@ class MainActivity : ComponentActivity() {
         stopSensorLogging()
     }
 
+    @Deprecated("Android is migrating to ActivityResult APIs; kept for legacy permission callback")
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -347,6 +350,11 @@ class MainActivity : ComponentActivity() {
         val entry = resolveEntry(intent)
         if (entry == "pdf_signature") {
             refreshUi("pdf_tools_screen")
+            return
+        }
+        val handled = handleViewIntent(intent)
+        if (!handled) {
+            // fallback: no special handling
         }
     }
 
@@ -459,6 +467,22 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
+    private fun handleViewIntent(intent: Intent?): Boolean {
+        val data = intent?.data ?: return false
+        val action = intent.action ?: return false
+        if (action != Intent.ACTION_VIEW) return false
+        val fd = openFdForUri(data)
+        val extras = mutableMapOf<String, Any?>()
+        extras["path"] = data.toString()
+        if (fd != null) {
+            extras["fd"] = fd
+        } else {
+            extras["error"] = "open_fd_failed"
+        }
+        refreshUi("text_viewer_open", extras = extras)
+        return true
+    }
+
     private data class SensorSelectionCfg(
         val accel: Boolean,
         val gyro: Boolean,
@@ -520,7 +544,9 @@ class MainActivity : ComponentActivity() {
 
         val fmt = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         val fname = "sensors_${fmt.format(Date())}.csv"
-        logFile = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir, fname)
+        val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val targetDir = publicDocs?.takeIf { it.exists() || it.mkdirs() } ?: (getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir)
+        logFile = File(targetDir, fname)
         val fos = FileOutputStream(logFile!!)
         logWriter = OutputStreamWriter(fos)
         logWriter?.write("timestamp_ms,type,v1,v2,v3,battery_level,battery_voltage\n")
@@ -533,6 +559,7 @@ class MainActivity : ComponentActivity() {
         sensorListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val ts = System.currentTimeMillis()
+                val nowMono = android.os.SystemClock.elapsedRealtime()
                 val type = when (event.sensor.type) {
                     Sensor.TYPE_ACCELEROMETER -> if (config.selection.accel) "ACCEL" else return
                     Sensor.TYPE_GYROSCOPE -> if (config.selection.gyro) "GYRO" else return
@@ -553,10 +580,14 @@ class MainActivity : ComponentActivity() {
                     logWriter?.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
                     logWriter?.flush()
                     lastSensorLogPath = logFile?.absolutePath
-                    val statusBindings = mutableMapOf<String, String>()
-                    statusBindings["sensor_status"] = "logging"
-                    logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
-                    refreshUi("sensor_logger_status", bindings = statusBindings)
+                    // Throttle UI refresh to avoid flooding the main thread.
+                    if (nowMono - lastSensorUiTs > 500) {
+                        lastSensorUiTs = nowMono
+                        val statusBindings = mutableMapOf<String, String>()
+                        statusBindings["sensor_status"] = "logging"
+                        logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
+                        refreshUi("sensor_logger_status", bindings = statusBindings)
+                    }
                 } catch (_: Exception) {
                 }
             }
@@ -631,6 +662,7 @@ class MainActivity : ComponentActivity() {
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 val ts = System.currentTimeMillis()
+                val nowMono = android.os.SystemClock.elapsedRealtime()
                 val lat = location.latitude
                 val lon = location.longitude
                 val acc = location.accuracy.toDouble()
@@ -641,7 +673,10 @@ class MainActivity : ComponentActivity() {
                     logWriter?.write("$ts,GPS,$lat,$lon,$acc,-1,-1\n")
                     logWriter?.flush()
                     lastSensorLogPath = logFile?.absolutePath
-                    refreshUi("sensor_logger_status", bindings = bindings)
+                    if (nowMono - lastSensorUiTs > 500) {
+                        lastSensorUiTs = nowMono
+                        refreshUi("sensor_logger_status", bindings = bindings)
+                    }
                 } catch (_: Exception) {
                 }
             }
