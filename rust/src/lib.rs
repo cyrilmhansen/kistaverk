@@ -10,6 +10,7 @@ use features::kotlin_image::{
 };
 use features::pdf::{handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen, PdfOperation};
 use features::qr::{handle_qr_action, render_qr_screen};
+use features::sensor_logger::{apply_status_from_bindings, parse_bindings as parse_sensor_bindings};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use features::color_tools::{handle_color_action, render_color_screen};
@@ -145,12 +146,13 @@ enum Action {
     PdfSignatureClear,
     About,
     SensorLoggerScreen,
-    SensorLoggerStart,
+    SensorLoggerStart {
+        bindings: HashMap<String, String>,
+    },
     SensorLoggerStop,
     SensorLoggerShare,
     SensorLoggerStatus {
-        status: Option<String>,
-        path: Option<String>,
+        bindings: HashMap<String, String>,
     },
     Increment,
     Snapshot,
@@ -241,12 +243,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
         "about" => Ok(Action::About),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
-        "sensor_logger_start" => Ok(Action::SensorLoggerStart),
+        "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
         "sensor_logger_share" => Ok(Action::SensorLoggerShare),
         "sensor_logger_status" => Ok(Action::SensorLoggerStatus {
-            status: bindings.get("sensor_status").cloned(),
-            path: bindings.get("sensor_path").cloned(),
+            bindings,
         }),
         "shader_demo" => Ok(Action::ShaderDemo),
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
@@ -678,9 +679,18 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::SensorLoggerScreen => {
             state.push_screen(Screen::SensorLogger);
         }
-        Action::SensorLoggerStart => {
-            state.last_error = None;
-            state.sensor_status = Some("logging".into());
+        Action::SensorLoggerStart { bindings } => {
+            match parse_sensor_bindings(&bindings) {
+                Ok(cfg) => {
+                    state.last_error = None;
+                    state.sensor_status = Some("logging".into());
+                    state.sensor_interval_ms = Some(cfg.interval_ms);
+                    state.sensor_selection = Some(cfg.selection);
+                }
+                Err(e) => {
+                    state.last_error = Some(e);
+                }
+            }
             state.push_screen(Screen::SensorLogger);
         }
         Action::SensorLoggerStop => {
@@ -692,13 +702,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
             // handled in Kotlin; Rust just keeps screen
             state.push_screen(Screen::SensorLogger);
         }
-        Action::SensorLoggerStatus { status, path } => {
-            if let Some(s) = status {
-                state.sensor_status = Some(s);
-            }
-            if let Some(p) = path {
-                state.last_sensor_log = Some(p);
-            }
+        Action::SensorLoggerStatus { bindings } => {
+            apply_status_from_bindings(&mut state, &bindings);
             state.push_screen(Screen::SensorLogger);
         }
         Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
@@ -1074,10 +1079,33 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Sensor Logger").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Logs magnetometer/gyro/pressure/battery to CSV in app storage.")
+            UiText::new("Select sensors and start logging to CSV in app storage.")
                 .size(14.0),
         )
         .unwrap(),
+        json!({
+            "type": "Text",
+            "text": "Sensors",
+            "size": 14.0
+        }),
+        json!({
+            "type": "Column",
+            "children": [
+                {"type": "Checkbox", "text": "Accelerometer", "bind_key": "sensor_accel", "checked": state.sensor_selection.map(|s| s.accel).unwrap_or(true)},
+                {"type": "Checkbox", "text": "Gyroscope", "bind_key": "sensor_gyro", "checked": state.sensor_selection.map(|s| s.gyro).unwrap_or(true)},
+                {"type": "Checkbox", "text": "Magnetometer", "bind_key": "sensor_mag", "checked": state.sensor_selection.map(|s| s.mag).unwrap_or(true)},
+                {"type": "Checkbox", "text": "Barometer", "bind_key": "sensor_pressure", "checked": state.sensor_selection.map(|s| s.pressure).unwrap_or(false)},
+                {"type": "Checkbox", "text": "GPS", "bind_key": "sensor_gps", "checked": state.sensor_selection.map(|s| s.gps).unwrap_or(false)},
+                {"type": "Checkbox", "text": "Battery", "bind_key": "sensor_battery", "checked": state.sensor_selection.map(|s| s.battery).unwrap_or(true)},
+            ]
+        }),
+        json!({
+            "type": "TextInput",
+            "hint": "Interval ms (50-10000)",
+            "bind_key": "sensor_interval_ms",
+            "text": state.sensor_interval_ms.map(|v| v.to_string()).unwrap_or_else(|| "200".into()),
+            "keyboard": "number"
+        }),
         serde_json::to_value(UiButton::new("Start logging", "sensor_logger_start")).unwrap(),
         serde_json::to_value(UiButton::new("Stop logging", "sensor_logger_stop")).unwrap(),
     ];
@@ -1085,6 +1113,11 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     if let Some(status) = &state.sensor_status {
         children.push(
             serde_json::to_value(UiText::new(&format!("Status: {}", status)).size(12.0)).unwrap(),
+        );
+    }
+    if let Some(err) = &state.last_error {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
         );
     }
     if let Some(path) = &state.last_sensor_log {
@@ -1262,6 +1295,7 @@ fn feature_catalog() -> Vec<Feature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::features::sensor_logger::parse_bindings as parse_sensor_bindings;
     use serde_json::Value;
     use std::collections::HashMap;
     use std::fs::File;
@@ -1608,6 +1642,50 @@ mod tests {
         assert_contains_text(&ui, "hi");
         let state = STATE.lock().unwrap();
         assert_eq!(state.text_output.as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn sensor_bindings_default_and_interval_clamp() {
+        let cfg = parse_sensor_bindings(&HashMap::from([("sensor_interval_ms".into(), "5".into())]))
+            .expect("parse should succeed with defaults");
+        assert!(cfg.selection.accel);
+        assert!(cfg.selection.gyro);
+        assert!(cfg.selection.mag);
+        assert!(cfg.selection.battery);
+        assert!(!cfg.selection.gps);
+        assert_eq!(cfg.interval_ms, 200);
+    }
+
+    #[test]
+    fn sensor_bindings_require_selection() {
+        let err = parse_sensor_bindings(&HashMap::from([
+            ("sensor_accel".into(), "false".into()),
+            ("sensor_gyro".into(), "false".into()),
+            ("sensor_mag".into(), "false".into()),
+            ("sensor_pressure".into(), "false".into()),
+            ("sensor_gps".into(), "false".into()),
+            ("sensor_battery".into(), "false".into()),
+        ]))
+        .unwrap_err();
+        assert_eq!(err, "no_sensor_selected");
+    }
+
+    #[test]
+    fn sensor_screen_renders_share_button_when_path_present() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut cmd = make_command("sensor_logger_status");
+        cmd.bindings = Some(HashMap::from([
+            ("sensor_status".into(), "logging".into()),
+            ("sensor_path".into(), "/tmp/sensors.csv".into()),
+        ]));
+
+        let ui = handle_command(cmd).expect("status command should succeed");
+        assert_contains_text(&ui, "Share last log");
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.last_sensor_log.as_deref(), Some("/tmp/sensors.csv"));
+        assert_eq!(state.sensor_status.as_deref(), Some("logging"));
     }
 
     #[test]

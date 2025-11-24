@@ -1,5 +1,6 @@
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
+use crate::features::sensor_logger::SensorSelection;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -39,6 +40,8 @@ pub struct AppState {
     pub pdf: PdfState,
     pub last_sensor_log: Option<String>,
     pub sensor_status: Option<String>,
+    pub sensor_interval_ms: Option<u64>,
+    pub sensor_selection: Option<SensorSelection>,
 }
 
 impl AppState {
@@ -64,6 +67,8 @@ impl AppState {
             pdf: PdfState::new(),
             last_sensor_log: None,
             sensor_status: None,
+            sensor_interval_ms: None,
+            sensor_selection: None,
         }
     }
 
@@ -130,5 +135,7 @@ impl AppState {
         self.pdf.reset();
         self.last_sensor_log = None;
         self.sensor_status = None;
+        self.sensor_interval_ms = None;
+        self.sensor_selection = None;
     }
 }

@@ -47,6 +47,10 @@ Early scope (subject to change):
   - Share via Android’s share sheet.
   - Optional QR code display for hashes or short text.
 
+- **Sensor logger**
+  - Configurable sampling interval and sensor selection (accelerometer, gyroscope, magnetometer, barometer, GPS, battery stats).
+  - Logs to CSV in app-private storage with FileProvider sharing; GPS requires location permission.
+
 ---
 
 ## Architecture (high-level)

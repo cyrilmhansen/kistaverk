@@ -5,6 +5,7 @@ pub mod color_tools;
 pub mod qr;
 pub mod text_tools;
 pub mod pdf;
+pub mod sensor_logger;
 
 use crate::state::AppState;
 use serde_json::Value;

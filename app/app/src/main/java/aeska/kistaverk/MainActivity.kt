@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
     private var pendingSensorStart = false
+    private var pendingSensorBindings: Map<String, String>? = null
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
@@ -249,7 +250,7 @@ class MainActivity : ComponentActivity() {
                 return@UiRenderer
             }
             if (action == "sensor_logger_start") {
-                startSensorLogging()
+                startSensorLogging(bindings)
                 return@UiRenderer
             }
             if (action == "sensor_logger_stop") {
@@ -307,9 +308,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        pendingSensorStart = false
+        pendingSensorBindings = null
         stopSensorLogging()
     }
 
+    @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -320,10 +324,13 @@ class MainActivity : ComponentActivity() {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             if (granted && pendingSensorStart) {
                 pendingSensorStart = false
-                startSensorLogging()
+                val bindings = pendingSensorBindings ?: emptyMap()
+                pendingSensorBindings = null
+                startSensorLogging(bindings)
             } else {
                 val bindings = mutableMapOf<String, String>()
                 bindings["sensor_status"] = "location permission denied"
+                pendingSensorBindings = null
                 refreshUi("sensor_logger_status", bindings = bindings)
             }
         }
@@ -446,16 +453,58 @@ class MainActivity : ComponentActivity() {
         return null
     }
 
-    private fun startSensorLogging() {
+    private data class SensorSelectionCfg(
+        val accel: Boolean,
+        val gyro: Boolean,
+        val mag: Boolean,
+        val pressure: Boolean,
+        val gps: Boolean,
+        val battery: Boolean
+    ) {
+        fun any(): Boolean = accel || gyro || mag || pressure || gps || battery
+    }
+
+    private data class SensorConfig(
+        val selection: SensorSelectionCfg,
+        val intervalMs: Long
+    )
+
+    private fun buildSensorConfig(bindings: Map<String, String>): SensorConfig {
+        fun flag(key: String, default: Boolean) = bindings[key]?.toBooleanStrictOrNull() ?: default
+        val selection = SensorSelectionCfg(
+            accel = flag("sensor_accel", true),
+            gyro = flag("sensor_gyro", true),
+            mag = flag("sensor_mag", true),
+            pressure = flag("sensor_pressure", false),
+            gps = flag("sensor_gps", false),
+            battery = flag("sensor_battery", true)
+        )
+        val intervalMs = bindings["sensor_interval_ms"]
+            ?.toLongOrNull()
+            ?.coerceIn(50, 10_000)
+            ?: 200L
+        return SensorConfig(selection, intervalMs)
+    }
+
+    private fun startSensorLogging(bindings: Map<String, String>) {
+        val config = buildSensorConfig(bindings)
+        if (!config.selection.any()) {
+            refreshUi("sensor_logger_status", bindings = mapOf("sensor_status" to "no sensors selected"))
+            return
+        }
+
+        val gpsSelected = config.selection.gps
         if (sensorManager == null) {
             sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
         }
         val mgr = sensorManager ?: return
-        if (!hasLocationPermission()) {
+        if (gpsSelected && !hasLocationPermission()) {
             pendingSensorStart = true
+            pendingSensorBindings = bindings
             requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), PERMISSION_LOCATION)
             return
         }
+
         stopSensorLogging()
 
         val thread = HandlerThread("SensorLogger")
@@ -469,32 +518,39 @@ class MainActivity : ComponentActivity() {
         val fos = FileOutputStream(logFile!!)
         logWriter = OutputStreamWriter(fos)
         logWriter?.write("timestamp_ms,type,v1,v2,v3,battery_level,battery_voltage\n")
+        lastSensorLogPath = logFile?.absolutePath
 
         val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        val samplingPeriodUs = config.intervalMs.coerceIn(50, 10_000).toInt() * 1000
 
         sensorListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 val ts = System.currentTimeMillis()
                 val type = when (event.sensor.type) {
-                    Sensor.TYPE_ACCELEROMETER -> "ACCEL"
-                    Sensor.TYPE_GYROSCOPE -> "GYRO"
-                    Sensor.TYPE_MAGNETIC_FIELD -> "MAG"
-                    Sensor.TYPE_PRESSURE -> "PRESSURE"
+                    Sensor.TYPE_ACCELEROMETER -> if (config.selection.accel) "ACCEL" else return
+                    Sensor.TYPE_GYROSCOPE -> if (config.selection.gyro) "GYRO" else return
+                    Sensor.TYPE_MAGNETIC_FIELD -> if (config.selection.mag) "MAG" else return
+                    Sensor.TYPE_PRESSURE -> if (config.selection.pressure) "PRESSURE" else return
                     else -> return
                 }
                 val v1 = event.values.getOrNull(0) ?: 0f
                 val v2 = event.values.getOrNull(1) ?: 0f
                 val v3 = event.values.getOrNull(2) ?: 0f
-                val level = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
-                val voltage = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+                val level = if (config.selection.battery) {
+                    batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                } else -1
+                val voltage = if (config.selection.battery) {
+                    batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+                } else -1
                 try {
                     logWriter?.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
                     logWriter?.flush()
                     lastSensorLogPath = logFile?.absolutePath
-                    val bindings = mutableMapOf<String, String>()
-                    bindings["sensor_status"] = "logging"
-                    logFile?.absolutePath?.let { bindings["sensor_path"] = it }
-                    refreshUi("sensor_logger_status", bindings = bindings)
+                    val statusBindings = mutableMapOf<String, String>()
+                    statusBindings["sensor_status"] = "logging"
+                    logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
+                    refreshUi("sensor_logger_status", bindings = statusBindings)
                 } catch (_: Exception) {
                 }
             }
@@ -503,24 +559,30 @@ class MainActivity : ComponentActivity() {
         }
 
         val types = listOf(
-            Sensor.TYPE_ACCELEROMETER,
-            Sensor.TYPE_GYROSCOPE,
-            Sensor.TYPE_MAGNETIC_FIELD,
-            Sensor.TYPE_PRESSURE
+            Sensor.TYPE_ACCELEROMETER to config.selection.accel,
+            Sensor.TYPE_GYROSCOPE to config.selection.gyro,
+            Sensor.TYPE_MAGNETIC_FIELD to config.selection.mag,
+            Sensor.TYPE_PRESSURE to config.selection.pressure
         )
-        types.forEach { t ->
+        types.forEach { (t, enabled) ->
+            if (!enabled) return@forEach
             mgr.getDefaultSensor(t)?.let { sensor ->
-                mgr.registerListener(sensorListener, sensor, SensorManager.SENSOR_DELAY_GAME, sensorHandler)
+                mgr.registerListener(sensorListener, sensor, samplingPeriodUs, sensorHandler)
             }
         }
-        startLocationLogging()
-        val bindings = mutableMapOf<String, String>()
-        bindings["sensor_status"] = "logging"
-        logFile?.absolutePath?.let { bindings["sensor_path"] = it }
-        refreshUi("sensor_logger_status", bindings = bindings)
+        if (config.selection.gps) {
+            startLocationLogging(config)
+        }
+        val statusBindings = mutableMapOf<String, String>()
+        statusBindings["sensor_status"] = "logging"
+        logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
+        refreshUi("sensor_logger_start", bindings = bindings)
+        refreshUi("sensor_logger_status", bindings = statusBindings)
     }
 
     private fun stopSensorLogging() {
+        pendingSensorStart = false
+        pendingSensorBindings = null
         sensorManager?.unregisterListener(sensorListener)
         sensorListener = null
         sensorHandler = null
@@ -555,7 +617,7 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent.createChooser(intent, "Share sensor log"))
     }
 
-    private fun startLocationLogging() {
+    private fun startLocationLogging(config: SensorConfig) {
         if (locationManager == null) {
             locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager
         }
@@ -584,7 +646,8 @@ class MainActivity : ComponentActivity() {
         }
         locationListener = listener
         try {
-            mgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 0f, listener, sensorHandler?.looper)
+            val interval = config.intervalMs.coerceIn(1000, 10_000)
+            mgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0f, listener, sensorHandler?.looper)
         } catch (_: SecurityException) {
             // permission denied, status already handled elsewhere
         }

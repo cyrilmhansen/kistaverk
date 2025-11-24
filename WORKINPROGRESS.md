@@ -58,13 +58,15 @@ Tech: Complex binary parsing.
 - Rust owns UI and navigation via a `Vec<Screen>` stack with typed `Action`/`TextAction`; hardware Back from Kotlin calls `back` and Rust pops safely (Home is root). Inline Back buttons only appear when depth > 1. `snapshot`/`restore_state` serialize/rehydrate AppState; Kotlin persists the snapshot in the Activity bundle.
 - Features: streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), Shader demo, Kotlin image conversion flow with output dir selection, Text Tools (upper/lower/title/wrap/trim/count/Base64/URL/Hex) with copy/share hooks, Progress demo, File info, QR generator (base64 PNG), Color Converter (Hex↔RGB/HSL with swatch and per-format copy buttons), PDF tools (page picker + extract/delete/merge/title, signature stamping via lopdf, PdfRenderer thumbnails, SignaturePad capture), About screen (version, copyright, GPLv3).
 - Renderer guardrails: Kotlin validates JSON with a widget whitelist/required children before rendering; malformed payloads fall back to an inline error screen. Accessibility strings flow through `content_description`. Clipboard copy supported via `copy_text` on buttons; clipboard text is injected into bindings when small.
-- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases + snapshot/restore + validation/clipboard with JNI mocked) pass.
+- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` green; `./gradlew test` currently blocked on some hosts by Gradle wrapper permissions.
+- Sensor logger: Rust screen now exposes toggles (accel/gyro/mag/pressure/GPS/battery), interval binding, status/error text, and share gating. Kotlin logger consumes bindings, registers only selected sensors at the chosen interval on a background thread, writes CSV with FileProvider sharing, updates Rust status/path during logging, and requests location permission only when GPS is enabled.
 
 ## Known Issues / Risks
 - Renderer still trusts incoming JSON and can crash on malformed output; Kotlin has a fallback but we lack schema validation and more granular error UI.
 - State is ephemeral; no serialization/restoration path; limited unit tests on dispatch/render; Kotlin JSON parsing is only lightly covered (TextInput/Checkbox tests, not yet in CI).
 - Cargo build task still compiles only arm64-v8a but stale armeabi-v7a artifacts may exist locally; packaging ignores them. Image conversion flow depends on MediaStore/SAF; on-device permission UX not yet validated.
 - Gradle wrapper download may hit filesystem permission errors on some hosts; rerun with writable ~/.gradle or vendored distribution (current run succeeded with permissions).
+- Sensor logger needs on-device validation for TalkBack labels, GPS permission flow, and CSV accuracy/throttling; consider debouncing UI refreshes during high-frequency events.
 
 ## Next Implementation Step
 1. Validate launcher alias/deep link for PDF signature flow (secondary icon) across devices; ensure intent extra `entry=pdf_signature` opens PdfTools and back/reset behaves correctly.
@@ -77,7 +79,7 @@ Tech: Complex binary parsing.
 - Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; regenerate AAB and verify size with `scripts/size_report.sh`.
 - Add UI/UX for signature placement preview and validate PDF alias entry path (activity-alias); verify PdfRenderer/FD flows under TalkBack.
 - Ensure deps.json generation stays wired (rust/scripts/generate_deps_metadata.sh hooked to Gradle preBuild) and About shows scrollable deps list from assets.
-- Sensor logger: wire FileProvider for sharing CSV; validate start/stop lifecycle, TalkBack labels, and CSV content on-device.
+- Sensor logger: on-device QA (TalkBack labels, permission UX), tune GPS sampling interval and throttling, and validate CSV content/share flow.
 
 ## MVP / Easy Wins
 - Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput/Checkbox (e.g., unknown type handling).
