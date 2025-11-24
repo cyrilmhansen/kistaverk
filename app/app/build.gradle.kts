@@ -84,9 +84,12 @@ android {
         // "this.projectDir" always points to the module directory (the 2nd 'app')
         val jniLibsDir = File(projectDir, "src/main/jniLibs")
 
+        // Resolve cargo from PATH (portable)
+        val cargoPath = System.getenv("CARGO") ?: "cargo"
+
         // Configuration
         workingDir = rustDir
-        executable = "/usr/bin/cargo"
+        executable = cargoPath
         val ndkDir = android.ndkDirectory
         environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
         environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
