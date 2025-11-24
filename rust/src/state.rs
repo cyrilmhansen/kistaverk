@@ -11,6 +11,7 @@ pub enum Screen {
     Loading,
     ProgressDemo,
     Qr,
+    ColorTools,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

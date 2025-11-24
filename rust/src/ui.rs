@@ -39,6 +39,8 @@ pub struct Button<'a> {
     pub text: &'a str,
     pub action: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub requires_file_picker: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
@@ -50,9 +52,15 @@ impl<'a> Button<'a> {
             kind: "Button",
             text,
             action,
+            id: None,
             requires_file_picker: None,
             content_description: None,
         }
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
+        self
     }
 
     pub fn requires_file_picker(mut self, needs: bool) -> Self {
@@ -60,6 +68,7 @@ impl<'a> Button<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
         self
@@ -92,6 +101,7 @@ impl<'a> Column<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
         self
@@ -132,12 +142,14 @@ impl<'a> Grid<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
         self
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 pub struct Checkbox<'a> {
     #[serde(rename = "type")]
@@ -152,6 +164,7 @@ pub struct Checkbox<'a> {
     pub content_description: Option<&'a str>,
 }
 
+#[allow(dead_code)]
 impl<'a> Checkbox<'a> {
     pub fn new(text: &'a str, bind_key: &'a str) -> Self {
         Self {
@@ -199,6 +212,7 @@ impl<'a> Progress<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn text(mut self, text: &'a str) -> Self {
         self.text = Some(text);
         self
