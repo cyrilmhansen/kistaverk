@@ -59,6 +59,7 @@ Tech: Complex binary parsing.
 - Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Catch_unwind guards JNI panics, poisoned locks recover. Added Shader demo, Kotlin image conversion screen, and a Rust-driven Text Tools screen (upper/lower/title/wrap/trim/word & char counts) with inline result block.
 - Home menu is generated from a feature catalog grouped by category (Hashes, Graphics, Media, Text). Text tools are reachable from the menu without pickers.
 - Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused profile, excludes unused META-INF resources, disables BuildConfig, targets arm64-v8a only. Cargo task resolves `cargo` from PATH/`CARGO`. Gradle density splits removed (AAB handles density).
+<<<<<<< HEAD
 - Tests: `cargo test` passes; `./gradlew test` passes with Robolectric TextInput binding tests after adding the test runner annotation.
 
 ## Known Issues / Risks
