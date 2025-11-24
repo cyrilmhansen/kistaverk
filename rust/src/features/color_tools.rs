@@ -27,7 +27,10 @@ pub fn handle_color_action(state: &mut AppState, action: &str, input: &str) {
             Err(e) => state.last_error = Some(e),
         },
         "color_copy_hex_input" => {
-            if let Some(hex) = state.text_input.clone() {
+            if !input.is_empty() {
+                state.text_input = Some(input.to_string());
+                state.last_error = None;
+            } else if let Some(hex) = state.text_input.clone() {
                 state.text_input = Some(hex);
             } else {
                 state.last_error = Some("no_color".into());
