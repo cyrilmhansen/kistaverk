@@ -39,6 +39,7 @@ struct Command {
     result_format: Option<String>,
     output_dir: Option<String>,
     bindings: Option<HashMap<String, String>>,
+    loading_only: Option<bool>,
 }
 
 struct FdHandle(Option<i32>);
@@ -84,6 +85,7 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             result_format: None,
             output_dir: None,
             bindings: None,
+            loading_only: None,
         });
 
         handle_command(command)
@@ -119,10 +121,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
         result_format,
         output_dir,
         bindings,
+        loading_only,
     } = command;
 
     let mut fd_handle = FdHandle::new(fd);
     let bindings = bindings.unwrap_or_default();
+    let loading_only = loading_only.unwrap_or(false);
 
     let mut lock_poisoned = false;
     let mut state = match STATE.lock() {
@@ -147,6 +151,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.text_output = None;
             state.text_operation = None;
             state.text_aggressive_trim = false;
+            state.loading_message = None;
+            state.progress_status = None;
         }
         "shader_demo" => state.current_screen = Screen::ShaderDemo,
         "file_info_screen" => {
@@ -208,6 +214,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
             );
         }
         "hash_file_sha256" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing SHA-256...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("SHA-256".into());
             if let Some(err) = command_error.as_ref() {
@@ -221,8 +232,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     HashAlgo::Sha256,
                 );
             }
+            state.loading_message = None;
         }
         "hash_file_sha1" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing SHA-1...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("SHA-1".into());
             if let Some(err) = command_error.as_ref() {
@@ -236,8 +253,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     HashAlgo::Sha1,
                 );
             }
+            state.loading_message = None;
         }
         "hash_file_md5" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing MD5...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("MD5".into());
             if let Some(err) = command_error.as_ref() {
@@ -246,8 +269,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), HashAlgo::Md5);
             }
+            state.loading_message = None;
         }
         "hash_file_md4" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing MD4...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("MD4".into());
             if let Some(err) = command_error.as_ref() {
@@ -256,8 +285,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 handle_hash_action(&mut state, fd_handle.take(), path.as_deref(), HashAlgo::Md4);
             }
+            state.loading_message = None;
         }
         "hash_file_crc32" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing CRC32...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("CRC32".into());
             if let Some(err) = command_error.as_ref() {
@@ -271,8 +306,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     HashAlgo::Crc32,
                 );
             }
+            state.loading_message = None;
         }
         "hash_file_blake3" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Computing BLAKE3...".into());
+                return Ok(render_ui(&state));
+            }
             state.current_screen = Screen::Home;
             state.last_hash_algo = Some("BLAKE3".into());
             if let Some(err) = command_error.as_ref() {
@@ -286,6 +327,27 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     HashAlgo::Blake3,
                 );
             }
+            state.loading_message = None;
+        }
+        "progress_demo_screen" => {
+            state.current_screen = Screen::ProgressDemo;
+            state.progress_status = None;
+            state.loading_message = None;
+        }
+        "progress_demo_start" => {
+            if loading_only {
+                state.current_screen = Screen::Loading;
+                state.loading_message = Some("Working...".into());
+                return Ok(render_ui(&state));
+            } else {
+                state.current_screen = Screen::ProgressDemo;
+                state.progress_status = Some("Starting...".into());
+            }
+        }
+        "progress_demo_finish" => {
+            state.current_screen = Screen::ProgressDemo;
+            state.progress_status = Some("Done after simulated delay.".into());
+            state.loading_message = None;
         }
         "file_info" => {
             state.current_screen = Screen::FileInfo;
@@ -406,6 +468,8 @@ fn render_ui(state: &AppState) -> Value {
         Screen::KotlinImage => render_kotlin_image_screen(state),
         Screen::FileInfo => render_file_info_screen(state),
         Screen::TextTools => render_text_tools_screen(state),
+        Screen::Loading => render_loading_screen(state),
+        Screen::ProgressDemo => render_progress_demo_screen(state),
     }
 }
 
@@ -465,6 +529,58 @@ fn render_file_info_screen(state: &AppState) -> Value {
         "text": "Back",
         "action": "reset",
         "requires_file_picker": false
+    }));
+
+    json!({
+        "type": "Column",
+        "padding": 24,
+        "children": children
+    })
+}
+
+fn render_loading_screen(state: &AppState) -> Value {
+    let message = state.loading_message.as_deref().unwrap_or("Working...");
+    json!({
+        "type": "Column",
+        "padding": 24,
+        "children": [
+            { "type": "Text", "text": message, "size": 16.0 },
+            { "type": "Progress", "content_description": "In progress" },
+        ]
+    })
+}
+
+fn render_progress_demo_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        json!({
+            "type": "Text",
+            "text": "Progress demo",
+            "size": 20.0
+        }),
+        json!({
+            "type": "Text",
+            "text": "Tap start to show a 10 second simulated progress and return here when done.",
+            "size": 14.0
+        }),
+        json!({
+            "type": "Button",
+            "text": "Start 10s work",
+            "action": "progress_demo_start"
+        }),
+    ];
+
+    if let Some(status) = &state.progress_status {
+        children.push(json!({
+            "type": "Text",
+            "text": format!("Status: {}", status),
+            "size": 14.0
+        }));
+    }
+
+    children.push(json!({
+        "type": "Button",
+        "text": "Back",
+        "action": "reset"
     }));
 
     json!({
@@ -569,6 +685,14 @@ fn feature_catalog() -> Vec<Feature> {
             description: "fast hash",
         },
         Feature {
+            id: "progress_demo",
+            name: "⏳ Progress demo",
+            category: "🧪 Experiments",
+            action: "progress_demo_screen",
+            requires_file_picker: false,
+            description: "10s simulated work",
+        },
+        Feature {
             id: "text_tools",
             name: "✍️ Text tools",
             category: "📝 Text",
@@ -610,6 +734,7 @@ mod tests {
             result_format: None,
             output_dir: None,
             bindings: None,
+            loading_only: None,
         }
     }
 
@@ -662,6 +787,34 @@ mod tests {
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
         assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn hash_file_loading_then_result() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let mut loading_cmd = make_command("hash_file_sha256");
+        loading_cmd.loading_only = Some(true);
+        let loading_ui = handle_command(loading_cmd).expect("loading command should succeed");
+        assert_contains_text(&loading_ui, "Computing SHA-256");
+
+        let mut command = make_command("hash_file_sha256");
+        command.path = Some(file.path().to_string_lossy().into_owned());
+
+        let ui = handle_command(command).expect("hash command should succeed");
+
+        assert_contains_text(&ui, &format!("SHA-256: {SHA256_ABC}"));
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
+        assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
+        assert!(state.last_error.is_none());
+        assert!(matches!(state.current_screen, Screen::Home));
     }
 
     #[test]

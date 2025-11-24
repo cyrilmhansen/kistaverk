@@ -8,6 +8,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,6 +25,9 @@ class MainActivity : ComponentActivity() {
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
+    private var rootContainer: FrameLayout? = null
+    private var contentHolder: FrameLayout? = null
+    private var overlayView: View? = null
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -38,13 +46,17 @@ class MainActivity : ComponentActivity() {
 
         val fd = openFdForUri(uri)
         if (fd != null) {
-            refreshUi(action, extras = mapOf("fd" to fd), bindings = bindings)
+            dispatchWithOptionalLoading(
+                action = action,
+                bindings = bindings,
+                extras = mapOf("fd" to fd)
+            )
         } else {
             // Notify Rust about the failure so it can surface an error state
-            refreshUi(
-                action,
-                extras = mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed"),
-                bindings = bindings
+            dispatchWithOptionalLoading(
+                action = action,
+                bindings = bindings,
+                extras = mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed")
             )
         }
     }
@@ -79,6 +91,15 @@ class MainActivity : ComponentActivity() {
                 pickDirLauncher.launch(null)
                 return@UiRenderer
             }
+            if (action == "progress_demo_start") {
+                lifecycleScope.launch {
+                    showOverlay("Simulating work...")
+                    refreshUi(action, bindings = bindings, loadingOnly = true)
+                    kotlinx.coroutines.delay(10_000)
+                    refreshUi("progress_demo_finish")
+                }
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
@@ -88,7 +109,7 @@ class MainActivity : ComponentActivity() {
                 if (action == "reset") {
                     selectedOutputDir = null
                 }
-                refreshUi(action, bindings = bindings)
+                dispatchWithOptionalLoading(action, bindings = bindings)
             }
         }
 
@@ -99,7 +120,8 @@ class MainActivity : ComponentActivity() {
     private fun refreshUi(
         action: String,
         extras: Map<String, Any?> = emptyMap(),
-        bindings: Map<String, String> = emptyMap()
+        bindings: Map<String, String> = emptyMap(),
+        loadingOnly: Boolean = false
     ) {
         lifecycleScope.launch {
             val command = JSONObject().apply {
@@ -113,10 +135,18 @@ class MainActivity : ComponentActivity() {
                     bindings.forEach { (k, v) -> bindingsObj.put(k, v) }
                     put("bindings", bindingsObj)
                 }
+                if (loadingOnly) {
+                    put("loading_only", true)
+                }
             }
 
             val newUiJson = withContext(Dispatchers.IO) {
                 dispatch(command.toString())
+            }
+
+            if (loadingOnly) {
+                showOverlay(command.optString("action", "Working..."))
+                return@launch
             }
 
             val rootView = runCatching { renderer.render(newUiJson) }
@@ -126,7 +156,8 @@ class MainActivity : ComponentActivity() {
                         message = throwable.message ?: "unknown_render_error"
                     )
                 }
-            setContentView(rootView)
+            attachContent(rootView)
+            hideOverlay()
         }
     }
 
@@ -175,6 +206,82 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun dispatchWithOptionalLoading(
+        action: String,
+        bindings: Map<String, String> = emptyMap(),
+        extras: Map<String, Any?> = emptyMap()
+    ) {
+        val isHashAction = action.startsWith("hash_file_")
+        if (isHashAction) {
+            showOverlay("Computing hash...")
+            refreshUi(action, bindings = bindings, loadingOnly = true)
+        }
+        refreshUi(action, extras = extras, bindings = bindings)
+    }
+
+    private fun ensureContainers() {
+        if (rootContainer != null && contentHolder != null && overlayView != null) return
+
+        rootContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        contentHolder = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        overlayView = buildOverlay()
+        rootContainer!!.addView(contentHolder)
+        rootContainer!!.addView(overlayView)
+        setContentView(rootContainer)
+    }
+
+    private fun attachContent(view: View) {
+        ensureContainers()
+        contentHolder?.removeAllViews()
+        contentHolder?.addView(view)
+    }
+
+    private fun buildOverlay(): View {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0x88000000.toInt())
+            visibility = View.GONE
+            val padding = (resources.displayMetrics.density * 24).toInt()
+            setPadding(padding, padding, padding, padding)
+        }
+        val text = TextView(this).apply {
+            text = "Working..."
+            textSize = 16f
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        val bar = ProgressBar(this).apply {
+            isIndeterminate = true
+        }
+        container.addView(text)
+        container.addView(bar)
+        return container
+    }
+
+    private fun showOverlay(message: String) {
+        ensureContainers()
+        val textView = (overlayView as? LinearLayout)?.getChildAt(0) as? TextView
+        textView?.text = message
+        overlayView?.visibility = View.VISIBLE
+    }
+
+    private fun hideOverlay() {
+        overlayView?.visibility = View.GONE
     }
 
     external fun dispatch(input: String): String
