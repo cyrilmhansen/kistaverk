@@ -39,6 +39,8 @@ pub struct Button<'a> {
     pub text: &'a str,
     pub action: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_text: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requires_file_picker: Option<bool>,
@@ -52,6 +54,7 @@ impl<'a> Button<'a> {
             kind: "Button",
             text,
             action,
+            copy_text: None,
             id: None,
             requires_file_picker: None,
             content_description: None,
@@ -68,6 +71,11 @@ impl<'a> Button<'a> {
         self
     }
 
+    pub fn copy_text(mut self, text: &'a str) -> Self {
+        self.copy_text = Some(text);
+        self
+    }
+
     #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
@@ -81,6 +89,8 @@ pub struct Column<'a> {
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub padding: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scrollable: Option<bool>,
     pub children: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
@@ -91,6 +101,7 @@ impl<'a> Column<'a> {
         Self {
             kind: "Column",
             padding: None,
+            scrollable: None,
             children,
             content_description: None,
         }
@@ -220,6 +231,74 @@ impl<'a> Progress<'a> {
 
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
+        self
+    }
+}
+
+
+#[derive(Serialize)]
+pub struct TextInput<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub bind_key: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_on_submit: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub single_line: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_lines: Option<u32>,
+}
+
+impl<'a> TextInput<'a> {
+    pub fn new(bind_key: &'a str) -> Self {
+        Self {
+            kind: "TextInput",
+            bind_key,
+            text: None,
+            hint: None,
+            action_on_submit: None,
+            content_description: None,
+            single_line: None,
+            max_lines: None,
+        }
+    }
+
+    pub fn text(mut self, value: &'a str) -> Self {
+        self.text = Some(value);
+        self
+    }
+
+    pub fn hint(mut self, value: &'a str) -> Self {
+        self.hint = Some(value);
+        self
+    }
+
+    pub fn action_on_submit(mut self, value: &'a str) -> Self {
+        self.action_on_submit = Some(value);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, value: &'a str) -> Self {
+        self.content_description = Some(value);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn single_line(mut self, value: bool) -> Self {
+        self.single_line = Some(value);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn max_lines(mut self, value: u32) -> Self {
+        self.max_lines = Some(value);
         self
     }
 }

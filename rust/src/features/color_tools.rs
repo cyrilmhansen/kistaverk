@@ -1,4 +1,5 @@
 use crate::state::{AppState, Screen};
+use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
 use serde_json::json;
 
 #[derive(Debug, Clone, Copy)]
@@ -81,35 +82,37 @@ fn apply_color_result(state: &mut AppState, rgb: Rgb) {
 
 pub fn render_color_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
-        json!({ "type": "Text", "text": "Color Converter", "size": 20.0 }),
-        json!({ "type": "Text", "text": "Convert Hex <-> RGB with HSL hint. Enter #RRGGBB or \"255,128,0\".", "size": 14.0 }),
-        json!({ "type": "TextInput", "bind_key": "color_input", "hint": "#1A2B3C or 26,43,60", "action_on_submit": "color_from_hex" }),
-        json!({ "type": "Button", "text": "Hex → RGB/HSL", "action": "color_from_hex" }),
-        json!({ "type": "Button", "text": "RGB → Hex/HSL", "action": "color_from_rgb" }),
+        serde_json::to_value(UiText::new("Color Converter").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Convert Hex <-> RGB with HSL hint. Enter #RRGGBB or \"255,128,0\".")
+                .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiTextInput::new("color_input")
+                .hint("#1A2B3C or 26,43,60")
+                .action_on_submit("color_from_hex"),
+        )
+        .unwrap(),
+        serde_json::to_value(UiButton::new("Hex → RGB/HSL", "color_from_hex")).unwrap(),
+        serde_json::to_value(UiButton::new("RGB → Hex/HSL", "color_from_rgb")).unwrap(),
     ];
 
     if let Some(out) = &state.text_output {
         let (hex, rgb, hsl_text) = color_strings(state, out);
-        children.push(json!({
-            "type": "Text",
-            "text": out,
-            "size": 14.0
-        }));
-        children.push(json!({
-            "type": "Button",
-            "text": "Copy Hex",
-            "copy_text": hex
-        }));
-        children.push(json!({
-            "type": "Button",
-            "text": "Copy RGB",
-            "copy_text": rgb
-        }));
-        children.push(json!({
-            "type": "Button",
-            "text": "Copy HSL",
-            "copy_text": hsl_text
-        }));
+        children.push(serde_json::to_value(UiText::new(out).size(14.0)).unwrap());
+        children.push(
+            serde_json::to_value(UiButton::new("Copy Hex", "color_copy_hex_input").copy_text(&hex))
+                .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(UiButton::new("Copy RGB", "color_copy_clipboard").copy_text(&rgb))
+                .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(UiButton::new("Copy HSL", "color_copy_clipboard").copy_text(&hsl_text))
+                .unwrap(),
+        );
     }
 
     if let Some(rgb_csv) = &state.last_hash_algo {
@@ -127,26 +130,26 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
                 "color": color,
                 "content_description": "Color preview"
             }));
-            children.push(json!({
-                "type": "Button",
-                "text": "Put Hex in input",
-                "action": "color_copy_hex_input"
-            }));
+            let swatch_hex = format!("#{:02X}{:02X}{:02X}", parts[0], parts[1], parts[2]);
+            children.push(
+                serde_json::to_value(
+                    UiButton::new("Copy swatch hex", "color_copy_clipboard").copy_text(&swatch_hex),
+                )
+                .unwrap(),
+            );
             if let Some(hsl) = &state.text_operation {
-                children.push(json!({
-                    "type": "Text",
-                    "text": format!("HSL: {}", hsl),
-                    "size": 12.0
-                }));
+                children.push(
+                    serde_json::to_value(UiText::new(&format!("HSL: {}", hsl)).size(12.0)).unwrap(),
+                );
             }
         }
     }
 
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
+    if state.nav_depth() > 1 {
+        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+    }
+
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
 
 fn color_strings(state: &AppState, fallback: &str) -> (String, String, String) {

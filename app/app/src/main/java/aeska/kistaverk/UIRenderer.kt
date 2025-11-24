@@ -150,6 +150,21 @@ class UiRenderer(
         if (type == "ColorSwatch" && !node.has("color")) {
             return "ColorSwatch missing color"
         }
+        if (type == "Button") {
+            if (!node.has("text")) return "Button missing text"
+            val hasAction = node.has("action")
+            val hasCopy = node.has("copy_text")
+            if (!hasAction && !hasCopy) return "Button missing action or copy_text"
+        }
+        if (type == "Text" && !node.has("text")) {
+            return "Text missing text"
+        }
+        if (type == "TextInput" && !node.has("bind_key")) {
+            return "TextInput missing bind_key"
+        }
+        if (type == "Checkbox" && !node.has("bind_key")) {
+            return "Checkbox missing bind_key"
+        }
         if (type == "PdfPagePicker") {
             if (!node.has("page_count")) return "PdfPagePicker missing page_count"
             if (!node.has("source_uri")) return "PdfPagePicker missing source_uri"

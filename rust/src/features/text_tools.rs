@@ -1,5 +1,6 @@
 use crate::state::{AppState, Screen};
-use serde_json::{json, Value};
+use crate::ui::{Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
+use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -346,99 +347,84 @@ fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
 pub fn render_text_tools_screen(state: &AppState) -> Value {
     let input = state.text_input.clone().unwrap_or_default();
     let mut children = vec![
-        json!({
-            "type": "Text",
-            "text": "Text tools",
-            "size": 20.0
-        }),
-        json!({
-            "type": "Text",
-            "text": "Enter text, then apply a transform or count.",
-            "size": 14.0
-        }),
-        json!({
-            "type": "TextInput",
-            "bind_key": "text_input",
-            "text": input,
-            "hint": "Paste or type text",
-            "content_description": "Input text for text tools"
-        }),
-        json!({
-            "type": "Column",
-            "padding": 8,
-            "children": [
-                { "type": "Text", "text": "Transforms", "size": 14.0 },
-                { "type": "Button", "text": "UPPERCASE", "action": "text_tools_upper" },
-                { "type": "Button", "text": "lowercase", "action": "text_tools_lower" },
-                { "type": "Button", "text": "Title Case", "action": "text_tools_title" }
-            ]
-        }),
-        json!({
-            "type": "Column",
-            "padding": 8,
-            "children": [
-                { "type": "Text", "text": "Counts & cleanup", "size": 14.0 },
-                {
-                    "type": "Checkbox",
-                    "text": "Aggressive trim (collapse whitespace)",
-                    "bind_key": "aggressive_trim",
-                    "checked": state.text_aggressive_trim,
-                    "action": "text_tools_refresh"
-                },
-                { "type": "Button", "text": "Word count", "action": "text_tools_word_count" },
-                { "type": "Button", "text": "Character count", "action": "text_tools_char_count" },
-                { "type": "Button", "text": "Trim spacing", "action": "text_tools_trim" },
-                { "type": "Button", "text": "Wrap to 72 cols", "action": "text_tools_wrap" },
-                { "type": "Button", "text": "Base64 encode", "action": "text_tools_base64_encode" },
-                { "type": "Button", "text": "Base64 decode", "action": "text_tools_base64_decode" },
-                { "type": "Button", "text": "URL encode", "action": "text_tools_url_encode" },
-                { "type": "Button", "text": "URL decode", "action": "text_tools_url_decode" },
-                { "type": "Button", "text": "Hex encode", "action": "text_tools_hex_encode" },
-                { "type": "Button", "text": "Hex decode", "action": "text_tools_hex_decode" },
-                { "type": "Button", "text": "Clear", "action": "text_tools_clear" }
-            ]
-        }),
+        serde_json::to_value(UiText::new("Text tools").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new("Enter text, then apply a transform or count.").size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiTextInput::new("text_input")
+                .text(&input)
+                .hint("Paste or type text")
+                .content_description("Input text for text tools"),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiColumn::new(vec![
+                serde_json::to_value(UiText::new("Transforms").size(14.0)).unwrap(),
+                serde_json::to_value(UiButton::new("UPPERCASE", "text_tools_upper")).unwrap(),
+                serde_json::to_value(UiButton::new("lowercase", "text_tools_lower")).unwrap(),
+                serde_json::to_value(UiButton::new("Title Case", "text_tools_title")).unwrap(),
+            ])
+            .padding(8),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiColumn::new(vec![
+                serde_json::to_value(UiText::new("Counts & cleanup").size(14.0)).unwrap(),
+                serde_json::to_value(
+                    UiCheckbox::new("Aggressive trim (collapse whitespace)", "aggressive_trim")
+                        .checked(state.text_aggressive_trim)
+                        .action("text_tools_refresh"),
+                )
+                .unwrap(),
+                serde_json::to_value(UiButton::new("Word count", "text_tools_word_count")).unwrap(),
+                serde_json::to_value(UiButton::new("Character count", "text_tools_char_count")).unwrap(),
+                serde_json::to_value(UiButton::new("Trim spacing", "text_tools_trim")).unwrap(),
+                serde_json::to_value(UiButton::new("Wrap to 72 cols", "text_tools_wrap")).unwrap(),
+                serde_json::to_value(UiButton::new("Base64 encode", "text_tools_base64_encode")).unwrap(),
+                serde_json::to_value(UiButton::new("Base64 decode", "text_tools_base64_decode")).unwrap(),
+                serde_json::to_value(UiButton::new("URL encode", "text_tools_url_encode")).unwrap(),
+                serde_json::to_value(UiButton::new("URL decode", "text_tools_url_decode")).unwrap(),
+                serde_json::to_value(UiButton::new("Hex encode", "text_tools_hex_encode")).unwrap(),
+                serde_json::to_value(UiButton::new("Hex decode", "text_tools_hex_decode")).unwrap(),
+                serde_json::to_value(UiButton::new("Clear", "text_tools_clear")).unwrap(),
+            ])
+            .padding(8),
+        )
+        .unwrap(),
     ];
 
     if let Some(op) = &state.text_operation {
-        children.push(json!({
-            "type": "Text",
-            "text": format!("Last action: {}", op),
-            "size": 14.0
-        }));
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Last action: {}", op)).size(14.0)).unwrap(),
+        );
     }
 
     if let Some(result) = &state.text_output {
-        children.push(json!({
-            "type": "Column",
-            "padding": 8,
-            "children": [
-                { "type": "Text", "text": "Result", "size": 14.0 },
-                { "type": "Text", "text": result, "size": 16.0 }
-            ]
-        }));
-        children.push(json!({
-            "type": "Column",
-            "padding": 8,
-            "children": [
-                { "type": "Text", "text": "Result actions", "size": 14.0 },
-                { "type": "Button", "text": "Copy to input", "action": "text_tools_copy_to_input" },
-                { "type": "Button", "text": "Share result", "action": "text_tools_share_result" }
-            ]
-        }));
+        children.push(
+            serde_json::to_value(
+                UiColumn::new(vec![
+                    serde_json::to_value(UiText::new("Result").size(14.0)).unwrap(),
+                    serde_json::to_value(UiText::new(result).size(16.0)).unwrap(),
+                ])
+                .padding(8),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiColumn::new(vec![
+                    serde_json::to_value(UiText::new("Result actions").size(14.0)).unwrap(),
+                    serde_json::to_value(UiButton::new("Copy to input", "text_tools_copy_to_input")).unwrap(),
+                    serde_json::to_value(UiButton::new("Share result", "text_tools_share_result")).unwrap(),
+                ])
+                .padding(8),
+            )
+            .unwrap(),
+        );
     }
 
     if state.nav_depth() > 1 {
-        children.push(json!({
-            "type": "Button",
-            "text": "Back",
-            "action": "back"
-        }));
+        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
     }
 
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }

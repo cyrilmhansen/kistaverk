@@ -6,7 +6,7 @@ The application follows a **Rendering Engine (Kotlin) <-> JNI Bridge <-> Core Lo
 ### 1. The UI Layer (Kotlin): "The Renderer"
 There are no classic XML layout files for individual screens.
 - **Single Activity:** `MainActivity` handles the global lifecycle and delegates rendering/navigation to JSON coming from Rust.
-- **UiRenderer:** Accepts JSON from Rust and dynamically instantiates native Android `View` objects (LinearLayout, TextView, Button, optional ScrollView wrapper for Columns/Grids via a `scrollable` flag, plus a ShaderToy view).
+- **UiRenderer:** Accepts JSON from Rust and dynamically instantiates native Android `View` objects (LinearLayout, TextView, Button, optional ScrollView wrapper for Columns/Grids via a `scrollable` flag, plus a ShaderToy view). Validation enforces required fields (Button text + action/copy_text, TextInput/Checkbox bind_key, PdfPagePicker data, etc.) and falls back to an inline error screen on schema violations.
 - **Feature modules:** Feature-specific Kotlin code lives under `app/src/main/java/aeska/kistaverk/features` (e.g., Kotlin-side image conversion) so platform logic stays isolated from the activity.
 - **Async boundary:** Blocking work runs on `Dispatchers.IO`; UI updates happen on the main thread after Rust returns JSON (or after Kotlin completes a local pipeline and reports the outcome back to Rust).
 - **Media saves:** Image conversions default to MediaStore into `Pictures/kistaverk` (gallery-visible). A user-chosen SAF directory overrides this, with Rust still rendering the result screen.
@@ -180,6 +180,7 @@ Resolution: SignaturePad now sends bitmap dimensions + DPI; Rust derives px→pt
 🐛 Bug 3 : ScrollView Logic in Renderer — **Fixed**
 Location: UiRenderer.kt -> render()
 Resolution: Root wrapping is now controlled by a `scrollable` flag (default true); roots can opt out to avoid nested scrolling conflicts with future list/recycler widgets.
+Additional guardrails: Buttons must now provide either an `action` or `copy_text`, and renderer validation covers required fields for TextInput/Checkbox/PdfPagePicker/SignaturePad to reduce malformed payloads from Rust.
 
 
 Internationalization (i18n) Strategy

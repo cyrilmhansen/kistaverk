@@ -144,14 +144,20 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         );
 
         // Page picker rendered in Kotlin using PdfRenderer.
-        children.push(json!({
-            "type": "PdfPagePicker",
-            "page_count": count,
-            "bind_key": "pdf_selected_pages",
-            "selected_pages": state.pdf.selected_pages,
-            "source_uri": uri,
-            "content_description": "PDF page picker"
-        }));
+        children.push(
+            serde_json::to_value(
+                UiColumn::new(vec![json!({
+                    "type": "PdfPagePicker",
+                    "page_count": count,
+                    "bind_key": "pdf_selected_pages",
+                    "selected_pages": state.pdf.selected_pages,
+                    "source_uri": uri,
+                    "content_description": "PDF page picker"
+                })])
+                .content_description("pdf_page_picker_container"),
+            )
+            .unwrap(),
+        );
 
         children.push(
             serde_json::to_value(
