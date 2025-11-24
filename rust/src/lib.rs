@@ -387,6 +387,10 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | "text_tools_char_count"
         | "text_tools_trim"
         | "text_tools_wrap"
+        | "text_tools_base64_encode"
+        | "text_tools_base64_decode"
+        | "text_tools_url_encode"
+        | "text_tools_url_decode"
         | "text_tools_clear"
         | "text_tools_refresh" => {
             handle_text_action(&mut state, &action, &bindings);
@@ -940,6 +944,27 @@ mod tests {
         assert_contains_text(&ui2, "Trim edges");
         let state2 = STATE.lock().unwrap();
         assert_eq!(state2.text_output.as_deref(), Some("a   b"));
+    }
+
+    #[test]
+    fn text_tools_base64_roundtrip() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut enc = make_command("text_tools_base64_encode");
+        enc.bindings = Some(HashMap::from([("text_input".into(), "hi".into())]));
+        handle_command(enc).expect("encode should work");
+        {
+            let state = STATE.lock().unwrap();
+            assert_eq!(state.text_output.as_deref(), Some("aGk="));
+        }
+
+        let mut dec = make_command("text_tools_base64_decode");
+        dec.bindings = Some(HashMap::from([("text_input".into(), "aGk=".into())]));
+        let ui = handle_command(dec).expect("decode should work");
+        assert_contains_text(&ui, "hi");
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_output.as_deref(), Some("hi"));
     }
 
     #[test]
