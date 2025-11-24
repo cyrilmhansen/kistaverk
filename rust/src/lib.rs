@@ -7,6 +7,7 @@ use features::kotlin_image::{
     render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
 use features::{render_menu, Feature};
+use features::file_info::{file_info_from_fd, file_info_from_path};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -138,6 +139,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.image.reset();
         }
         "shader_demo" => state.current_screen = Screen::ShaderDemo,
+        "file_info_screen" => {
+            state.current_screen = Screen::FileInfo;
+            state.last_file_info = None;
+            state.last_error = None;
+        }
         "load_shader_file" => {
             if let Some(err) = command_error.as_ref() {
                 state.last_error = Some(err.clone());
@@ -271,6 +277,29 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 );
             }
         }
+        "file_info" => {
+            state.current_screen = Screen::FileInfo;
+            let info = if let Some(err) = command_error {
+                features::file_info::FileInfoResult {
+                    path: path.map(|p| p.to_string()),
+                    size_bytes: None,
+                    mime: None,
+                    error: Some(err),
+                }
+            } else if let Some(fd) = fd_handle.take() {
+                file_info_from_fd(fd as RawFd)
+            } else if let Some(path) = path.as_deref() {
+                file_info_from_path(path)
+            } else {
+                features::file_info::FileInfoResult {
+                    path: None,
+                    size_bytes: None,
+                    mime: None,
+                    error: Some("missing_path".into()),
+                }
+            };
+            state.last_file_info = Some(serde_json::to_string(&info).unwrap_or_default());
+        }
         "increment" => state.counter += 1,
         _ => {
             if let Some(err) = command_error {
@@ -346,7 +375,73 @@ fn render_ui(state: &AppState) -> Value {
             })
         }
         Screen::KotlinImage => render_kotlin_image_screen(state),
+        Screen::FileInfo => render_file_info_screen(state),
     }
+}
+
+fn render_file_info_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        json!({
+            "type": "Text",
+            "text": "File info",
+            "size": 20.0
+        }),
+        json!({
+            "type": "Text",
+            "text": "Select a file to see its size and MIME type",
+            "size": 14.0
+        }),
+        json!({
+            "type": "Button",
+            "text": "Pick file",
+            "action": "file_info",
+            "requires_file_picker": true
+        }),
+    ];
+
+    if let Some(info_json) = &state.last_file_info {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(info_json) {
+            if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
+                children.push(json!({
+                    "type": "Text",
+                    "text": format!("Error: {err}"),
+                    "size": 14.0
+                }));
+            } else {
+                if let Some(path) = parsed.get("path").and_then(|p| p.as_str()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("Path: {path}"),
+                    }));
+                }
+                if let Some(size) = parsed.get("size_bytes").and_then(|s| s.as_u64()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("Size: {} bytes", size),
+                    }));
+                }
+                if let Some(mime) = parsed.get("mime").and_then(|m| m.as_str()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("MIME: {mime}"),
+                    }));
+                }
+            }
+        }
+    }
+
+    children.push(json!({
+        "type": "Button",
+        "text": "Back",
+        "action": "reset",
+        "requires_file_picker": false
+    }));
+
+    json!({
+        "type": "Column",
+        "padding": 24,
+        "children": children
+    })
 }
 
 const SAMPLE_SHADER: &str = r#"
@@ -394,6 +489,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_file_md4",
             requires_file_picker: true,
             description: "legacy hash",
+        },
+        Feature {
+            id: "file_info",
+            name: "📂 File info",
+            category: "📁 Files",
+            action: "file_info_screen",
+            requires_file_picker: false,
+            description: "size & MIME",
         },
         Feature {
             id: "image_to_webp_kotlin",

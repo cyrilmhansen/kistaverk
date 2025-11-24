@@ -17,6 +17,7 @@ md5 = { package = "md-5", version = "0.10", default-features = false, features =
 md4 = { version = "0.10", default-features = false, features = ["std"] }
 crc32fast = "1"
 blake3 = { version = "1", default-features = false, features = ["std"] }
+infer = "0.15"
 
 [dev-dependencies]
 tempfile = "3"

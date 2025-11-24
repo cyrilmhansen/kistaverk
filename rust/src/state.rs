@@ -6,6 +6,7 @@ pub enum Screen {
     Home,
     ShaderDemo,
     KotlinImage,
+    FileInfo,
 }
 
 pub struct AppState {
@@ -16,6 +17,7 @@ pub struct AppState {
     pub last_shader: Option<String>,
     pub last_hash_algo: Option<String>,
     pub image: KotlinImageState,
+    pub last_file_info: Option<String>,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
             last_shader: None,
             last_hash_algo: None,
             image: KotlinImageState::new(),
+            last_file_info: None,
         }
     }
 }

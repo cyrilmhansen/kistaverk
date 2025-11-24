@@ -67,7 +67,7 @@ Tech: Complex binary parsing.
 - Renderer still trusts incoming JSON and will crash on malformed output; no panic guard in JNI to backstop it.
 - State is ephemeral; no serialization/restoration path; no tests around dispatch or renderer parsing; Cargo.lock not updated for `sha2`. Cargo build task still compiles armeabi-v7a even though APK is arm64-only; stale armeabi-v7a .so remains on disk (not packaged). Image conversion flow depends on MediaStore/SAF; needs on-device verification for picker permissions.
 - Renderer resiliency: Kotlin now falls back to an error view on render exceptions, but JNI still lacks a panic guard; malformed JSON from Rust is still a risk.
-- Build portability: Gradle cargo task now resolves `cargo` from PATH/`CARGO` env (no hardcoded /usr.bin), but Cargo.lock is still stale. Rust state mutex now recovers from poisoning, but JNI still lacks a panic guard.
+- Build portability: Gradle cargo task now resolves `cargo` from PATH/`CARGO` env (no hardcoded /usr.bin); Cargo.lock refreshed. Rust state mutex now recovers from poisoning, but JNI still lacks a panic guard.
 
 ## Next Implementation Step
 1. Harden JNI dispatch: wrap `Java_aeska_kistaverk_MainActivity_dispatch` in `catch_unwind`, replace `unwrap` with error propagation, and return a minimal error-screen JSON instead of letting panics cross the boundary.

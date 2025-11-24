@@ -1,5 +1,6 @@
 pub mod hashes;
 pub mod kotlin_image;
+pub mod file_info;
 
 use crate::state::AppState;
 use serde_json::Value;
