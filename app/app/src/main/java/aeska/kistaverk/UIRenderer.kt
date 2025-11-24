@@ -72,7 +72,8 @@ class UiRenderer(
         }
 
         val root = createView(rootJson)
-        return if (root is LinearLayout) {
+        val scrollable = rootJson.optBoolean("scrollable", true)
+        return if (scrollable && root is LinearLayout) {
             ScrollView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
@@ -635,9 +636,23 @@ class UiRenderer(
         val bindKey = data.optString("bind_key", "")
         val heightDp = data.optInt("height_dp", 180)
         val cd = data.optString("content_description", "")
-        val pad = SignaturePadView(context) { b64 ->
+        val pad = SignaturePadView(context) { b64, widthPx, heightPx, dpi ->
             if (bindKey.isNotEmpty()) {
                 bindings[bindKey] = b64
+            }
+            bindings["signature_width_px"] = widthPx.toString()
+            bindings["signature_height_px"] = heightPx.toString()
+            bindings["signature_dpi"] = dpi.toString()
+            val widthKey = "pdf_signature_width"
+            val heightKey = "pdf_signature_height"
+            val needsWidth = bindings[widthKey].isNullOrBlank()
+            val needsHeight = bindings[heightKey].isNullOrBlank()
+            val pxToPt = if (dpi > 0f) 72f / dpi else 0.0f
+            if (needsWidth && pxToPt > 0f) {
+                bindings[widthKey] = (widthPx * pxToPt).toString()
+            }
+            if (needsHeight && pxToPt > 0f) {
+                bindings[heightKey] = (heightPx * pxToPt).toString()
             }
         }
         val lp = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, heightDp.toFloat()))
@@ -650,7 +665,7 @@ class UiRenderer(
 
     private class SignaturePadView(
         context: Context,
-        private val onUpdate: (String) -> Unit
+        private val onUpdate: (String, Int, Int, Float) -> Unit
     ) : View(context) {
         private val path = Path()
         private val paint = Paint().apply {
@@ -696,7 +711,10 @@ class UiRenderer(
             val stream = ByteArrayOutputStream()
             bmp.compress(Bitmap.CompressFormat.PNG, 100, stream)
             val b64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-            onUpdate(b64)
+            val dpi = resources.displayMetrics.xdpi.takeIf { it > 0f }
+                ?: resources.displayMetrics.densityDpi.toFloat().takeIf { it > 0 }
+                ?: 160f
+            onUpdate(b64, bmp.width, bmp.height, dpi)
         }
 
         private fun dpToPxInternal(dp: Float): Int {

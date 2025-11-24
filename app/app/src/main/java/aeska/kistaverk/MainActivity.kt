@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private var sensorListener: SensorEventListener? = null
     private var logFile: File? = null
     private var logWriter: OutputStreamWriter? = null
+    @Volatile private var isLogging = false
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
     private var pendingSensorStart = false
@@ -552,12 +553,16 @@ class MainActivity : ComponentActivity() {
         logWriter?.write("timestamp_ms,type,v1,v2,v3,battery_level,battery_voltage\n")
         lastSensorLogPath = logFile?.absolutePath
 
+        isLogging = true
+
         val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
         val samplingPeriodUs = config.intervalMs.coerceIn(50, 10_000).toInt() * 1000
 
         sensorListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
+                if (!isLogging) return
+                val writer = logWriter ?: return
                 val ts = System.currentTimeMillis()
                 val nowMono = android.os.SystemClock.elapsedRealtime()
                 val type = when (event.sensor.type) {
@@ -577,8 +582,8 @@ class MainActivity : ComponentActivity() {
                     batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
                 } else -1
                 try {
-                    logWriter?.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
-                    logWriter?.flush()
+                    writer.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
+                    writer.flush()
                     lastSensorLogPath = logFile?.absolutePath
                     // Throttle UI refresh to avoid flooding the main thread.
                     if (nowMono - lastSensorUiTs > 500) {
@@ -618,6 +623,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopSensorLogging() {
+        isLogging = false
         pendingSensorStart = false
         pendingSensorBindings = null
         sensorManager?.unregisterListener(sensorListener)
@@ -661,17 +667,19 @@ class MainActivity : ComponentActivity() {
         val mgr = locationManager ?: return
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
+                if (!isLogging) return
                 val ts = System.currentTimeMillis()
                 val nowMono = android.os.SystemClock.elapsedRealtime()
                 val lat = location.latitude
                 val lon = location.longitude
                 val acc = location.accuracy.toDouble()
+                val writer = logWriter ?: return
                 val bindings = mutableMapOf<String, String>()
                 bindings["sensor_status"] = "logging"
                 logFile?.absolutePath?.let { bindings["sensor_path"] = it }
                 try {
-                    logWriter?.write("$ts,GPS,$lat,$lon,$acc,-1,-1\n")
-                    logWriter?.flush()
+                    writer.write("$ts,GPS,$lat,$lon,$acc,-1,-1\n")
+                    writer.flush()
                     lastSensorLogPath = logFile?.absolutePath
                     if (nowMono - lastSensorUiTs > 500) {
                         lastSensorUiTs = nowMono
