@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
@@ -157,6 +158,15 @@ class MainActivity : ComponentActivity() {
 
         // Initial Load
         refreshUi("init")
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    refreshUi("back")
+                }
+            }
+        )
     }
 
     private fun refreshUi(

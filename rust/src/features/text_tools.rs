@@ -2,8 +2,33 @@ use crate::state::{AppState, Screen};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextAction {
+    Upper,
+    Lower,
+    Title,
+    WordCount,
+    CharCount,
+    Trim,
+    Wrap,
+    Base64Encode,
+    Base64Decode,
+    UrlEncode,
+    UrlDecode,
+    HexEncode,
+    HexDecode,
+    CopyToInput,
+    ShareResult,
+    Clear,
+    Refresh,
+}
+
 /// Handle text tool actions by updating state based on the provided bindings.
-pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap<String, String>) {
+pub fn handle_text_action(
+    state: &mut AppState,
+    action: TextAction,
+    bindings: &HashMap<String, String>,
+) {
     if let Some(input) = bindings.get("text_input") {
         state.text_input = Some(input.clone());
     }
@@ -13,18 +38,18 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
     }
 
     let input = state.text_input.clone().unwrap_or_default();
-    state.current_screen = Screen::TextTools;
+    state.replace_current(Screen::TextTools);
 
     match action {
-        "text_tools_upper" => {
+        TextAction::Upper => {
             state.text_output = Some(input.to_uppercase());
             state.text_operation = Some("UPPERCASE".into());
         }
-        "text_tools_lower" => {
+        TextAction::Lower => {
             state.text_output = Some(input.to_lowercase());
             state.text_operation = Some("lowercase".into());
         }
-        "text_tools_title" => {
+        TextAction::Title => {
             let title = input
                 .split_whitespace()
                 .map(|word| {
@@ -39,7 +64,7 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
             state.text_output = Some(title);
             state.text_operation = Some("Title Case".into());
         }
-        "text_tools_word_count" => {
+        TextAction::WordCount => {
             let count = input
                 .split_whitespace()
                 .filter(|part| !part.is_empty())
@@ -47,12 +72,12 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
             state.text_output = Some(format!("Word count: {}", count));
             state.text_operation = Some("Word count".into());
         }
-        "text_tools_char_count" => {
+        TextAction::CharCount => {
             let count = input.chars().count();
             state.text_output = Some(format!("Character count: {}", count));
             state.text_operation = Some("Character count".into());
         }
-        "text_tools_trim" => {
+        TextAction::Trim => {
             let trimmed = if state.text_aggressive_trim {
                 input.split_whitespace().collect::<Vec<_>>().join(" ")
             } else {
@@ -65,16 +90,16 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
                 "Trim edges".into()
             });
         }
-        "text_tools_wrap" => {
+        TextAction::Wrap => {
             let wrapped = wrap_text(&input, 72);
             state.text_output = Some(wrapped);
             state.text_operation = Some("Wrap to 72 cols".into());
         }
-        "text_tools_base64_encode" => {
+        TextAction::Base64Encode => {
             state.text_output = Some(encode_base64(input.as_bytes()));
             state.text_operation = Some("Base64 encode".into());
         }
-        "text_tools_base64_decode" => match decode_base64(input.as_bytes()) {
+        TextAction::Base64Decode => match decode_base64(input.as_bytes()) {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(s) => {
                     state.text_output = Some(s);
@@ -90,11 +115,11 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
                 state.text_operation = Some("Base64 decode failed".into());
             }
         },
-        "text_tools_url_encode" => {
+        TextAction::UrlEncode => {
             state.text_output = Some(url_encode(&input));
             state.text_operation = Some("URL encode".into());
         }
-        "text_tools_url_decode" => match url_decode(&input) {
+        TextAction::UrlDecode => match url_decode(&input) {
             Ok(s) => {
                 state.text_output = Some(s);
                 state.text_operation = Some("URL decode".into());
@@ -104,11 +129,11 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
                 state.text_operation = Some("URL decode failed".into());
             }
         },
-        "text_tools_hex_encode" => {
+        TextAction::HexEncode => {
             state.text_output = Some(hex_encode(input.as_bytes()));
             state.text_operation = Some("Hex encode".into());
         }
-        "text_tools_hex_decode" => match hex_decode(&input) {
+        TextAction::HexDecode => match hex_decode(&input) {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(s) => {
                     state.text_output = Some(s);
@@ -124,25 +149,24 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
                 state.text_operation = Some("Hex decode failed".into());
             }
         },
-        "text_tools_copy_to_input" => {
+        TextAction::CopyToInput => {
             if let Some(result) = state.text_output.clone() {
                 state.text_input = Some(result);
                 state.text_operation = Some("Result copied to input".into());
             }
         }
-        "text_tools_share_result" => {
+        TextAction::ShareResult => {
             state.text_operation = Some("Share result tapped".into());
         }
-        "text_tools_clear" => {
+        TextAction::Clear => {
             state.text_input = Some(String::new());
             state.text_output = None;
             state.text_operation = Some("Cleared".into());
         }
-        "text_tools_refresh" => {
+        TextAction::Refresh => {
             // No-op: used to capture bindings (e.g., checkbox toggles) and re-render.
             state.text_operation = state.text_operation.take();
         }
-        _ => {}
     }
 }
 
@@ -404,11 +428,13 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
         }));
     }
 
-    children.push(json!({
-        "type": "Button",
-        "text": "Back",
-        "action": "reset"
-    }));
+    if state.nav_depth() > 1 {
+        children.push(json!({
+            "type": "Button",
+            "text": "Back",
+            "action": "back"
+        }));
+    }
 
     json!({
         "type": "Column",
