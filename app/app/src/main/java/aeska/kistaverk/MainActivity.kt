@@ -18,13 +18,16 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var renderer: UiRenderer
     private var pendingActionAfterPicker: String? = null
+    private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         val action = pendingActionAfterPicker
+        val bindings = pendingBindingsAfterPicker
         pendingActionAfterPicker = null
+        pendingBindingsAfterPicker = emptyMap()
 
         if (uri == null || action == null) return@registerForActivityResult
 
@@ -35,10 +38,14 @@ class MainActivity : ComponentActivity() {
 
         val fd = openFdForUri(uri)
         if (fd != null) {
-            refreshUi(action, mapOf("fd" to fd))
+            refreshUi(action, extras = mapOf("fd" to fd), bindings = bindings)
         } else {
             // Notify Rust about the failure so it can surface an error state
-            refreshUi(action, mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed"))
+            refreshUi(
+                action,
+                extras = mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed"),
+                bindings = bindings
+            )
         }
     }
 
@@ -67,7 +74,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        renderer = UiRenderer(this) { action, needsFilePicker ->
+        renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
             if (action == "kotlin_image_pick_dir") {
                 pickDirLauncher.launch(null)
                 return@UiRenderer
@@ -75,12 +82,13 @@ class MainActivity : ComponentActivity() {
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
+                pendingBindingsAfterPicker = bindings
                 pickFileLauncher.launch(arrayOf("*/*"))
             } else {
                 if (action == "reset") {
                     selectedOutputDir = null
                 }
-                refreshUi(action)
+                refreshUi(action, bindings = bindings)
             }
         }
 
@@ -88,13 +96,22 @@ class MainActivity : ComponentActivity() {
         refreshUi("init")
     }
 
-    private fun refreshUi(action: String, extras: Map<String, Any?> = emptyMap()) {
+    private fun refreshUi(
+        action: String,
+        extras: Map<String, Any?> = emptyMap(),
+        bindings: Map<String, String> = emptyMap()
+    ) {
         lifecycleScope.launch {
             val command = JSONObject().apply {
                 put("action", action)
                 extras.forEach { (k, v) ->
                     // JSONObject handles proper escaping; null maps to JSON null
                     put(k, v)
+                }
+                if (bindings.isNotEmpty()) {
+                    val bindingsObj = JSONObject()
+                    bindings.forEach { (k, v) -> bindingsObj.put(k, v) }
+                    put("bindings", bindingsObj)
                 }
             }
 

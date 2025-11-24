@@ -5,23 +5,28 @@ import android.graphics.Color
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.View
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.text.Editable
+import android.text.TextWatcher
 import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
-import kotlin.math.min
 
 // Added 'onAction' callback: (String, Boolean) -> Unit where the boolean flags file picker needs
 class UiRenderer(
     private val context: Context,
-    private val onAction: (String, Boolean) -> Unit
+    private val onAction: (String, Boolean, Map<String, String>) -> Unit
 ) {
+    private val bindings = mutableMapOf<String, String>()
 
     fun render(jsonString: String): View {
+        bindings.clear()
         val root = createView(JSONObject(jsonString))
         return if (root is LinearLayout) {
             ScrollView(context).apply {
@@ -54,7 +59,7 @@ class UiRenderer(
 
         layout.addView(Button(context).apply {
             text = "Back"
-            setOnClickListener { onAction("reset", false) }
+            setOnClickListener { onAction("reset", false, emptyMap()) }
         })
 
         return layout
@@ -67,6 +72,7 @@ class UiRenderer(
             "Text" -> createText(data)
             "Button" -> createButton(data)
             "ShaderToy" -> createShaderToy(data)
+            "TextInput" -> createTextInput(data)
             else -> createErrorView("Unknown: $type")
         }
     }
@@ -78,6 +84,10 @@ class UiRenderer(
         if (data.has("padding")) {
             val p = data.getInt("padding")
             layout.setPadding(p, p, p, p)
+        }
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            layout.contentDescription = contentDescription
         }
         val children = data.optJSONArray("children")
         if (children != null) {
@@ -92,19 +102,27 @@ class UiRenderer(
         return TextView(context).apply {
             text = data.optString("text")
             textSize = data.optDouble("size", 14.0).toFloat()
+            val contentDescription = data.optString("content_description", "")
+            if (contentDescription.isNotEmpty()) {
+                this.contentDescription = contentDescription
+            }
         }
     }
 
     private fun createButton(data: JSONObject): View {
         val btn = Button(context)
         btn.text = data.optString("text")
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            btn.contentDescription = contentDescription
+        }
 
         // Retrieve the action defined in the Rust JSON (e.g., "hash_file")
         val actionName = data.optString("action")
         val needsFilePicker = data.optBoolean("requires_file_picker", false)
 
         btn.setOnClickListener {
-            onAction(actionName, needsFilePicker)
+            onAction(actionName, needsFilePicker, bindings.toMap())
         }
         return btn
     }
@@ -114,6 +132,54 @@ class UiRenderer(
             text = msg
             setTextColor(Color.RED)
         }
+    }
+
+    private fun createTextInput(data: JSONObject): View {
+        val editText = EditText(context)
+        val bindKey = data.optString("bind_key", "")
+        val initial = data.optString("text", "")
+        editText.setText(initial)
+        if (initial.isNotEmpty() && bindKey.isNotEmpty()) {
+            bindings[bindKey] = initial
+        }
+        val hint = data.optString("hint", "")
+        if (hint.isNotEmpty()) {
+            editText.hint = hint
+        }
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            editText.contentDescription = contentDescription
+        }
+
+        val singleLine = data.optBoolean("single_line", false)
+        editText.isSingleLine = singleLine
+        val maxLines = data.optInt("max_lines", 0)
+        if (maxLines > 0) {
+            editText.maxLines = maxLines
+        }
+
+        if (bindKey.isNotEmpty()) {
+            editText.addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) {
+                    bindings[bindKey] = s?.toString().orEmpty()
+                }
+
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            })
+        }
+
+        val submitAction = data.optString("action_on_submit", "")
+        if (submitAction.isNotEmpty()) {
+            editText.setOnEditorActionListener { _, actionId, _ ->
+                val isDone = actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_NULL
+                if (isDone) {
+                    onAction(submitAction, false, bindings.toMap())
+                }
+                isDone
+            }
+        }
+        return editText
     }
 
     private fun createShaderToy(data: JSONObject): View {
@@ -127,6 +193,10 @@ class UiRenderer(
         lp.topMargin = margin
         lp.bottomMargin = margin
         view.layoutParams = lp
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            view.contentDescription = contentDescription
+        }
         return view
     }
 
