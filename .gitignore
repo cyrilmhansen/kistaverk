@@ -17,6 +17,8 @@ app/build/
 .DS_Store
 *.iml
 *.class
+.gradle-temp/
+
 
 # Android Profiling
 *.hprof

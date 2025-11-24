@@ -97,3 +97,12 @@ Planned structure:
 ├── METHODOLOGY.md
 ├── CONTRIBUTING.md
 └── WORKINPROGRESS.md
+
+---
+
+## Build & Packaging
+
+- Release builds are shrunk/obfuscated (R8 + resource shrinking) with stripped Rust libs and size-focused Rust profile flags.  
+- ABI outputs: arm64-v8a only (APK/AAB). Per-ABI splits are enabled; no density splits (Play handles density).  
+- Build release APKs/AAB: from `app/`, run `./gradlew clean :app:assembleRelease` or `./gradlew :app:bundleRelease`.  
+- Size audit: run `./scripts/size_report.sh <apk-or-aab>` to break down dex/lib/res and per-ABI .so sizes.

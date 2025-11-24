@@ -3,8 +3,9 @@
 *Use this file to track the active context for AI Agents. Update it at the end of every coding session.*
 
 ## 📅 Current Status
-**Last Updated:** YYYY-MM-DD
-**Phase:** Initialization / PoC
+**Last Updated:** 2025-11-24
+**Phase:** File-hash demo live (picker → Rust hashes SHA256/SHA1/MD5/MD4) + Shader demo + Play packaging (arm64-only)
+
 
 📝 NEXT STEPS: Project Roadmap
 1. Core Architecture: From "Toy" to "Engine"
@@ -53,3 +54,28 @@ Tech: Bitmap decoding/encoding.
 Validation: Proves we can handle heavy CPU tasks without freezing the UI (needs background threading in Rust).
 Tool C: PDF Manipulator:
 Tech: Complex binary parsing.
+
+
+## Snapshot
+- Kotlin now launches the system file picker, copies the chosen URI to cache, and sends the path to Rust via JSON (escaped with `JSONObject`). Renderer buttons support `requires_file_picker`; the sample screen shows “Select file and hash” and renders the resulting SHA-256 or an error message.
+- Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Counter stub remains but is unused. Added Shader demo screen emitting a GLSL fragment for a simple cosine color wave; shader screen can load a fragment from file.
+- Home menu now comes from a feature dictionary grouped by categories (Hashes, Graphics); hash buttons request file picker, shader opens demo.
+- Build: release now shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused Rust profile, excludes unused META-INF resources, disables BuildConfig, and targets arm64-v8a only (APK ~0.5 MB). Cargo.lock still not refreshed after adding `sha2`; cargo path remains hardcoded. Gradle density splits removed (AAB handles density).
+
+## Known Issues / Risks
+- JNI dispatch can unwind or abort: `STATE.lock().unwrap()` plus no `catch_unwind` means any panic poisons the mutex and may crash the VM (rust/src/lib.rs).
+- Renderer still trusts incoming JSON and will crash on malformed output; no panic guard in JNI to backstop it.
+- State is ephemeral; no serialization/restoration path; no tests around dispatch or renderer parsing; Cargo.lock not updated for `sha2`. Cargo build task still compiles armeabi-v7a even though APK is arm64-only; stale armeabi-v7a .so remains on disk (not packaged).
+
+## Next Implementation Step
+1. Harden JNI dispatch: wrap `Java_aeska_kistaverk_MainActivity_dispatch` in `catch_unwind`, replace `unwrap` with error propagation, and return a minimal error-screen JSON instead of letting panics cross the boundary.
+
+## Near-Term Tasks
+- Introduce typed `Command`/`Action` + richer `Screen` enum in Rust (home + placeholder hash screen), and generate UI via serde builders instead of manual json! literals.
+- Kotlin side: guard `render` with try/catch and show a fallback error view instead of crashing; add a small loading indicator while hashing.
+- Make cargo path portable in `app/app/build.gradle.kts` (use `commandLine("cargo", ...)` or look up from PATH); refresh Cargo.lock after adding `sha2`.
+- Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; refresh Cargo.lock after adding `sha2`; regenerate AAB and verify size with `scripts/size_report.sh`.
+
+## MVP / Easy Wins
+- Add a text input widget to the renderer with a simple binding map so Rust can ask for “Enter hash to compare” and receive it on submit.
+- Add lightweight unit tests for Rust dispatch/state transitions and Kotlin renderer JSON parsing to lock in behavior as widgets expand.

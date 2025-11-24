@@ -19,11 +19,45 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
 
-        ndk {
-            // Tell Gradle which ABIs we support
-            abiFilters.add("arm64-v8a")
-            abiFilters.add("armeabi-v7a")
-            abiFilters.add("x86_64")
+    }
+
+    buildFeatures {
+        buildConfig = false
+    }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/license.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/notice.txt",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1"
+            )
+        }
+    }
+
+    bundle {
+        // Use Play-split App Bundle to trim download size
+        abi {
+            enableSplit = true
+        }
+        // Keep language resources together to avoid split install churn
+        language {
+            enableSplit = false
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
 
@@ -56,12 +90,12 @@ android {
         val ndkDir = android.ndkDirectory
         environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
         environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
+        environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections")
 
         args(
             "ndk",
             "-t", "armeabi-v7a",
             "-t", "arm64-v8a",
-            "-t", "x86_64",
             "-o", jniLibsDir.absolutePath, // <--- ICI : Chemin absolu garanti !
             "build", "--release"
         )
@@ -84,7 +118,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -106,10 +141,7 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
     implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
