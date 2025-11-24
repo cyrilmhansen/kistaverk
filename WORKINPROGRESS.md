@@ -79,3 +79,30 @@ Tech: Complex binary parsing.
 ## MVP / Easy Wins
 - Add a text input widget to the renderer with a simple binding map so Rust can ask for “Enter hash to compare” and receive it on submit.
 - Add lightweight unit tests for Rust dispatch/state transitions and Kotlin renderer JSON parsing to lock in behavior as widgets expand.
+
+
+
+Phase 1: Stability & Foundation (Immediate)
+Harden JNI Boundary:
+Refactor lib.rs to wrap logic in std::panic::catch_unwind.
+Create a standardized Error JSON response structure.
+Zero-Copy File Access:
+Update Kotlin MainActivity to open a ParcelFileDescriptor instead of copying streams.
+Update Rust Command struct to accept an optional fd: i32 field.
+Refactor features/hashes.rs to read from the raw FD.
+UI Scrolling:
+Update UiRenderer.kt: Wrap the returned View in a ScrollView if the root type is a Column.
+Phase 2: Core Components (Next Session)
+State Machine Evolution:
+Replace String based routing with a Vec<Screen> stack in Rust to support "Back" functionality.
+Implement the restore_state logic.
+UI Widget Expansion:
+Implement TextInput (for text hashing/comparison).
+Implement ProgressBar (for long operations).
+Thread Management:
+Currently, handle_hash_action blocks the thread calling dispatch. Even if Kotlin calls it on IO, it prevents sending other events (like "Cancel").
+Goal: Move hash computation to a Rust background thread (using std::thread or rayon), and have the main Rust state return a "Computing..." screen immediately. Poll for results or use a callback.
+Phase 3: Packaging
+Cleanup Gradle:
+Translate comments.
+Remove the armeabi-v7a build argument from build.gradle.kts if the target is strictly arm64-v8a to speed up compilation.

@@ -71,3 +71,27 @@ Recommended Strategy: "Kotlin-Side Async"
 Kotlin: Uses Coroutines (Dispatchers.IO) to call the blocking Rust function.
 Rust: Remains synchronous (simpler, smaller binary). It just calculates and returns.
 UI: While waiting for Rust, Kotlin displays a loading spinner overlay (since the UI JSON hasn't returned yet).
+
+
+A. State Serialization (The "Don't Lose My Work" Rule)
+Android frequently kills background apps to save memory. When the user returns, MainActivity is recreated, but the Rust memory (the static Mutex) is wiped clean.
+The Missing Protocol:
+Serialize: On onSaveInstanceState (Kotlin), send a get_state_snapshot command to Rust. Rust serializes AppState to a JSON string or Byte Array and returns it. Kotlin saves this in the Bundle.
+Restore: On onCreate (Kotlin), check if a Bundle exists. If yes, extract the snapshot and send restore_state(snapshot) to Rust.
+Rust Impl: The AppState struct must derive Serialize and Deserialize.
+B. The File Descriptor Bridge (Zero-Copy)
+To solve the file copying issue mentioned in the feedback:
+Mechanism:
+Kotlin: Uses ContentResolver.openFileDescriptor(uri, "r").
+JNI: Passes the int fd to Rust.
+Rust:
+code
+Rust
+use std::os::unix::io::FromRawFd;
+use std::fs::File;
+
+// UNSAFE: We must ensure Kotlin keeps the FD open while we read, 
+// and that we don't double-close it if not intended.
+let file = unsafe { File::from_raw_fd(fd) }; 
+// Read file...
+// std::mem::forget(file) // logic to prevent Rust from closing the FD if Kotlin owns it

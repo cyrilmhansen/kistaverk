@@ -67,11 +67,11 @@ android {
     }
 
     tasks.register<Exec>("cargoBuild") {
-        // 1. Trouver Rust (On garde ta logique de recherche qui est bonne)
-        val possibleLocations = listOf(
-            file("../rust"),        // Si rust est frère de 'app' (cas standard)
-            file("../../rust"),     // Si rust est oncle de 'app' (cas 'app/app')
-            file("rust")            // Si rust est dans 'app'
+        // 1. Find Rust (Keeping your search logic, which is good)
+         val possibleLocations = listOf(
+            file("../rust"),        // If rust is a sibling of 'app' (standard case)
+            file("../../rust"),     // If rust is an uncle of 'app' (case 'app/app')
+            file("rust")            // If rust is inside 'app'
         )
         val foundRustDir = possibleLocations.find { it.exists() && it.isDirectory }
 
@@ -80,8 +80,8 @@ android {
         }
         val rustDir = foundRustDir.canonicalFile
 
-        // 2. Définir la destination en ABSOLU (Fini les ../..)
-        // "this.projectDir" pointe toujours vers le dossier du module (le 2ème 'app')
+        // 2. Define the destination as ABSOLUTE (No more ../..)
+        // "this.projectDir" always points to the module directory (the 2nd 'app')
         val jniLibsDir = File(projectDir, "src/main/jniLibs")
 
         // Configuration
@@ -96,7 +96,7 @@ android {
             "ndk",
             "-t", "armeabi-v7a",
             "-t", "arm64-v8a",
-            "-o", jniLibsDir.absolutePath, // <--- ICI : Chemin absolu garanti !
+            "-o", jniLibsDir.absolutePath, // <--- HERE: Absolute path guaranteed!
             "build", "--release"
         )
 
@@ -104,7 +104,7 @@ android {
             println("✅ Rust source : ${rustDir.absolutePath}")
             println("✅ Destination libs : ${jniLibsDir.absolutePath}")
 
-            // Création du dossier s'il n'existe pas (pour éviter que cargo râle)
+        // Create the directory if it doesn't exist (to prevent cargo from complaining)
             if (!jniLibsDir.exists()) {
                 jniLibsDir.mkdirs()
             }
