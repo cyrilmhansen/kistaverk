@@ -102,7 +102,13 @@ class MainActivity : ComponentActivity() {
                 dispatch(command.toString())
             }
 
-            val rootView = renderer.render(newUiJson)
+            val rootView = runCatching { renderer.render(newUiJson) }
+                .getOrElse { throwable ->
+                    renderer.renderFallback(
+                        title = "Render error",
+                        message = throwable.message ?: "unknown_render_error"
+                    )
+                }
             setContentView(rootView)
         }
     }

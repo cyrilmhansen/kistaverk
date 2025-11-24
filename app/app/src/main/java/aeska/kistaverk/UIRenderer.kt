@@ -36,6 +36,30 @@ class UiRenderer(
         }
     }
 
+    fun renderFallback(title: String, message: String): View {
+        val layout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val padding = dpToPx(context, 16f)
+        layout.setPadding(padding, padding, padding, padding)
+
+        layout.addView(TextView(context).apply {
+            text = title
+            textSize = 18f
+            setTextColor(Color.RED)
+        })
+
+        layout.addView(TextView(context).apply {
+            text = message
+            textSize = 14f
+        })
+
+        layout.addView(Button(context).apply {
+            text = "Back"
+            setOnClickListener { onAction("reset", false) }
+        })
+
+        return layout
+    }
+
     private fun createView(data: JSONObject): View {
         val type = data.optString("type")
         return when (type) {
