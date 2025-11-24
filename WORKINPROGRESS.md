@@ -16,6 +16,7 @@ Goal: Handle "Back" button hardware events (Android sends "Back" -> Rust pops st
 Action Dispatcher: Create a typed enum Action in Rust (instead of raw string matching) to handle events cleanly (Action::NavigateTo(ToolId), Action::SelectFile(Path)).
 2. The UI Engine: Expanding the Vocabulary
 The Kotlin UiRenderer now supports TextInput, Checkbox, Progress with bindings and propagates `content_description` for TalkBack. Grids render the menu with an auto column heuristic (1 column on narrow screens, 2 otherwise, or explicit override). MainActivity can overlay a spinner on the current screen for loading-only calls.
+Renderer guardrails: unknown/malformed widget types render inline error text instead of crashing; missing children show a warning row.
 File Pickers: This is critical.
 Challenge: Rust cannot open files directly on modern Android (Scoped Storage).
 Solution: The JSON requests a FilePicker. Kotlin opens the system picker, gets a File Descriptor (FD), and passes the FD (int) to Rust.
@@ -61,6 +62,7 @@ Tech: Complex binary parsing.
 - Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused profile, excludes unused META-INF resources, disables BuildConfig, targets arm64-v8a only. Cargo task resolves `cargo` from PATH/`CARGO`. Gradle density splits removed (AAB handles density).
 ## Snapshot
 - Kotlin now launches the system file picker (detaching FDs), forwards a `bindings` map with UI state, and renders TextInput, Checkbox, Progress, Text/Button/ShaderToy. Buttons support `requires_file_picker`; Columns are wrapped in ScrollView. Grids auto-pick columns (1 on narrow, 2 otherwise unless overridden). Content descriptions flow to Text/Button/Column/ShaderToy/TextInput/Checkbox/Progress. MainActivity can show a translucent overlay spinner while keeping the last screen visible.
+- Renderer guardrails added: unknown widgets and missing children produce inline error rows rather than crashing.
 - Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Catch_unwind guards JNI panics, poisoned locks recover. Added Shader demo, Kotlin image conversion screen, a Rust-driven Text Tools screen (upper/lower/title/wrap/trim/word & char counts + aggressive trim checkbox) with inline result block, and a Progress demo feature.
 - Home menu is generated from a feature catalog grouped by category (Hashes, Graphics, Media, Text, Experiments). Text tools and Progress demo are reachable without pickers.
 - Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused profile, excludes unused META-INF resources, disables BuildConfig, targets arm64-v8a only. Cargo task resolves `cargo` from PATH/`CARGO`. Gradle density splits removed (AAB handles density).

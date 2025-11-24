@@ -69,7 +69,7 @@ class UiRenderer(
     }
 
     private fun createView(data: JSONObject): View {
-        val type = data.optString("type")
+        val type = data.optString("type", "")
         return when (type) {
             "Column" -> createColumn(data)
             "Text" -> createText(data)
@@ -79,6 +79,7 @@ class UiRenderer(
             "Checkbox" -> createCheckbox(data)
             "Progress" -> createProgress(data)
             "Grid" -> createGrid(data)
+            "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
     }
@@ -100,6 +101,8 @@ class UiRenderer(
             for (i in 0 until children.length()) {
                 layout.addView(createView(children.getJSONObject(i)))
             }
+        } else {
+            layout.addView(createErrorView("Missing children"))
         }
         return layout
     }
