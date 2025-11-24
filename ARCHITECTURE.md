@@ -61,3 +61,13 @@ We treat the Local Rust Core as a "Server" and the Android View as a "Client".
 *   **Screen Construction:** Android never hardcodes screens. It requests the screen definition from Rust (e.g., `cmd: "get_home_screen"`).
 *   **State updates:** When an action occurs, Rust returns the *entire new state description* of the UI (Virtual DOM style).
 *   **Benefits:** Complex logic (e.g., "Show this specific error if SHA-256 fails but MD5 succeeds") resides solely in Rust.
+
+
+-----
+
+A. The Async/Threading Model
+Since Rust cannot block the main thread, we must define an async boundary.
+Recommended Strategy: "Kotlin-Side Async"
+Kotlin: Uses Coroutines (Dispatchers.IO) to call the blocking Rust function.
+Rust: Remains synchronous (simpler, smaller binary). It just calculates and returns.
+UI: While waiting for Rust, Kotlin displays a loading spinner overlay (since the UI JSON hasn't returned yet).
