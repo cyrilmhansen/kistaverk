@@ -1,5 +1,6 @@
 mod features;
 mod state;
+mod ui;
 use features::file_info::{file_info_from_fd, file_info_from_path};
 use features::hashes::{handle_hash_action, HashAlgo};
 use features::kotlin_image::{
@@ -9,6 +10,7 @@ use features::kotlin_image::{
 };
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
+use ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Progress as UiProgress, Text as UiText};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -549,17 +551,12 @@ fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
 }
 
 fn render_file_info_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        json!({
-            "type": "Text",
-            "text": "File info",
-            "size": 20.0
-        }),
-        json!({
-            "type": "Text",
-            "text": "Select a file to see its size and MIME type",
-            "size": 14.0
-        }),
+        let mut children = vec![
+        serde_json::to_value(UiText::new("File info").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Select a file to see its size and MIME type").size(14.0),
+        )
+        .unwrap(),
         json!({
             "type": "Button",
             "text": "Pick file",
@@ -610,17 +607,14 @@ fn render_file_info_screen(state: &AppState) -> Value {
 
 fn render_loading_screen(state: &AppState) -> Value {
     let message = state.loading_message.as_deref().unwrap_or("Working...");
-    let mut children = vec![
-        json!({ "type": "Text", "text": message, "size": 16.0 }),
-    ];
+    let mut children = vec![serde_json::to_value(UiText::new(message).size(16.0)).unwrap()];
     if state.loading_with_spinner {
-        children.push(json!({ "type": "Progress", "content_description": "In progress" }));
+        children.push(serde_json::to_value(
+            UiProgress::new().content_description("In progress"),
+        )
+        .unwrap());
     }
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
 
 fn render_shader_screen(state: &AppState) -> Value {
@@ -631,31 +625,27 @@ fn render_shader_screen(state: &AppState) -> Value {
         .unwrap_or(SAMPLE_SHADER);
 
     let mut children = vec![
-        json!({ "type": "Text", "text": "Shader toy demo", "size": 20.0 }),
-        json!({ "type": "Text", "text": "Simple fragment shader with time and resolution uniforms." }),
+        serde_json::to_value(UiText::new("Shader toy demo").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Simple fragment shader with time and resolution uniforms."),
+        )
+        .unwrap(),
         json!({
             "type": "ShaderToy",
             "fragment": fragment
         }),
-        json!({
-            "type": "Button",
-            "text": "Load shader from file",
-            "action": "load_shader_file",
-            "requires_file_picker": true
-        }),
-        json!({
-            "type": "Text",
-            "text": "Sample syntax:\nprecision mediump float;\nuniform float u_time;\nuniform vec2 u_resolution;\nvoid main(){ vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec3 col=0.5+0.5*cos(u_time*0.2+uv.xyx+vec3(0.,2.,4.)); gl_FragColor=vec4(col,1.0); }",
-            "size": 12.0
-        }),
+        serde_json::to_value(
+            UiButton::new("Load shader from file", "load_shader_file").requires_file_picker(true),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new("Sample syntax:\nprecision mediump float;\nuniform float u_time;\nuniform vec2 u_resolution;\nvoid main(){ vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec3 col=0.5+0.5*cos(u_time*0.2+uv.xyx+vec3(0.,2.,4.)); gl_FragColor=vec4(col,1.0); }").size(12.0),
+        )
+        .unwrap(),
     ];
     maybe_push_back(&mut children, state);
 
-    json!({
-        "type": "Column",
-        "padding": 16,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
 }
 
 fn render_progress_demo_screen(state: &AppState) -> Value {

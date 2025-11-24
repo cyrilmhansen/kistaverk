@@ -27,10 +27,31 @@ class UiRenderer(
     private val onAction: (String, Boolean, Map<String, String>) -> Unit
 ) {
     private val bindings = mutableMapOf<String, String>()
+    private val allowedTypes = setOf(
+        "Column",
+        "Text",
+        "Button",
+        "ShaderToy",
+        "TextInput",
+        "Checkbox",
+        "Progress",
+        "Grid"
+    )
 
     fun render(jsonString: String): View {
         bindings.clear()
-        val root = createView(JSONObject(jsonString))
+        val rootJson = try {
+            JSONObject(jsonString)
+        } catch (e: Exception) {
+            return renderFallback("Render error", "Invalid JSON")
+        }
+
+        val validationError = validate(rootJson)
+        if (validationError != null) {
+            return renderFallback("Render error", validationError)
+        }
+
+        val root = createView(rootJson)
         return if (root is LinearLayout) {
             ScrollView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
@@ -82,6 +103,30 @@ class UiRenderer(
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
+    }
+
+    private fun validate(node: JSONObject): String? {
+        val type = node.optString("type", "")
+        if (type.isBlank()) return "Missing type"
+        if (!allowedTypes.contains(type)) return "Unknown widget: $type"
+        if ((type == "Column" || type == "Grid") && !node.has("children")) {
+            return "$type missing children"
+        }
+        if (type == "Grid") {
+            val children = node.optJSONArray("children") ?: return "Grid missing children"
+            for (i in 0 until children.length()) {
+                val childErr = validate(children.getJSONObject(i))
+                if (childErr != null) return childErr
+            }
+        }
+        if (type == "Column") {
+            val children = node.optJSONArray("children") ?: return "Column missing children"
+            for (i in 0 until children.length()) {
+                val childErr = validate(children.getJSONObject(i))
+                if (childErr != null) return childErr
+            }
+        }
+        return null
     }
 
     // WARNING: For createColumn, make sure to call createView recursively
