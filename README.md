@@ -51,6 +51,9 @@ Early scope (subject to change):
   - Configurable sampling interval and sensor selection (accelerometer, gyroscope, magnetometer, barometer, GPS, battery stats).
   - Logs to CSV in app-private storage with FileProvider sharing; GPS requires location permission.
 
+- **Text viewer**
+  - Open and preview text/CSV files (256 KB cap) from the file picker with text-friendly MIME filters.
+
 ---
 
 ## Architecture (high-level)

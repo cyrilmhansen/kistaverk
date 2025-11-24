@@ -124,6 +124,8 @@ class MainActivity : ComponentActivity() {
                     extras["error"] = "select_pdf_first"
                 }
             }
+        } else {
+            extras["path"] = uri.toString()
         }
 
         dispatchWithOptionalLoading(
@@ -265,9 +267,13 @@ class MainActivity : ComponentActivity() {
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
                 pendingBindingsAfterPicker = bindings
-                val mimeTypes = if (action.startsWith("pdf_")) arrayOf("application/pdf") else arrayOf("*/*")
-                pickFileLauncher.launch(mimeTypes)
-            } else {
+            val mimeTypes = when {
+                action.startsWith("pdf_") -> arrayOf("application/pdf")
+                action == "text_viewer_open" -> arrayOf("text/*", "text/plain", "text/csv", "application/csv")
+                else -> arrayOf("*/*")
+            }
+            pickFileLauncher.launch(mimeTypes)
+        } else {
                 if (action == "reset") {
                     selectedOutputDir = null
                     pdfSourceUri = null

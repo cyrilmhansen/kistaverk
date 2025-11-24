@@ -11,6 +11,7 @@ use features::kotlin_image::{
 use features::pdf::{handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen, PdfOperation};
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::sensor_logger::{apply_status_from_bindings, parse_bindings as parse_sensor_bindings};
+use features::text_viewer::{load_text_from_fd, load_text_from_path};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use features::color_tools::{handle_color_action, render_color_screen};
@@ -145,6 +146,8 @@ enum Action {
     },
     PdfSignatureClear,
     About,
+    TextViewerScreen,
+    TextViewerOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -242,6 +245,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
         "about" => Ok(Action::About),
+        "text_viewer_screen" => Ok(Action::TextViewerScreen),
+        "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
@@ -676,6 +681,25 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::About => {
             state.push_screen(Screen::About);
         }
+        Action::TextViewerScreen => {
+            state.push_screen(Screen::TextViewer);
+            state.text_view_error = None;
+        }
+        Action::TextViewerOpen { fd, path, error } => {
+            state.push_screen(Screen::TextViewer);
+            state.text_view_error = error.clone();
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_some() {
+                state.text_view_content = None;
+            } else if let Some(raw_fd) = fd_handle.take() {
+                load_text_from_fd(&mut state, raw_fd as RawFd, path.as_deref());
+            } else if let Some(p) = path.as_deref() {
+                load_text_from_path(&mut state, p);
+            } else {
+                state.text_view_error = Some("missing_source".into());
+                state.text_view_content = None;
+            }
+        }
         Action::SensorLoggerScreen => {
             state.push_screen(Screen::SensorLogger);
         }
@@ -900,6 +924,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PdfTools => render_pdf_screen(state),
         Screen::About => render_about_screen(state),
         Screen::SensorLogger => render_sensor_logger_screen(state),
+        Screen::TextViewer => render_text_viewer_screen(state),
     }
 }
 
@@ -1139,6 +1164,43 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
+fn render_text_viewer_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Open a text or CSV file to preview up to 256 KB.").size(14.0),
+        )
+        .unwrap(),
+        json!({
+            "type": "Button",
+            "text": "Pick text file",
+            "action": "text_viewer_open",
+            "requires_file_picker": true,
+            "content_description": "Pick text or CSV file"
+        }),
+    ];
+
+    if let Some(path) = &state.text_view_path {
+        children.push(serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap());
+    }
+
+    if let Some(err) = &state.text_view_error {
+        children.push(serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap());
+    }
+
+    if let Some(content) = &state.text_view_content {
+        children.push(json!({
+            "type": "Text",
+            "text": content,
+            "size": 13.0
+        }));
+    }
+
+    maybe_push_back(&mut children, state);
+
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+}
+
 const SAMPLE_SHADER: &str = r#"
 precision mediump float;
 uniform float u_time;
@@ -1192,6 +1254,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "file_info_screen",
             requires_file_picker: false,
             description: "size & MIME",
+        },
+        Feature {
+            id: "text_viewer",
+            name: "📜 Text viewer",
+            category: "📁 Files",
+            action: "text_viewer_screen",
+            requires_file_picker: true,
+            description: "preview text/CSV",
         },
         Feature {
             id: "pdf_tools",
@@ -1686,6 +1756,39 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.last_sensor_log.as_deref(), Some("/tmp/sensors.csv"));
         assert_eq!(state.sensor_status.as_deref(), Some("logging"));
+    }
+
+    #[test]
+    fn text_viewer_reads_file_via_fd() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "hello from csv").unwrap();
+        let fd = File::open(file.path()).unwrap().into_raw_fd();
+
+        let mut cmd = make_command("text_viewer_open");
+        cmd.fd = Some(fd);
+        cmd.path = Some(file.path().to_string_lossy().into_owned());
+
+        let ui = handle_command(cmd).expect("text viewer should succeed");
+        assert_contains_text(&ui, "hello from csv");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_view_path.as_deref(), Some(file.path().to_string_lossy().as_ref()));
+        assert!(state.text_view_error.is_none());
+    }
+
+    #[test]
+    fn text_viewer_missing_source_sets_error() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let ui = handle_command(make_command("text_viewer_open")).expect("should return UI");
+        assert_contains_text(&ui, "missing_source");
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_view_error.as_deref(), Some("missing_source"));
+        assert!(state.text_view_content.is_none());
     }
 
     #[test]
