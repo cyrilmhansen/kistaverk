@@ -45,15 +45,24 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             "text": category,
             "size": 16.0
         }));
-        for f in feats {
-            children.push(json!({
-                "type": "Button",
-                "id": f.id,
-                "text": format!("{} – {}", f.name, f.description),
-                "action": f.action,
-                "requires_file_picker": f.requires_file_picker
-            }));
-        }
+        let cards: Vec<Value> = feats
+            .iter()
+            .map(|f| {
+                json!({
+                    "type": "Button",
+                    "id": f.id,
+                    "text": format!("{} – {}", f.name, f.description),
+                    "action": f.action,
+                    "requires_file_picker": f.requires_file_picker
+                })
+            })
+            .collect();
+        children.push(json!({
+            "type": "Grid",
+            "columns": 2,
+            "padding": 8,
+            "children": cards
+        }));
     }
 
     if let Some(hash) = &state.last_hash {
