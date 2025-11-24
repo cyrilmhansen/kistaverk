@@ -20,18 +20,11 @@ pub struct Feature {
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     use serde_json::json;
     use std::collections::BTreeMap;
+    use crate::ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Text as UiText};
 
     let mut children = vec![
-        json!({
-            "type": "Text",
-            "text": "🧰 Tool menu",
-            "size": 22.0
-        }),
-        json!({
-            "type": "Text",
-            "text": "✨ Select a tool. Hash tools prompt for a file.",
-            "size": 14.0
-        }),
+        serde_json::to_value(UiText::new("🧰 Tool menu").size(22.0)).unwrap(),
+        serde_json::to_value(UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0)).unwrap(),
     ];
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
@@ -40,50 +33,49 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     }
 
     for (category, feats) in grouped {
-        children.push(json!({
-            "type": "Text",
-            "text": category,
-            "size": 16.0
-        }));
+        children.push(serde_json::to_value(UiText::new(category).size(16.0)).unwrap());
         let cards: Vec<Value> = feats
             .iter()
             .map(|f| {
-                json!({
-                    "type": "Button",
-                    "id": f.id,
-                    "text": format!("{} – {}", f.name, f.description),
-                    "action": f.action,
-                    "requires_file_picker": f.requires_file_picker
-                })
+                serde_json::to_value(
+                    UiButton::new(&format!("{} – {}", f.name, f.description), f.action)
+                        .requires_file_picker(f.requires_file_picker),
+                )
+                .unwrap()
             })
             .collect();
-        children.push(json!({
-            "type": "Grid",
-            "columns": 2,
-            "padding": 8,
-            "children": cards
-        }));
+        children.push(
+            serde_json::to_value(UiGrid::new(cards).columns(2).padding(8)).unwrap(),
+        );
     }
 
     if let Some(hash) = &state.last_hash {
-        children.push(json!({
-            "type": "Text",
-            "text": format!("{}: {}", state.last_hash_algo.clone().unwrap_or_else(|| "Hash".into()), hash),
-            "size": 14.0
-        }));
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!(
+                    "{}: {}",
+                    state
+                        .last_hash_algo
+                        .clone()
+                        .unwrap_or_else(|| "Hash".into()),
+                    hash
+                ))
+                .size(14.0),
+            )
+            .unwrap(),
+        );
     }
 
     if let Some(err) = &state.last_error {
-        children.push(json!({
-            "type": "Text",
-            "text": format!("Error: {}", err),
-            "size": 14.0
-        }));
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Error: {}", err))
+                    .size(14.0)
+                    .content_description("error_text"),
+            )
+            .unwrap(),
+        );
     }
 
-    json!({
-        "type": "Column",
-        "padding": 32,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(32)).unwrap()
 }
