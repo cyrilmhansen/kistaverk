@@ -16,6 +16,9 @@ sha1 = { version = "0.10", default-features = false, features = ["std"] }
 md5 = { package = "md-5", version = "0.10", default-features = false, features = ["std"] }
 md4 = { version = "0.10", default-features = false, features = ["std"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 opt-level = "z"
 lto = true

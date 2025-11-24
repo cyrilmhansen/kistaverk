@@ -21,12 +21,12 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     let mut children = vec![
         json!({
             "type": "Text",
-            "text": "Tool menu",
+            "text": "🧰 Tool menu",
             "size": 22.0
         }),
         json!({
             "type": "Text",
-            "text": "Select a tool. Hash tools prompt for a file.",
+            "text": "✨ Select a tool. Hash tools prompt for a file.",
             "size": 14.0
         }),
     ];
@@ -45,6 +45,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         for f in feats {
             children.push(json!({
                 "type": "Button",
+                "id": f.id,
                 "text": format!("{} – {}", f.name, f.description),
                 "action": f.action,
                 "requires_file_picker": f.requires_file_picker
