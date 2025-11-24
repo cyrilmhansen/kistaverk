@@ -1,6 +1,6 @@
 use crate::state::{AppState, Screen};
+use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,85 +72,67 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
     let target = state.image.target.unwrap_or(ImageTarget::Webp);
     let (title, short_label) = image_target_labels(target);
     let mut children = vec![
-        json!({
-            "type": "Text",
-            "text": format!("{} (Kotlin pipeline)", title),
-            "size": 20.0
-        }),
-        json!({
-            "type": "Text",
-            "text": "Conversion happens on the Kotlin side; Rust keeps navigation and status.",
-            "size": 14.0
-        }),
-        json!({
-            "type": "Text",
-            "text": format!(
+        serde_json::to_value(UiText::new(&format!("{} (Kotlin pipeline)", title)).size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Conversion happens on the Kotlin side; Rust keeps navigation and status.")
+                .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new(&format!(
                 "Output: {}",
                 state
                     .image
                     .output_dir
                     .as_deref()
                     .unwrap_or("MediaStore -> Pictures/kistaverk (visible in gallery)")
-            ),
-            "size": 13.0
-        }),
-        json!({
-            "type": "Button",
-            "text": "Choose output folder (optional)",
-            "action": "kotlin_image_pick_dir",
-            "requires_file_picker": false
-        }),
-        json!({
-            "type": "Button",
-            "text": format!("Select image → {}", short_label),
-            "action": convert_action_for_target(target),
-            "requires_file_picker": true
-        }),
+            ))
+            .size(13.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiButton::new("Choose output folder (optional)", "kotlin_image_pick_dir")
+                .requires_file_picker(false),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiButton::new(&format!("Select image → {}", short_label), convert_action_for_target(target))
+                .requires_file_picker(true),
+        )
+        .unwrap(),
     ];
 
     if let Some(result) = &state.image.result {
         if let Some(err) = &result.error {
-            children.push(json!({
-                "type": "Text",
-                "text": format!("Failed: {err}"),
-                "size": 14.0
-            }));
+            children.push(
+                serde_json::to_value(UiText::new(&format!("Failed: {err}")).size(14.0)).unwrap(),
+            );
         } else {
             if let Some(format) = &result.format {
-                children.push(json!({
-                    "type": "Text",
-                    "text": format!("Saved as {format}"),
-                }));
+                children.push(
+                    serde_json::to_value(UiText::new(&format!("Saved as {format}"))).unwrap(),
+                );
             }
             if let Some(path) = &result.path {
-                children.push(json!({
-                    "type": "Text",
-                    "text": format!("Path: {path}"),
-                }));
+                children.push(
+                    serde_json::to_value(UiText::new(&format!("Path: {path}"))).unwrap(),
+                );
             }
             if let Some(size) = &result.size {
-                children.push(json!({
-                    "type": "Text",
-                    "text": format!("Size: {size}"),
-                }));
+                children.push(
+                    serde_json::to_value(UiText::new(&format!("Size: {size}"))).unwrap(),
+                );
             }
         }
     }
 
     if state.nav_depth() > 1 {
-        children.push(json!({
-            "type": "Button",
-            "text": "Back",
-            "action": "back",
-            "requires_file_picker": false
-        }));
+        children.push(
+            serde_json::to_value(UiButton::new("Back", "back").requires_file_picker(false)).unwrap(),
+        );
     }
 
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
 
 pub fn parse_image_target(raw: &str) -> Option<ImageTarget> {

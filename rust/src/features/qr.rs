@@ -1,4 +1,5 @@
 use crate::state::{AppState, Screen};
+use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use base64::Engine;
 use image::{codecs::png::PngEncoder, ColorType, ImageBuffer, ImageEncoder, Luma};
 use qrcode::{Color, QrCode};
@@ -58,31 +59,19 @@ pub fn handle_qr_action(state: &mut AppState, input: &str) -> Result<(), String>
 
 pub fn render_qr_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
-        json!({ "type": "Text", "text": "QR Code Generator", "size": 20.0 }),
-        json!({
-            "type": "Text",
-            "text": "Enter text to generate a QR code.",
-            "size": 14.0
-        }),
+        serde_json::to_value(UiText::new("QR Code Generator").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new("Enter text to generate a QR code.").size(14.0)).unwrap(),
         json!({
             "type": "TextInput",
             "bind_key": "qr_input",
             "hint": "Text or URL",
             "action_on_submit": "qr_generate"
         }),
-        json!({
-            "type": "Button",
-            "text": "Generate QR",
-            "action": "qr_generate"
-        }),
+        serde_json::to_value(UiButton::new("Generate QR", "qr_generate")).unwrap(),
     ];
 
     if let Some(b64) = &state.last_qr_base64 {
-        children.push(json!({
-            "type": "Text",
-            "text": "Result:",
-            "size": 14.0
-        }));
+        children.push(serde_json::to_value(UiText::new("Result:").size(14.0)).unwrap());
         children.push(json!({
             "type": "ImageBase64",
             "base64": b64,
@@ -90,9 +79,5 @@ pub fn render_qr_screen(state: &AppState) -> serde_json::Value {
         }));
     }
 
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
