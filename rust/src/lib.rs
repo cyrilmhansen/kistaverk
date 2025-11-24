@@ -1,13 +1,14 @@
 mod features;
 mod state;
+use features::file_info::{file_info_from_fd, file_info_from_path};
 use features::hashes::{handle_hash_action, HashAlgo};
 use features::kotlin_image::{
+    handle_output_dir as handle_kotlin_image_output_dir,
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
-    handle_output_dir as handle_kotlin_image_output_dir, parse_image_target,
-    render_kotlin_image_screen, ImageConversionResult, ImageTarget,
+    parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
+use features::text_tools::{handle_text_action, render_text_tools_screen};
 use features::{render_menu, Feature};
-use features::file_info::{file_info_from_fd, file_info_from_path};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -16,6 +17,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use state::{AppState, Screen};
 use std::{
+    collections::HashMap,
     fs::File,
     io::Read,
     os::unix::io::{FromRawFd, RawFd},
@@ -36,6 +38,7 @@ struct Command {
     result_size: Option<String>,
     result_format: Option<String>,
     output_dir: Option<String>,
+    bindings: Option<HashMap<String, String>>,
 }
 
 struct FdHandle(Option<i32>);
@@ -80,6 +83,7 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             result_size: None,
             result_format: None,
             output_dir: None,
+            bindings: None,
         });
 
         handle_command(command)
@@ -114,9 +118,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
         result_size,
         result_format,
         output_dir,
+        bindings,
     } = command;
 
     let mut fd_handle = FdHandle::new(fd);
+    let bindings = bindings.unwrap_or_default();
 
     let mut lock_poisoned = false;
     let mut state = match STATE.lock() {
@@ -137,6 +143,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.last_shader = None;
             state.last_hash_algo = None;
             state.image.reset();
+            state.text_input = None;
+            state.text_output = None;
+            state.text_operation = None;
         }
         "shader_demo" => state.current_screen = Screen::ShaderDemo,
         "file_info_screen" => {
@@ -300,6 +309,24 @@ fn handle_command(command: Command) -> Result<Value, String> {
             };
             state.last_file_info = Some(serde_json::to_string(&info).unwrap_or_default());
         }
+        "text_tools_screen" => {
+            state.current_screen = Screen::TextTools;
+            state.text_output = None;
+            state.text_operation = None;
+            if let Some(input) = bindings.get("text_input") {
+                state.text_input = Some(input.clone());
+            }
+        }
+        "text_tools_upper"
+        | "text_tools_lower"
+        | "text_tools_title"
+        | "text_tools_word_count"
+        | "text_tools_char_count"
+        | "text_tools_trim"
+        | "text_tools_wrap"
+        | "text_tools_clear" => {
+            handle_text_action(&mut state, &action, &bindings);
+        }
         "increment" => state.counter += 1,
         _ => {
             if let Some(err) = command_error {
@@ -376,6 +403,7 @@ fn render_ui(state: &AppState) -> Value {
         }
         Screen::KotlinImage => render_kotlin_image_screen(state),
         Screen::FileInfo => render_file_info_screen(state),
+        Screen::TextTools => render_text_tools_screen(state),
     }
 }
 
@@ -538,6 +566,14 @@ fn feature_catalog() -> Vec<Feature> {
             requires_file_picker: true,
             description: "fast hash",
         },
+        Feature {
+            id: "text_tools",
+            name: "✍️ Text tools",
+            category: "📝 Text",
+            action: "text_tools_screen",
+            requires_file_picker: false,
+            description: "case & counts",
+        },
     ]
 }
 
@@ -545,6 +581,7 @@ fn feature_catalog() -> Vec<Feature> {
 mod tests {
     use super::*;
     use serde_json::Value;
+    use std::collections::HashMap;
     use std::fs::File;
     use std::io::Write;
     use std::os::unix::io::IntoRawFd;
@@ -557,6 +594,7 @@ mod tests {
     const SHA256_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     const SHA1_ABC: &str = "a9993e364706816aba3e25717850c26c9cd0d89d";
     const MD5_ABC: &str = "900150983cd24fb0d6963f7d28e17f72";
+    const SAMPLE_WRAP: &str = "rust keeps your memory safe by design and gives you fearless concurrency without data races";
 
     fn make_command(action: &str) -> Command {
         Command {
@@ -569,6 +607,7 @@ mod tests {
             result_size: None,
             result_format: None,
             output_dir: None,
+            bindings: None,
         }
     }
 
@@ -577,13 +616,20 @@ mod tests {
     }
 
     fn extract_texts(ui: &Value) -> Vec<String> {
-        ui.get("children")
-            .and_then(|c| c.as_array())
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|child| child.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
-            .collect()
+        fn walk(node: &Value, acc: &mut Vec<String>) {
+            if let Some(text) = node.get("text").and_then(|t| t.as_str()) {
+                acc.push(text.to_string());
+            }
+            if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+                for child in children {
+                    walk(child, acc);
+                }
+            }
+        }
+
+        let mut out = Vec::new();
+        walk(ui, &mut out);
+        out
     }
 
     fn assert_contains_text(ui: &Value, needle: &str) {
@@ -638,6 +684,75 @@ mod tests {
         assert_eq!(state.last_hash.as_deref(), Some(SHA1_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-1"));
         assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn text_tools_uppercase_consumes_binding_and_updates_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut command = make_command("text_tools_upper");
+        command.bindings = Some(HashMap::from([("text_input".into(), "Hello rust".into())]));
+
+        let ui = handle_command(command).expect("text command should succeed");
+
+        assert_contains_text(&ui, "HELLO RUST");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_input.as_deref(), Some("Hello rust"));
+        assert_eq!(state.text_output.as_deref(), Some("HELLO RUST"));
+        assert!(matches!(state.current_screen, Screen::TextTools));
+    }
+
+    #[test]
+    fn text_tools_word_count_reports_count() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut command = make_command("text_tools_word_count");
+        command.bindings = Some(HashMap::from([(
+            "text_input".into(),
+            "one two  three".into(),
+        )]));
+
+        let ui = handle_command(command).expect("text command should succeed");
+
+        assert_contains_text(&ui, "Word count: 3");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_output.as_deref(), Some("Word count: 3"));
+    }
+
+    #[test]
+    fn text_tools_wrap_splits_lines() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut command = make_command("text_tools_wrap");
+        command.bindings = Some(HashMap::from([("text_input".into(), SAMPLE_WRAP.into())]));
+
+        let ui = handle_command(command).expect("text command should succeed");
+        let texts = extract_texts(&ui);
+        // Wrapped text should introduce a line break (result block shows raw text)
+        let result = texts
+            .into_iter()
+            .find(|t| t == "Result")
+            .and_then(|_| {
+                // result text is next entry after label in traversal
+                STATE.lock().ok().and_then(|s| s.text_output.clone())
+            })
+            .unwrap_or_default();
+
+        assert!(
+            result.contains('\n'),
+            "expected wrapped text to contain newline, got {result:?}"
+        );
+        let state = STATE.lock().unwrap();
+        assert!(state
+            .text_output
+            .as_deref()
+            .unwrap_or_default()
+            .contains('\n'));
     }
 
     #[test]

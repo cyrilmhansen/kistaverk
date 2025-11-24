@@ -146,6 +146,8 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.documentfile)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
