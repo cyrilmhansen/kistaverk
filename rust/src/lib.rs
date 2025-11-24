@@ -715,20 +715,28 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     state.last_error = Some(e);
                 }
             }
-            state.push_screen(Screen::SensorLogger);
+            if matches!(state.current_screen(), Screen::SensorLogger) {
+                state.replace_current(Screen::SensorLogger);
+            }
         }
         Action::SensorLoggerStop => {
             state.last_error = None;
             state.sensor_status = Some("stopped".into());
-            state.push_screen(Screen::SensorLogger);
+            if matches!(state.current_screen(), Screen::SensorLogger) {
+                state.replace_current(Screen::SensorLogger);
+            }
         }
         Action::SensorLoggerShare => {
             // handled in Kotlin; Rust just keeps screen
-            state.push_screen(Screen::SensorLogger);
+            if matches!(state.current_screen(), Screen::SensorLogger) {
+                state.replace_current(Screen::SensorLogger);
+            }
         }
         Action::SensorLoggerStatus { bindings } => {
             apply_status_from_bindings(&mut state, &bindings);
-            state.push_screen(Screen::SensorLogger);
+            if matches!(state.current_screen(), Screen::SensorLogger) {
+                state.replace_current(Screen::SensorLogger);
+            }
         }
         Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
         Action::LoadShader { path, fd, error } => {
@@ -1745,6 +1753,8 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
 
+        handle_command(make_command("sensor_logger_screen")).unwrap();
+
         let mut cmd = make_command("sensor_logger_status");
         cmd.bindings = Some(HashMap::from([
             ("sensor_status".into(), "logging".into()),
@@ -1777,6 +1787,33 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.text_view_path.as_deref(), Some(file.path().to_string_lossy().as_ref()));
         assert!(state.text_view_error.is_none());
+    }
+
+    #[test]
+    fn sensor_logger_actions_do_not_stack_nav() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        handle_command(make_command("sensor_logger_screen")).unwrap();
+        {
+            let state = STATE.lock().unwrap();
+            assert_eq!(state.nav_depth(), 2);
+            assert!(matches!(state.current_screen(), Screen::SensorLogger));
+        }
+
+        let mut start = make_command("sensor_logger_start");
+        start.bindings = Some(HashMap::from([("sensor_accel".into(), "true".into())]));
+        handle_command(start).unwrap();
+        {
+            let state = STATE.lock().unwrap();
+            assert_eq!(state.nav_depth(), 2);
+            assert!(matches!(state.current_screen(), Screen::SensorLogger));
+        }
+
+        handle_command(make_command("back")).unwrap();
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.nav_depth(), 1);
+        assert!(matches!(state.current_screen(), Screen::Home));
     }
 
     #[test]

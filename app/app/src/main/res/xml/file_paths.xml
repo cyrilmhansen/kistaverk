@@ -6,6 +6,10 @@
     <external-files-path
         name="external_documents"
         path="Documents/" />
+    <!-- Public Documents directory for user-readable sensor logs -->
+    <external-path
+        name="public_documents"
+        path="Documents/" />
     <!-- Internal files dir fallback -->
     <files-path
         name="internal_files"
