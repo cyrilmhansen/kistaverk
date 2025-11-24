@@ -73,6 +73,8 @@ fn info_from_reader(file: File) -> FileInfoResult {
     };
 
     let detector = Infer::new();
-    info.mime = detector.get(&buf[..read]).map(|t| t.mime_type().to_string());
+    info.mime = detector
+        .get(&buf[..read])
+        .map(|t| t.mime_type().to_string());
     info
 }
