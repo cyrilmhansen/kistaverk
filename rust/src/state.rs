@@ -17,6 +17,7 @@ pub enum Screen {
     PdfTools,
     About,
     SensorLogger,
+    TextViewer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,9 @@ pub struct AppState {
     pub sensor_status: Option<String>,
     pub sensor_interval_ms: Option<u64>,
     pub sensor_selection: Option<SensorSelection>,
+    pub text_view_content: Option<String>,
+    pub text_view_path: Option<String>,
+    pub text_view_error: Option<String>,
 }
 
 impl AppState {
@@ -69,6 +73,9 @@ impl AppState {
             sensor_status: None,
             sensor_interval_ms: None,
             sensor_selection: None,
+            text_view_content: None,
+            text_view_path: None,
+            text_view_error: None,
         }
     }
 
@@ -137,5 +144,8 @@ impl AppState {
         self.sensor_status = None;
         self.sensor_interval_ms = None;
         self.sensor_selection = None;
+        self.text_view_content = None;
+        self.text_view_path = None;
+        self.text_view_error = None;
     }
 }
