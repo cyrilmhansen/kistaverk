@@ -52,6 +52,7 @@ Instead of C/C++, we choose **Rust** for the low-level core.
     *   The core is a Rust library compiled as a JNI `.so`.
     *   It handles navigation, state, and pure-Rust features (streaming hashes) and also orchestrates screens whose heavy lifting happens in Kotlin (image conversion).
     *   Panic Strategy: The Rust core catches panics (`std::panic::catch_unwind`) and returns them as JSON error messages to the UI, preventing the App from crashing.
+    *   Android build uses Gradle to call Cargo; cargo path is resolved from `CARGO` env or PATH (not hardcoded), keeping NDK/strip settings intact.
 
 ### Why not a Scripting Language (Lua/JS)?
 To maintain the "Micro-tool" philosophy (< 5MB APK), we avoid embedding interpreters.
