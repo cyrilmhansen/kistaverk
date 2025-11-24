@@ -40,6 +40,7 @@ struct Command {
     output_dir: Option<String>,
     bindings: Option<HashMap<String, String>>,
     loading_only: Option<bool>,
+    snapshot: Option<String>,
 }
 
 #[derive(Debug)]
@@ -88,6 +89,8 @@ enum Action {
     },
     ProgressDemoFinish,
     Increment,
+    Snapshot,
+    Restore { snapshot: String },
 }
 
 struct FdHandle(Option<i32>);
@@ -123,6 +126,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         output_dir,
         bindings,
         loading_only,
+        snapshot,
     } = command;
 
     let bindings = bindings.unwrap_or_default();
@@ -207,6 +211,10 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "file_info" => Ok(Action::FileInfo { path, fd, error }),
         "text_tools_screen" => Ok(Action::TextToolsScreen { bindings }),
         "increment" => Ok(Action::Increment),
+        "snapshot" => Ok(Action::Snapshot),
+        "restore_state" => snapshot
+            .ok_or_else(|| "missing_snapshot".to_string())
+            .map(|snap| Action::Restore { snapshot: snap }),
         other => {
             if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
@@ -285,11 +293,12 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             target: None,
             result_path: None,
             result_size: None,
-            result_format: None,
-            output_dir: None,
-            bindings: None,
-            loading_only: None,
-        });
+        result_format: None,
+        output_dir: None,
+        bindings: None,
+        loading_only: None,
+        snapshot: None,
+    });
 
         handle_command(command)
     }));
@@ -336,6 +345,26 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::Init => {
             // Keep current state; ensure navigation is initialized.
             state.ensure_navigation();
+        }
+        Action::Snapshot => {
+            state.ensure_navigation();
+            let snap = serde_json::to_string(&*state)
+                .map_err(|e| format!("snapshot_failed:{e}"))?;
+            return Ok(json!({
+                "type": "Snapshot",
+                "snapshot": snap
+            }));
+        }
+        Action::Restore { snapshot } => {
+            match serde_json::from_str::<AppState>(&snapshot) {
+                Ok(mut restored) => {
+                    restored.ensure_navigation();
+                    *state = restored;
+                }
+                Err(e) => {
+                    state.last_error = Some(format!("restore_failed:{e}"));
+                }
+            }
         }
         Action::Reset => {
             state.reset_runtime();
@@ -810,6 +839,7 @@ mod tests {
             output_dir: None,
             bindings: None,
             loading_only: None,
+            snapshot: None,
         }
     }
 
@@ -1046,6 +1076,42 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.nav_depth(), 1);
         assert!(matches!(state.current_screen(), Screen::Home));
+    }
+
+    #[test]
+    fn snapshot_and_restore_round_trip() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        // Move into text tools and set some state
+        let mut cmd = make_command("text_tools_upper");
+        cmd.bindings = Some(HashMap::from([("text_input".into(), "hi".into())]));
+        handle_command(cmd).expect("text action should succeed");
+
+        let snap_value = handle_command(make_command("snapshot")).expect("snapshot should succeed");
+        let snap_str = snap_value
+            .get("snapshot")
+            .and_then(|v| v.as_str())
+            .expect("snapshot missing");
+
+        // Reset state and ensure we go back to home
+        reset_state();
+        {
+            let state = STATE.lock().unwrap();
+            assert!(matches!(state.current_screen(), Screen::Home));
+            assert!(state.text_output.is_none());
+        }
+
+        let mut restore_cmd = make_command("restore_state");
+        restore_cmd.snapshot = Some(snap_str.to_string());
+        let ui_after_restore =
+            handle_command(restore_cmd).expect("restore should succeed and return UI");
+        assert_contains_text(&ui_after_restore, "Result");
+
+        let state = STATE.lock().unwrap();
+        assert!(matches!(state.current_screen(), Screen::TextTools));
+        assert_eq!(state.text_output.as_deref(), Some("HI"));
+        assert_eq!(state.text_input.as_deref(), Some("hi"));
     }
 
     #[test]

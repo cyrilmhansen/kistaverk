@@ -20,6 +20,7 @@ import android.widget.TextView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
     private var contentHolder: FrameLayout? = null
     private var overlayView: View? = null
     private var lastResult: String? = null
+    private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -156,8 +158,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Initial Load
-        refreshUi("init")
+        val restoredSnapshot = savedInstanceState?.getString(snapshotKey)
+        if (restoredSnapshot != null) {
+            lifecycleScope.launch { restoreSnapshotAndRender(restoredSnapshot) }
+        } else {
+            refreshUi("init")
+        }
 
         onBackPressedDispatcher.addCallback(
             this,
@@ -167,6 +173,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         )
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val snapshot = runBlocking {
+            withContext(Dispatchers.IO) { requestSnapshot() }
+        }
+        if (snapshot != null) {
+            outState.putString(snapshotKey, snapshot)
+        }
     }
 
     private fun refreshUi(
@@ -213,6 +229,37 @@ class MainActivity : ComponentActivity() {
 
             cacheLastResult(newUiJson)
         }
+    }
+
+    private suspend fun restoreSnapshotAndRender(snapshot: String) {
+        val command = JSONObject().apply {
+            put("action", "restore_state")
+            put("snapshot", snapshot)
+        }
+
+        val newUiJson = withContext(Dispatchers.IO) {
+            dispatch(command.toString())
+        }
+
+        val rootView = runCatching { renderer.render(newUiJson) }
+            .getOrElse { throwable ->
+                renderer.renderFallback(
+                    title = "Render error",
+                    message = throwable.message ?: "unknown_render_error"
+                )
+            }
+        attachContent(rootView)
+        hideOverlay()
+        cacheLastResult(newUiJson)
+    }
+
+    private fun requestSnapshot(): String? {
+        val command = JSONObject().apply {
+            put("action", "snapshot")
+        }
+        val json = dispatch(command.toString())
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return null
+        return obj.optString("snapshot").takeIf { it.isNotEmpty() }
     }
 
     private fun openFdForUri(uri: Uri): Int? {
@@ -342,7 +389,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         init {
-            System.loadLibrary("kistaverk_core")
+            if (System.getProperty("kistaverk.skipNativeLoad") != "true") {
+                System.loadLibrary("kistaverk_core")
+            }
         }
     }
 }
