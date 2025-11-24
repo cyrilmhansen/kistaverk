@@ -28,6 +28,7 @@ import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
+import org.json.JSONArray
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.ProgressBar
@@ -53,7 +54,8 @@ class UiRenderer(
         "ImageBase64",
         "ColorSwatch",
         "PdfPagePicker",
-        "SignaturePad"
+        "SignaturePad",
+        "DepsList"
     )
 
     fun render(jsonString: String): View {
@@ -128,6 +130,7 @@ class UiRenderer(
             "ColorSwatch" -> createColorSwatch(data)
             "PdfPagePicker" -> createPdfPagePicker(data)
             "SignaturePad" -> createSignaturePad(data)
+            "DepsList" -> createDepsList()
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -153,6 +156,9 @@ class UiRenderer(
         }
         if (type == "SignaturePad") {
             if (!node.has("bind_key")) return "SignaturePad missing bind_key"
+        }
+        if (type == "DepsList") {
+            // no required fields
         }
         if (type == "Grid") {
             val children = node.optJSONArray("children") ?: return "Grid missing children"
@@ -564,6 +570,64 @@ class UiRenderer(
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun createDepsList(): View {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        }
+        val scroll = ScrollView(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, 240f))
+        }
+        val inner = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            val pad = dpToPx(context, 8f)
+            setPadding(pad, pad, pad, pad)
+        }
+
+        val deps = readDepsFromAssets()
+        if (deps.isEmpty()) {
+            inner.addView(TextView(context).apply {
+                text = "Dependencies unavailable"
+                textSize = 12f
+            })
+        } else {
+            deps.forEach { item ->
+                inner.addView(TextView(context).apply {
+                    text = item
+                    textSize = 12f
+                })
+            }
+        }
+
+        scroll.addView(inner)
+        container.addView(scroll)
+        return container
+    }
+
+    private fun readDepsFromAssets(): List<String> {
+        return try {
+            val input = context.assets.open("deps.json")
+            val text = input.bufferedReader().use { it.readText() }
+            val root = JSONObject(text)
+            val arr: JSONArray = root.optJSONArray("packages") ?: return emptyList()
+            val out = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val name = obj.optString("name", "")
+                val ver = obj.optString("version", "")
+                val lic = obj.optString("license", "")
+                val link = obj.optString("repository", obj.optString("homepage", "https://lib.rs"))
+                if (name.isNotEmpty()) {
+                    out.add("$name $ver (${lic.ifEmpty { "unknown license" }}): $link")
+                }
+            }
+            out
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 

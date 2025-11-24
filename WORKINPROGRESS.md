@@ -4,7 +4,7 @@
 
 ## 📅 Current Status
 **Last Updated:** 2025-11-24
-**Phase:** File-hash demo live + Shader demo + Text tools screen + PDF page tools (extract/delete/merge/title) + PDF signature stamping + Play packaging (arm64-only)
+**Phase:** File-hash demo live + Shader demo + Text tools screen + PDF page tools (extract/delete/merge/title) + PDF signature stamping + About screen + Play packaging (arm64-only)
 
 
 📝 NEXT STEPS: Project Roadmap
@@ -56,7 +56,7 @@ Tech: Complex binary parsing.
 ## Snapshot
 - Kotlin now launches the system file picker (detaching FDs), forwards a `bindings` map with UI state, and renders Text/Button/ShaderToy/TextInput/Checkbox/Progress; Columns wrap in ScrollView and Grids auto-pick columns (1/2). Overlay spinner keeps prior screen visible during loading-only calls.
 - Rust owns UI and navigation via a `Vec<Screen>` stack with typed `Action`/`TextAction`; hardware Back from Kotlin calls `back` and Rust pops safely (Home is root). Inline Back buttons only appear when depth > 1. `snapshot`/`restore_state` serialize/rehydrate AppState; Kotlin persists the snapshot in the Activity bundle.
-- Features: streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), Shader demo, Kotlin image conversion flow with output dir selection, Text Tools (upper/lower/title/wrap/trim/count/Base64/URL/Hex) with copy/share hooks, Progress demo, File info, QR generator (base64 PNG), Color Converter (Hex↔RGB/HSL with swatch and per-format copy buttons), PDF tools (page picker + extract/delete/merge/title, signature stamping via lopdf, PdfRenderer thumbnails, SignaturePad capture).
+- Features: streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), Shader demo, Kotlin image conversion flow with output dir selection, Text Tools (upper/lower/title/wrap/trim/count/Base64/URL/Hex) with copy/share hooks, Progress demo, File info, QR generator (base64 PNG), Color Converter (Hex↔RGB/HSL with swatch and per-format copy buttons), PDF tools (page picker + extract/delete/merge/title, signature stamping via lopdf, PdfRenderer thumbnails, SignaturePad capture), About screen (version, copyright, GPLv3).
 - Renderer guardrails: Kotlin validates JSON with a widget whitelist/required children before rendering; malformed payloads fall back to an inline error screen. Accessibility strings flow through `content_description`. Clipboard copy supported via `copy_text` on buttons; clipboard text is injected into bindings when small.
 - Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases + snapshot/restore + validation/clipboard with JNI mocked) pass.
 
@@ -76,6 +76,7 @@ Tech: Complex binary parsing.
 - Execute Robolectric tests routinely and wire into CI; fix Gradle wrapper permissions or vendor the distribution to keep tests runnable.
 - Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; regenerate AAB and verify size with `scripts/size_report.sh`.
 - Add UI/UX for signature placement preview and validate PDF alias entry path (activity-alias); verify PdfRenderer/FD flows under TalkBack.
+- Ensure deps.json generation stays wired (rust/scripts/generate_deps_metadata.sh hooked to Gradle preBuild) and About shows scrollable deps list from assets.
 
 ## MVP / Easy Wins
 - Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput/Checkbox (e.g., unknown type handling).

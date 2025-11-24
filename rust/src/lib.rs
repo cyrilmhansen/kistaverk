@@ -143,6 +143,7 @@ enum Action {
         data: Option<String>,
     },
     PdfSignatureClear,
+    About,
     Increment,
     Snapshot,
     Restore { snapshot: String },
@@ -230,6 +231,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
             data: bindings.get("signature_base64").cloned(),
         }),
         "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
+        "about" => Ok(Action::About),
         "shader_demo" => Ok(Action::ShaderDemo),
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
@@ -654,6 +656,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.pdf.last_error = None;
             state.push_screen(Screen::PdfTools);
         }
+        Action::About => {
+            state.push_screen(Screen::About);
+        }
         Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
         Action::LoadShader { path, fd, error } => {
             let mut fd_handle = FdHandle::new(fd);
@@ -846,6 +851,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Qr => render_qr_screen(state),
         Screen::ColorTools => render_color_screen(state),
         Screen::PdfTools => render_pdf_screen(state),
+        Screen::About => render_about_screen(state),
     }
 }
 
@@ -993,6 +999,34 @@ fn render_progress_demo_screen(state: &AppState) -> Value {
     })
 }
 
+fn render_about_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("About Kistaverk").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new(&format!("Version: {}", env!("CARGO_PKG_VERSION")))
+                .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new("Copyright © 2025 Kistaverk")
+                .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new("License: GPLv3").size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new("This app is open-source under GPL-3.0; contributions welcome.")
+                .size(12.0),
+        )
+        .unwrap(),
+        json!({ "type": "DepsList" }),
+    ];
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
+}
+
 const SAMPLE_SHADER: &str = r#"
 precision mediump float;
 uniform float u_time;
@@ -1126,6 +1160,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "color_from_hex",
             requires_file_picker: false,
             description: "Hex ↔ RGB/HSL",
+        },
+        Feature {
+            id: "about",
+            name: "ℹ️ About",
+            category: "Info",
+            action: "about",
+            requires_file_picker: false,
+            description: "version & license",
         },
     ]
 }

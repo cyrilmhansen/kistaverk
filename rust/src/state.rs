@@ -14,6 +14,7 @@ pub enum Screen {
     Qr,
     ColorTools,
     PdfTools,
+    About,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

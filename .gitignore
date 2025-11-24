@@ -54,3 +54,4 @@ app/src/main/jniLibs/
 .history/
 *~
 app/.idea/caches/
+app/src/main/assets/deps.json
