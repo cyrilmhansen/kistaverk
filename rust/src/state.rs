@@ -7,6 +7,7 @@ pub enum Screen {
     ShaderDemo,
     KotlinImage,
     FileInfo,
+    TextTools,
 }
 
 pub struct AppState {
@@ -18,6 +19,9 @@ pub struct AppState {
     pub last_hash_algo: Option<String>,
     pub image: KotlinImageState,
     pub last_file_info: Option<String>,
+    pub text_input: Option<String>,
+    pub text_output: Option<String>,
+    pub text_operation: Option<String>,
 }
 
 impl AppState {
@@ -32,6 +36,9 @@ impl AppState {
             last_hash_algo: None,
             image: KotlinImageState::new(),
             last_file_info: None,
+            text_input: None,
+            text_output: None,
+            text_operation: None,
         }
     }
 }
