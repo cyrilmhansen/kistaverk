@@ -8,6 +8,10 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
         state.text_input = Some(input.clone());
     }
 
+    if let Some(flag) = parse_bool(bindings.get("aggressive_trim")) {
+        state.text_aggressive_trim = flag;
+    }
+
     let input = state.text_input.clone().unwrap_or_default();
     state.current_screen = Screen::TextTools;
 
@@ -49,9 +53,17 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
             state.text_operation = Some("Character count".into());
         }
         "text_tools_trim" => {
-            let trimmed = input.split_whitespace().collect::<Vec<_>>().join(" ");
+            let trimmed = if state.text_aggressive_trim {
+                input.split_whitespace().collect::<Vec<_>>().join(" ")
+            } else {
+                input.trim().to_string()
+            };
             state.text_output = Some(trimmed);
-            state.text_operation = Some("Trim spacing".into());
+            state.text_operation = Some(if state.text_aggressive_trim {
+                "Trim spacing (collapse)".into()
+            } else {
+                "Trim edges".into()
+            });
         }
         "text_tools_wrap" => {
             let wrapped = wrap_text(&input, 72);
@@ -63,8 +75,23 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
             state.text_output = None;
             state.text_operation = Some("Cleared".into());
         }
+        "text_tools_refresh" => {
+            // No-op: used to capture bindings (e.g., checkbox toggles) and re-render.
+            state.text_operation = state.text_operation.take();
+        }
         _ => {}
     }
+}
+
+fn parse_bool(value: Option<&String>) -> Option<bool> {
+    value.and_then(|v| {
+        let lower = v.to_ascii_lowercase();
+        match lower.as_str() {
+            "true" | "1" | "yes" | "on" => Some(true),
+            "false" | "0" | "no" | "off" => Some(false),
+            _ => None,
+        }
+    })
 }
 
 fn wrap_text(input: &str, width: usize) -> String {
@@ -132,6 +159,13 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
             "padding": 8,
             "children": [
                 { "type": "Text", "text": "Counts & cleanup", "size": 14.0 },
+                {
+                    "type": "Checkbox",
+                    "text": "Aggressive trim (collapse whitespace)",
+                    "bind_key": "aggressive_trim",
+                    "checked": state.text_aggressive_trim,
+                    "action": "text_tools_refresh"
+                },
                 { "type": "Button", "text": "Word count", "action": "text_tools_word_count" },
                 { "type": "Button", "text": "Character count", "action": "text_tools_char_count" },
                 { "type": "Button", "text": "Trim spacing", "action": "text_tools_trim" },

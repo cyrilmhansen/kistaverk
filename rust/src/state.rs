@@ -22,6 +22,7 @@ pub struct AppState {
     pub text_input: Option<String>,
     pub text_output: Option<String>,
     pub text_operation: Option<String>,
+    pub text_aggressive_trim: bool,
 }
 
 impl AppState {
@@ -39,6 +40,7 @@ impl AppState {
             text_input: None,
             text_output: None,
             text_operation: None,
+            text_aggressive_trim: false,
         }
     }
 }

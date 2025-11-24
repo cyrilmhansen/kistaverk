@@ -8,6 +8,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -73,6 +74,7 @@ class UiRenderer(
             "Button" -> createButton(data)
             "ShaderToy" -> createShaderToy(data)
             "TextInput" -> createTextInput(data)
+            "Checkbox" -> createCheckbox(data)
             else -> createErrorView("Unknown: $type")
         }
     }
@@ -198,6 +200,36 @@ class UiRenderer(
             view.contentDescription = contentDescription
         }
         return view
+    }
+
+    private fun createCheckbox(data: JSONObject): View {
+        val checkBox = CheckBox(context)
+        val text = data.optString("text", data.optString("label", ""))
+        checkBox.text = text
+
+        val bindKey = data.optString("bind_key", "")
+        val checked = data.optBoolean("checked", false)
+        checkBox.isChecked = checked
+        if (bindKey.isNotEmpty()) {
+            bindings[bindKey] = checked.toString()
+        }
+
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            checkBox.contentDescription = contentDescription
+        }
+
+        val actionName = data.optString("action", "")
+        val needsFilePicker = data.optBoolean("requires_file_picker", false)
+        if (bindKey.isNotEmpty()) {
+            checkBox.setOnCheckedChangeListener { _, isChecked ->
+                bindings[bindKey] = isChecked.toString()
+                if (actionName.isNotEmpty()) {
+                    onAction(actionName, needsFilePicker, bindings.toMap())
+                }
+            }
+        }
+        return checkBox
     }
 
     private class ShaderToyView(context: Context, fragmentSrc: String) : GLSurfaceView(context) {

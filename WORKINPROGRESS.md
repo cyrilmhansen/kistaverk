@@ -4,7 +4,7 @@
 
 ## 📅 Current Status
 **Last Updated:** 2025-11-26
-**Phase:** File-hash demo live (picker → Rust hashes SHA256/SHA1/MD5/MD4/CRC32/BLAKE3) + Shader demo + Text tools screen (wrap/trim/count) + Play packaging (arm64-only)
+**Phase:** File-hash demo live (picker → Rust hashes SHA256/SHA1/MD5/MD4/CRC32/BLAKE3) + Shader demo + Text tools screen (wrap/trim/count + checkbox) + Play packaging (arm64-only)
 
 
 📝 NEXT STEPS: Project Roadmap
@@ -15,7 +15,7 @@ Navigation Router: Implement a navigation stack in Rust.
 Goal: Handle "Back" button hardware events (Android sends "Back" -> Rust pops state -> Rust returns previous screen JSON).
 Action Dispatcher: Create a typed enum Action in Rust (instead of raw string matching) to handle events cleanly (Action::NavigateTo(ToolId), Action::SelectFile(Path)).
 2. The UI Engine: Expanding the Vocabulary
-The Kotlin UiRenderer now supports TextInput with bindings and propagates `content_description` for TalkBack. Next widgets: Checkbox and list/grid for menus.
+The Kotlin UiRenderer now supports TextInput and Checkbox with bindings and propagates `content_description` for TalkBack. Next widgets: list/grid for menus.
 File Pickers: This is critical.
 Challenge: Rust cannot open files directly on modern Android (Scoped Storage).
 Solution: The JSON requests a FilePicker. Kotlin opens the system picker, gets a File Descriptor (FD), and passes the FD (int) to Rust.
@@ -59,17 +59,21 @@ Tech: Complex binary parsing.
 - Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Catch_unwind guards JNI panics, poisoned locks recover. Added Shader demo, Kotlin image conversion screen, and a Rust-driven Text Tools screen (upper/lower/title/wrap/trim/word & char counts) with inline result block.
 - Home menu is generated from a feature catalog grouped by category (Hashes, Graphics, Media, Text). Text tools are reachable from the menu without pickers.
 - Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused profile, excludes unused META-INF resources, disables BuildConfig, targets arm64-v8a only. Cargo task resolves `cargo` from PATH/`CARGO`. Gradle density splits removed (AAB handles density).
-<<<<<<< HEAD
-- Tests: `cargo test` passes; `./gradlew test` passes with Robolectric TextInput binding tests after adding the test runner annotation.
+## Snapshot
+- Kotlin now launches the system file picker (detaching FDs), forwards a `bindings` map with UI state, and renders TextInput, Checkbox, Text/Button/ShaderToy. Buttons support `requires_file_picker`; Columns are wrapped in ScrollView. Content descriptions flow to Text/Button/Column/ShaderToy/TextInput/Checkbox.
+- Rust computes streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), stores `last_hash`/`last_hash_algo`/`last_error`, and returns updated UI JSON. Catch_unwind guards JNI panics, poisoned locks recover. Added Shader demo, Kotlin image conversion screen, and a Rust-driven Text Tools screen (upper/lower/title/wrap/trim/word & char counts + aggressive trim checkbox) with inline result block.
+- Home menu is generated from a feature catalog grouped by category (Hashes, Graphics, Media, Text). Text tools are reachable from the menu without pickers.
+- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), enables ABI splits for Play, strips Rust symbols with size-focused profile, excludes unused META-INF resources, disables BuildConfig, targets arm64-v8a only. Cargo task resolves `cargo` from PATH/`CARGO`. Gradle density splits removed (AAB handles density).
+- Tests: `cargo test` passes; `./gradlew test` passes with Robolectric TextInput/Checkbox binding tests.
 
 ## Known Issues / Risks
 - Renderer still trusts incoming JSON and can crash on malformed output; Kotlin has a fallback but we lack schema validation and more granular error UI.
-- State is ephemeral; no serialization/restoration path; only limited unit tests on dispatch/render. No coverage for Kotlin JSON parsing beyond the new TextInput tests (not yet executed in CI).
+- State is ephemeral; no serialization/restoration path; limited unit tests on dispatch/render; Kotlin JSON parsing is only lightly covered (TextInput/Checkbox tests, not yet in CI).
 - Cargo build task still compiles only arm64-v8a but stale armeabi-v7a artifacts may exist locally; packaging ignores them. Image conversion flow depends on MediaStore/SAF; on-device permission UX not yet validated.
 - Gradle wrapper download may hit filesystem permission errors on some hosts; rerun with writable ~/.gradle or vendored distribution (current run succeeded with permissions).
 
 ## Next Implementation Step
-1. Run Android unit tests (`./gradlew test`) once Gradle wrapper permissions are fixed, to exercise the new TextInput/IME binding tests.
+1. Add a loading indicator widget and render a "Computing..." state during hash operations, then return results.
 
 ## Near-Term Tasks
 - Introduce typed `Command`/`Action` + richer `Screen` enum in Rust (navigation stack) and move UI generation to builders/serde structs.
@@ -78,8 +82,7 @@ Tech: Complex binary parsing.
 - Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; regenerate AAB and verify size with `scripts/size_report.sh`.
 
 ## MVP / Easy Wins
-- Add a checkbox widget plus basic validation errors in TextInput (length limits, required message).
-- Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput (e.g., unknown type handling).
+- Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput/Checkbox (e.g., unknown type handling).
 
 ## Feature Ideas (low dependency)
 - QR code generator: Rust `qrcode` crate (tiny), output PNG bytes; Kotlin decodes with `BitmapFactory.decodeByteArray` and renders in `ImageView`.
