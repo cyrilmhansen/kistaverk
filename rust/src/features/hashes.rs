@@ -1,7 +1,6 @@
 use crate::state::AppState;
 use md4::Md4;
 use md5::Md5;
-use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{digest::Digest, Sha256};
 use std::fs::File;
@@ -14,12 +13,6 @@ pub enum HashAlgo {
     Sha1,
     Md5,
     Md4,
-}
-
-#[derive(Deserialize)]
-pub struct Command {
-    pub path: Option<String>,
-    pub error: Option<String>,
 }
 
 pub fn handle_hash_action(

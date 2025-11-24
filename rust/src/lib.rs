@@ -274,32 +274,32 @@ fn feature_catalog() -> Vec<Feature> {
     vec![
         Feature {
             id: "hash_sha256",
-            name: "SHA-256",
-            category: "Hashes",
+            name: "🔒 SHA-256",
+            category: "🔐 Hashes",
             action: "hash_file_sha256",
             requires_file_picker: true,
             description: "secure hash",
         },
         Feature {
             id: "hash_sha1",
-            name: "SHA-1",
-            category: "Hashes",
+            name: "🛡️ SHA-1",
+            category: "🔐 Hashes",
             action: "hash_file_sha1",
             requires_file_picker: true,
             description: "legacy hash",
         },
         Feature {
             id: "hash_md5",
-            name: "MD5",
-            category: "Hashes",
+            name: "📦 MD5",
+            category: "🔐 Hashes",
             action: "hash_file_md5",
             requires_file_picker: true,
             description: "legacy hash",
         },
         Feature {
             id: "hash_md4",
-            name: "MD4",
-            category: "Hashes",
+            name: "📜 MD4",
+            category: "🔐 Hashes",
             action: "hash_file_md4",
             requires_file_picker: true,
             description: "legacy hash",
@@ -313,4 +313,141 @@ fn feature_catalog() -> Vec<Feature> {
             description: "GLSL sample",
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use std::fs::File;
+    use std::io::Write;
+    use std::os::unix::io::IntoRawFd;
+    use std::sync::Mutex;
+    use tempfile::NamedTempFile;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    const SAMPLE_CONTENT: &str = "abc";
+    const SHA256_ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    const SHA1_ABC: &str = "a9993e364706816aba3e25717850c26c9cd0d89d";
+    const MD5_ABC: &str = "900150983cd24fb0d6963f7d28e17f72";
+
+    fn reset_state() {
+        handle_command(Command {
+            action: "reset".into(),
+            path: None,
+            fd: None,
+            error: None,
+        })
+        .expect("reset command should succeed");
+    }
+
+    fn extract_texts(ui: &Value) -> Vec<String> {
+        ui.get("children")
+            .and_then(|c| c.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|child| child.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+            .collect()
+    }
+
+    fn assert_contains_text(ui: &Value, needle: &str) {
+        let texts = extract_texts(ui);
+        assert!(
+            texts.iter().any(|t| t.contains(needle)),
+            "expected UI to contain text with `{needle}`, found: {texts:?}"
+        );
+    }
+
+    #[test]
+    fn hash_file_sha256_via_path_updates_ui_and_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let ui = handle_command(Command {
+            action: "hash_file_sha256".into(),
+            path: Some(file.path().to_string_lossy().into_owned()),
+            fd: None,
+            error: None,
+        })
+        .expect("hash command should succeed");
+
+        assert_contains_text(&ui, &format!("SHA-256: {SHA256_ABC}"));
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
+        assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn hash_file_sha1_via_fd_updates_ui_and_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let fd = File::open(file.path()).unwrap().into_raw_fd();
+
+        let ui = handle_command(Command {
+            action: "hash_file_sha1".into(),
+            path: None,
+            fd: Some(fd),
+            error: None,
+        })
+        .expect("hash command should succeed");
+
+        assert_contains_text(&ui, &format!("SHA-1: {SHA1_ABC}"));
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.last_hash.as_deref(), Some(SHA1_ABC));
+        assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-1"));
+        assert!(state.last_error.is_none());
+    }
+
+    #[test]
+    fn missing_source_sets_error_and_clears_previous_hash() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        handle_command(Command {
+            action: "hash_file_md5".into(),
+            path: Some(file.path().to_string_lossy().into_owned()),
+            fd: None,
+            error: None,
+        })
+        .expect("initial hash should succeed");
+
+        {
+            let state = STATE.lock().unwrap();
+            assert_eq!(state.last_hash.as_deref(), Some(MD5_ABC));
+            assert_eq!(state.last_hash_algo.as_deref(), Some("MD5"));
+        }
+
+        let ui = handle_command(Command {
+            action: "hash_file_md4".into(),
+            path: None,
+            fd: None,
+            error: None,
+        })
+        .expect("hash command should still return UI even when failing");
+
+        assert_contains_text(&ui, "missing_path");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.last_hash, None);
+        assert_eq!(state.last_error.as_deref(), Some("missing_path"));
+        assert_eq!(state.last_hash_algo.as_deref(), Some("MD4"));
+    }
 }
