@@ -245,6 +245,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "color_copy_hex_input" => Ok(Action::ColorCopyHexInput {
             input: bindings
                 .get("color_input")
+                .or_else(|| bindings.get("clipboard"))
                 .cloned()
                 .or_else(|| path.clone()),
         }),
