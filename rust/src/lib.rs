@@ -144,6 +144,14 @@ enum Action {
     },
     PdfSignatureClear,
     About,
+    SensorLoggerScreen,
+    SensorLoggerStart,
+    SensorLoggerStop,
+    SensorLoggerShare,
+    SensorLoggerStatus {
+        status: Option<String>,
+        path: Option<String>,
+    },
     Increment,
     Snapshot,
     Restore { snapshot: String },
@@ -232,6 +240,14 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
         "about" => Ok(Action::About),
+        "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
+        "sensor_logger_start" => Ok(Action::SensorLoggerStart),
+        "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
+        "sensor_logger_share" => Ok(Action::SensorLoggerShare),
+        "sensor_logger_status" => Ok(Action::SensorLoggerStatus {
+            status: bindings.get("sensor_status").cloned(),
+            path: bindings.get("sensor_path").cloned(),
+        }),
         "shader_demo" => Ok(Action::ShaderDemo),
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
@@ -659,6 +675,32 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::About => {
             state.push_screen(Screen::About);
         }
+        Action::SensorLoggerScreen => {
+            state.push_screen(Screen::SensorLogger);
+        }
+        Action::SensorLoggerStart => {
+            state.last_error = None;
+            state.sensor_status = Some("logging".into());
+            state.push_screen(Screen::SensorLogger);
+        }
+        Action::SensorLoggerStop => {
+            state.last_error = None;
+            state.sensor_status = Some("stopped".into());
+            state.push_screen(Screen::SensorLogger);
+        }
+        Action::SensorLoggerShare => {
+            // handled in Kotlin; Rust just keeps screen
+            state.push_screen(Screen::SensorLogger);
+        }
+        Action::SensorLoggerStatus { status, path } => {
+            if let Some(s) = status {
+                state.sensor_status = Some(s);
+            }
+            if let Some(p) = path {
+                state.last_sensor_log = Some(p);
+            }
+            state.push_screen(Screen::SensorLogger);
+        }
         Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
         Action::LoadShader { path, fd, error } => {
             let mut fd_handle = FdHandle::new(fd);
@@ -852,6 +894,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::ColorTools => render_color_screen(state),
         Screen::PdfTools => render_pdf_screen(state),
         Screen::About => render_about_screen(state),
+        Screen::SensorLogger => render_sensor_logger_screen(state),
     }
 }
 
@@ -1027,6 +1070,42 @@ fn render_about_screen(state: &AppState) -> Value {
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
 
+fn render_sensor_logger_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Sensor Logger").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Logs magnetometer/gyro/pressure/battery to CSV in app storage.")
+                .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(UiButton::new("Start logging", "sensor_logger_start")).unwrap(),
+        serde_json::to_value(UiButton::new("Stop logging", "sensor_logger_stop")).unwrap(),
+    ];
+
+    if let Some(status) = &state.sensor_status {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Status: {}", status)).size(12.0)).unwrap(),
+        );
+    }
+    if let Some(path) = &state.last_sensor_log {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Last log: {}", path)).size(12.0),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Share last log", "sensor_logger_share"),
+            )
+            .unwrap(),
+        );
+    }
+
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+}
+
 const SAMPLE_SHADER: &str = r#"
 precision mediump float;
 uniform float u_time;
@@ -1160,6 +1239,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "color_from_hex",
             requires_file_picker: false,
             description: "Hex ↔ RGB/HSL",
+        },
+        Feature {
+            id: "sensor_logger",
+            name: "📡 Sensor Logger",
+            category: "🧪 Experiments",
+            action: "sensor_logger_screen",
+            requires_file_picker: false,
+            description: "log sensors to CSV",
         },
         Feature {
             id: "about",

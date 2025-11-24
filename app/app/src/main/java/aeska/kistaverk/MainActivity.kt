@@ -7,6 +7,17 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.util.Base64
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Handler
+import android.os.HandlerThread
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
@@ -23,10 +34,25 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var renderer: UiRenderer
+    private var sensorManager: SensorManager? = null
+    private var sensorThread: HandlerThread? = null
+    private var sensorHandler: Handler? = null
+    private var sensorListener: SensorEventListener? = null
+    private var logFile: File? = null
+    private var logWriter: OutputStreamWriter? = null
+    private var locationManager: LocationManager? = null
+    private var locationListener: LocationListener? = null
+    private var pendingSensorStart = false
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
@@ -35,6 +61,7 @@ class MainActivity : ComponentActivity() {
     private var contentHolder: FrameLayout? = null
     private var overlayView: View? = null
     private var lastResult: String? = null
+    private var lastSensorLogPath: String? = null
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -221,6 +248,18 @@ class MainActivity : ComponentActivity() {
                 dispatchPdfAction(action, bindings)
                 return@UiRenderer
             }
+            if (action == "sensor_logger_start") {
+                startSensorLogging()
+                return@UiRenderer
+            }
+            if (action == "sensor_logger_stop") {
+                stopSensorLogging()
+                return@UiRenderer
+            }
+            if (action == "sensor_logger_share") {
+                shareLastLog()
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
@@ -231,6 +270,7 @@ class MainActivity : ComponentActivity() {
                 if (action == "reset") {
                     selectedOutputDir = null
                     pdfSourceUri = null
+                    stopSensorLogging()
                 }
                 dispatchWithOptionalLoading(action, bindings = bindings)
             }
@@ -248,6 +288,7 @@ class MainActivity : ComponentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    stopSensorLogging()
                     refreshUi("back")
                 }
             }
@@ -261,6 +302,30 @@ class MainActivity : ComponentActivity() {
         }
         if (snapshot != null) {
             outState.putString(snapshotKey, snapshot)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopSensorLogging()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_LOCATION) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (granted && pendingSensorStart) {
+                pendingSensorStart = false
+                startSensorLogging()
+            } else {
+                val bindings = mutableMapOf<String, String>()
+                bindings["sensor_status"] = "location permission denied"
+                refreshUi("sensor_logger_status", bindings = bindings)
+            }
         }
     }
 
@@ -379,6 +444,159 @@ class MainActivity : ComponentActivity() {
         val componentName = intent.component?.className.orEmpty()
         if (componentName.endsWith("PdfSignLauncher")) return "pdf_signature"
         return null
+    }
+
+    private fun startSensorLogging() {
+        if (sensorManager == null) {
+            sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        }
+        val mgr = sensorManager ?: return
+        if (!hasLocationPermission()) {
+            pendingSensorStart = true
+            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), PERMISSION_LOCATION)
+            return
+        }
+        stopSensorLogging()
+
+        val thread = HandlerThread("SensorLogger")
+        thread.start()
+        sensorThread = thread
+        sensorHandler = Handler(thread.looper)
+
+        val fmt = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+        val fname = "sensors_${fmt.format(Date())}.csv"
+        logFile = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir, fname)
+        val fos = FileOutputStream(logFile!!)
+        logWriter = OutputStreamWriter(fos)
+        logWriter?.write("timestamp_ms,type,v1,v2,v3,battery_level,battery_voltage\n")
+
+        val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        sensorListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val ts = System.currentTimeMillis()
+                val type = when (event.sensor.type) {
+                    Sensor.TYPE_ACCELEROMETER -> "ACCEL"
+                    Sensor.TYPE_GYROSCOPE -> "GYRO"
+                    Sensor.TYPE_MAGNETIC_FIELD -> "MAG"
+                    Sensor.TYPE_PRESSURE -> "PRESSURE"
+                    else -> return
+                }
+                val v1 = event.values.getOrNull(0) ?: 0f
+                val v2 = event.values.getOrNull(1) ?: 0f
+                val v3 = event.values.getOrNull(2) ?: 0f
+                val level = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                val voltage = batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+                try {
+                    logWriter?.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
+                    logWriter?.flush()
+                    lastSensorLogPath = logFile?.absolutePath
+                    val bindings = mutableMapOf<String, String>()
+                    bindings["sensor_status"] = "logging"
+                    logFile?.absolutePath?.let { bindings["sensor_path"] = it }
+                    refreshUi("sensor_logger_status", bindings = bindings)
+                } catch (_: Exception) {
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        val types = listOf(
+            Sensor.TYPE_ACCELEROMETER,
+            Sensor.TYPE_GYROSCOPE,
+            Sensor.TYPE_MAGNETIC_FIELD,
+            Sensor.TYPE_PRESSURE
+        )
+        types.forEach { t ->
+            mgr.getDefaultSensor(t)?.let { sensor ->
+                mgr.registerListener(sensorListener, sensor, SensorManager.SENSOR_DELAY_GAME, sensorHandler)
+            }
+        }
+        startLocationLogging()
+        val bindings = mutableMapOf<String, String>()
+        bindings["sensor_status"] = "logging"
+        logFile?.absolutePath?.let { bindings["sensor_path"] = it }
+        refreshUi("sensor_logger_status", bindings = bindings)
+    }
+
+    private fun stopSensorLogging() {
+        sensorManager?.unregisterListener(sensorListener)
+        sensorListener = null
+        sensorHandler = null
+        sensorThread?.quitSafely()
+        sensorThread = null
+        stopLocationLogging()
+        try {
+            logWriter?.close()
+        } catch (_: Exception) {
+        }
+        logWriter = null
+        val bindings = mutableMapOf<String, String>()
+        bindings["sensor_status"] = "stopped"
+        logFile?.absolutePath?.let { bindings["sensor_path"] = it }
+        refreshUi("sensor_logger_status", bindings = bindings)
+    }
+
+    private fun shareLastLog() {
+        val path = lastSensorLogPath ?: return
+        val file = File(path)
+        if (!file.exists()) return
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, "Share sensor log"))
+    }
+
+    private fun startLocationLogging() {
+        if (locationManager == null) {
+            locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager
+        }
+        val mgr = locationManager ?: return
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                val ts = System.currentTimeMillis()
+                val lat = location.latitude
+                val lon = location.longitude
+                val acc = location.accuracy.toDouble()
+                val bindings = mutableMapOf<String, String>()
+                bindings["sensor_status"] = "logging"
+                logFile?.absolutePath?.let { bindings["sensor_path"] = it }
+                try {
+                    logWriter?.write("$ts,GPS,$lat,$lon,$acc,-1,-1\n")
+                    logWriter?.flush()
+                    lastSensorLogPath = logFile?.absolutePath
+                    refreshUi("sensor_logger_status", bindings = bindings)
+                } catch (_: Exception) {
+                }
+            }
+
+            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+            override fun onProviderEnabled(provider: String) = Unit
+            override fun onProviderDisabled(provider: String) = Unit
+        }
+        locationListener = listener
+        try {
+            mgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 0f, listener, sensorHandler?.looper)
+        } catch (_: SecurityException) {
+            // permission denied, status already handled elsewhere
+        }
+    }
+
+    private fun stopLocationLogging() {
+        locationManager?.removeUpdates(locationListener ?: return)
+        locationListener = null
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun dispatchPdfAction(action: String, bindings: Map<String, String>) {
@@ -526,5 +744,8 @@ class MainActivity : ComponentActivity() {
                 System.loadLibrary("kistaverk_core")
             }
         }
+
+        // Arbitrary request code for location permission prompts
+        private const val PERMISSION_LOCATION = 1001
     }
 }

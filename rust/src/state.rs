@@ -15,6 +15,7 @@ pub enum Screen {
     ColorTools,
     PdfTools,
     About,
+    SensorLogger,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct AppState {
     pub loading_with_spinner: bool,
     pub last_qr_base64: Option<String>,
     pub pdf: PdfState,
+    pub last_sensor_log: Option<String>,
+    pub sensor_status: Option<String>,
 }
 
 impl AppState {
@@ -59,6 +62,8 @@ impl AppState {
             loading_with_spinner: true,
             last_qr_base64: None,
             pdf: PdfState::new(),
+            last_sensor_log: None,
+            sensor_status: None,
         }
     }
 
@@ -123,5 +128,7 @@ impl AppState {
         self.loading_with_spinner = true;
         self.last_qr_base64 = None;
         self.pdf.reset();
+        self.last_sensor_log = None;
+        self.sensor_status = None;
     }
 }
