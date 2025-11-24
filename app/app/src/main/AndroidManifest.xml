@@ -20,6 +20,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Secondary launcher entry for PDF signing -->
+        <activity-alias
+            android:name=".PdfSignLauncher"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_pdfsign"
+            android:label="Kistaverk – Sign PDF">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="aeska.kistaverk.PDF_SIGN" />
+            </intent-filter>
+            <meta-data
+                android:name="aeska.kistaverk.entry"
+                android:value="pdf_signature" />
+        </activity-alias>
     </application>
 
 </manifest>

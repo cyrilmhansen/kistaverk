@@ -178,6 +178,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val entry = intent?.getStringExtra("entry")
+
         renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
             if (action == "kotlin_image_pick_dir") {
                 pickDirLauncher.launch(null)
@@ -238,7 +240,8 @@ class MainActivity : ComponentActivity() {
         if (restoredSnapshot != null) {
             lifecycleScope.launch { restoreSnapshotAndRender(restoredSnapshot) }
         } else {
-            refreshUi("init")
+            val initialAction = if (entry == "pdf_signature") "pdf_tools_screen" else "init"
+            refreshUi(initialAction)
         }
 
         onBackPressedDispatcher.addCallback(
