@@ -72,7 +72,7 @@ Tech: Complex binary parsing.
 1. Validate launcher alias/deep link for PDF signature flow (secondary icon) across devices; ensure intent extra `entry=pdf_signature` opens PdfTools and back/reset behaves correctly.
 
 ## Near-Term Tasks
-- Kotlin side: add schema validation/guardrails for renderer JSON; add a small loading indicator while hashing or converting; ensure fallback renders on malformed JSON.
+- Kotlin side: schema validation already guards widget types/required fields with fallback UI; extend coverage (e.g., per-widget required props) and add a small loading indicator while hashing or converting.
 - Move UI generation toward serde structs/builders to align with schema validation and reduce ad-hoc JSON.
 - Wire snapshot/restore path into CI and keep native loading mocked in Robolectric to avoid JNI deps.
 - Execute Robolectric tests routinely and wire into CI; fix Gradle wrapper permissions or vendor the distribution to keep tests runnable.
