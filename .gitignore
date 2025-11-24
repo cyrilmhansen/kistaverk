@@ -4,10 +4,10 @@
 # ------------------
 # 1. ANDROID & GRADLE
 # ------------------
-.gradle/
+**/.gradle/
 build/
 app/build/
-/local.properties
+**/local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
@@ -18,7 +18,9 @@ app/build/
 *.iml
 *.class
 .gradle-temp/
-
+**/.externalNativeBuild/
+**/.cxx/
+app/captures/
 
 # Android Profiling
 *.hprof
@@ -51,3 +53,4 @@ app/src/main/jniLibs/
 .vscode/
 .history/
 *~
+app/.idea/caches/

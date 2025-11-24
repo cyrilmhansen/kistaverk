@@ -2,18 +2,23 @@ package aeska.kistaverk
 
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
+import aeska.kistaverk.features.ConversionResult
+import aeska.kistaverk.features.KotlinImageConversion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import android.content.Intent
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var renderer: UiRenderer
     private var pendingActionAfterPicker: String? = null
+    private var selectedOutputDir: Uri? = null
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -22,6 +27,11 @@ class MainActivity : ComponentActivity() {
         pendingActionAfterPicker = null
 
         if (uri == null || action == null) return@registerForActivityResult
+
+        if (KotlinImageConversion.isConversionAction(action)) {
+            handleKotlinImageConversion(uri, action)
+            return@registerForActivityResult
+        }
 
         val fd = openFdForUri(uri)
         if (fd != null) {
@@ -32,14 +42,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val pickDirLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+                // Best-effort; continue even if persist fails
+            }
+            selectedOutputDir = uri
+            refreshUi(
+                "kotlin_image_output_dir",
+                mapOf(
+                    "output_dir" to uri.toString()
+                )
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         renderer = UiRenderer(this) { action, needsFilePicker ->
+            if (action == "kotlin_image_pick_dir") {
+                pickDirLauncher.launch(null)
+                return@UiRenderer
+            }
+
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
                 pickFileLauncher.launch(arrayOf("*/*"))
             } else {
+                if (action == "reset") {
+                    selectedOutputDir = null
+                }
                 refreshUi(action)
             }
         }
@@ -74,6 +114,43 @@ class MainActivity : ComponentActivity() {
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun handleKotlinImageConversion(uri: Uri, action: String) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                KotlinImageConversion.convert(
+                    context = this@MainActivity,
+                    cacheDir = cacheDir,
+                    picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+                    outputDirUri = selectedOutputDir,
+                    uri = uri,
+                    action = action
+                )
+            }
+
+            when (result) {
+                is ConversionResult.Success -> refreshUi(
+                    "kotlin_image_result",
+                    mapOf(
+                        "target" to result.target.key,
+                        "result_path" to result.destination,
+                        "result_size" to result.size,
+                        "result_format" to result.format
+                    )
+                )
+                is ConversionResult.Failure -> {
+                    val reason = result.reason ?: "conversion_failed"
+                    refreshUi(
+                        "kotlin_image_result",
+                        mapOf(
+                            "target" to (result.target?.key ?: JSONObject.NULL),
+                            "error" to reason
+                        )
+                    )
+                }
+            }
         }
     }
 
