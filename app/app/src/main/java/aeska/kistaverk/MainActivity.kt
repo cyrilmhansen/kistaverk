@@ -9,9 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import kotlin.io.DEFAULT_BUFFER_SIZE
-import java.io.File
-import java.io.FileOutputStream
 
 class MainActivity : ComponentActivity() {
 
@@ -26,12 +23,12 @@ class MainActivity : ComponentActivity() {
 
         if (uri == null || action == null) return@registerForActivityResult
 
-        val copied = copyUriToCache(uri)
-        if (copied != null) {
-            refreshUi(action, mapOf("path" to copied.absolutePath))
+        val fd = openFdForUri(uri)
+        if (fd != null) {
+            refreshUi(action, mapOf("fd" to fd))
         } else {
             // Notify Rust about the failure so it can surface an error state
-            refreshUi(action, mapOf<String, Any?>("path" to JSONObject.NULL, "error" to "copy_failed"))
+            refreshUi(action, mapOf<String, Any?>("fd" to JSONObject.NULL, "error" to "open_fd_failed"))
         }
     }
 
@@ -70,21 +67,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun copyUriToCache(uri: Uri): File? {
+    private fun openFdForUri(uri: Uri): Int? {
         return try {
-            val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "selected.bin"
-            val dst = File(cacheDir, "picked_${System.currentTimeMillis()}_${fileName}")
-            contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(dst).use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                    }
-                }
-            } ?: return null
-            dst
+            contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                pfd.detachFd().takeIf { it >= 0 }
+            }
         } catch (_: Exception) {
             null
         }
