@@ -267,7 +267,7 @@ class UiRenderer(
     }
 
     private fun createGrid(data: JSONObject): View {
-        val columns = data.optInt("columns", 2).coerceAtLeast(1)
+        val columns = computeColumns(data)
         val children = data.optJSONArray("children") ?: return createErrorView("Grid missing children")
         val wrapper = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -297,6 +297,14 @@ class UiRenderer(
             row?.addView(childView)
         }
         return wrapper
+    }
+
+    private fun computeColumns(data: JSONObject): Int {
+        val explicit = data.optInt("columns", -1)
+        if (explicit > 0) return explicit
+        val screenWidthDp = context.resources.displayMetrics.widthPixels /
+            context.resources.displayMetrics.density
+        return if (screenWidthDp < 380) 1 else 2
     }
 
     private class ShaderToyView(context: Context, fragmentSrc: String) : GLSurfaceView(context) {

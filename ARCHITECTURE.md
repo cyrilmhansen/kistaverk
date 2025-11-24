@@ -15,7 +15,8 @@ There are no classic XML layout files for individual screens.
 - **Checkboxes:** `UiRenderer` now supports `Checkbox` nodes with `bind_key`/`checked`/`content_description`, updating bindings on toggle and optionally firing an action (e.g., to refresh Rust UI).
 - **Loading/Progress:** `UiRenderer` renders a `Progress` widget (indeterminate spinner + optional label) for loading states; used by Rust “Computing…” screens.
 - **Overlay spinner:** MainActivity wraps content in a frame with a translucent overlay spinner for loading-only calls (hashes, progress demo) so the prior screen stays visible.
-- **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, Checkbox, and Progress to cover TalkBack without XML layouts.
+- **Grid layout:** The home menu renders categories as 2-column grids (auto-falls back to 1 column on narrow screens unless `columns` is set explicitly) to reduce scroll.
+- **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, Checkbox, Grid, and Progress to cover TalkBack without XML layouts.
 - **Tests:** Robolectric tests exercise `UiRenderer` TextInput/Checkbox/Progress parsing and binding delivery to actions to catch JSON/render regressions early.
 
 ### 2. The DSL Protocol (JSON)
