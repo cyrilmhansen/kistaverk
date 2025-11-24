@@ -67,7 +67,7 @@ Tech: Complex binary parsing.
 - Gradle wrapper download may hit filesystem permission errors on some hosts; rerun with writable ~/.gradle or vendored distribution (current run succeeded with permissions).
 
 ## Next Implementation Step
-1. Add launcher alias/deep link to open PDF signature flow directly (secondary icon) while keeping single MainActivity; pass intent extras to land on PdfTools/signature UI.
+1. Validate launcher alias/deep link for PDF signature flow (secondary icon) across devices; ensure intent extra `entry=pdf_signature` opens PdfTools and back/reset behaves correctly.
 
 ## Near-Term Tasks
 - Kotlin side: add schema validation/guardrails for renderer JSON; add a small loading indicator while hashing or converting; ensure fallback renders on malformed JSON.
