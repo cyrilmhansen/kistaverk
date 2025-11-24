@@ -8,6 +8,7 @@ use features::kotlin_image::{
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
+use features::pdf::{handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen, PdfOperation};
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
@@ -45,6 +46,8 @@ struct Command {
     bindings: Option<HashMap<String, String>>,
     loading_only: Option<bool>,
     snapshot: Option<String>,
+    primary_fd: Option<i32>,
+    primary_path: Option<String>,
 }
 
 #[derive(Debug)]
@@ -99,6 +102,47 @@ enum Action {
         loading_only: bool,
     },
     ProgressDemoFinish,
+    PdfToolsScreen,
+    PdfSelect {
+        fd: Option<i32>,
+        uri: Option<String>,
+        error: Option<String>,
+    },
+    PdfExtract {
+        fd: Option<i32>,
+        uri: Option<String>,
+        selection: Vec<u32>,
+    },
+    PdfDelete {
+        fd: Option<i32>,
+        uri: Option<String>,
+        selection: Vec<u32>,
+    },
+    PdfMerge {
+        primary_fd: Option<i32>,
+        primary_uri: Option<String>,
+        secondary_fd: Option<i32>,
+        secondary_uri: Option<String>,
+    },
+    PdfSign {
+        fd: Option<i32>,
+        uri: Option<String>,
+        signature: Option<String>,
+        page: Option<u32>,
+        pos_x: f64,
+        pos_y: f64,
+        width: f64,
+        height: f64,
+    },
+    PdfSetTitle {
+        fd: Option<i32>,
+        uri: Option<String>,
+        title: Option<String>,
+    },
+    PdfSignatureStore {
+        data: Option<String>,
+    },
+    PdfSignatureClear,
     Increment,
     Snapshot,
     Restore { snapshot: String },
@@ -138,6 +182,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
         bindings,
         loading_only,
         snapshot,
+        primary_fd,
+        primary_path,
     } = command;
 
     let bindings = bindings.unwrap_or_default();
@@ -147,6 +193,43 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "init" => Ok(Action::Init),
         "reset" => Ok(Action::Reset),
         "back" => Ok(Action::Back),
+        "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
+        "pdf_select" => Ok(Action::PdfSelect { fd, uri: path, error }),
+        "pdf_extract" => Ok(Action::PdfExtract {
+            fd,
+            uri: path,
+            selection: parse_pdf_selection(&bindings),
+        }),
+        "pdf_delete" => Ok(Action::PdfDelete {
+            fd,
+            uri: path,
+            selection: parse_pdf_selection(&bindings),
+        }),
+        "pdf_set_title" => Ok(Action::PdfSetTitle {
+            fd,
+            uri: path,
+            title: bindings.get("pdf_title").cloned(),
+        }),
+        "pdf_merge" => Ok(Action::PdfMerge {
+            primary_fd,
+            primary_uri: primary_path,
+            secondary_fd: fd,
+            secondary_uri: path,
+        }),
+        "pdf_sign" => Ok(Action::PdfSign {
+            fd,
+            uri: path,
+            signature: bindings.get("signature_base64").cloned(),
+            page: parse_u32_binding(&bindings, "pdf_signature_page"),
+            pos_x: parse_f64_binding(&bindings, "pdf_signature_x").unwrap_or(32.0),
+            pos_y: parse_f64_binding(&bindings, "pdf_signature_y").unwrap_or(32.0),
+            width: parse_f64_binding(&bindings, "pdf_signature_width").unwrap_or(180.0),
+            height: parse_f64_binding(&bindings, "pdf_signature_height").unwrap_or(60.0),
+        }),
+        "pdf_signature_store" => Ok(Action::PdfSignatureStore {
+            data: bindings.get("signature_base64").cloned(),
+        }),
+        "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
         "shader_demo" => Ok(Action::ShaderDemo),
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
@@ -286,6 +369,21 @@ fn parse_text_action(name: &str) -> Option<TextAction> {
     }
 }
 
+fn parse_pdf_selection(bindings: &HashMap<String, String>) -> Vec<u32> {
+    let raw = bindings.get("pdf_selected_pages").cloned().unwrap_or_default();
+    raw.split(',')
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .collect()
+}
+
+fn parse_u32_binding(bindings: &HashMap<String, String>, key: &str) -> Option<u32> {
+    bindings.get(key).and_then(|v| v.trim().parse::<u32>().ok())
+}
+
+fn parse_f64_binding(bindings: &HashMap<String, String>, key: &str) -> Option<f64> {
+    bindings.get(key).and_then(|v| v.trim().parse::<f64>().ok())
+}
+
 fn hash_label(algo: HashAlgo) -> &'static str {
     match algo {
         HashAlgo::Sha256 => "SHA-256",
@@ -327,12 +425,14 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             error: Some("invalid_json".into()),
             target: None,
             result_path: None,
-            result_size: None,
+        result_size: None,
         result_format: None,
         output_dir: None,
         bindings: None,
         loading_only: None,
         snapshot: None,
+        primary_fd: None,
+        primary_path: None,
     });
 
         handle_command(command)
@@ -408,6 +508,151 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::Back => {
             state.pop_screen();
             state.loading_message = None;
+        }
+        Action::PdfToolsScreen => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            state.pdf.last_output = None;
+        }
+        Action::PdfSelect { fd, uri, error } => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = error.clone();
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_none() {
+                if let Some(raw_fd) = fd_handle.take() {
+                    if let Err(e) = handle_pdf_select(&mut state, Some(raw_fd), uri.as_deref()) {
+                        state.pdf.last_error = Some(e);
+                    }
+                } else {
+                    state.pdf.last_error = Some("missing_fd".into());
+                }
+            }
+        }
+        Action::PdfExtract { fd, uri, selection } => {
+            state.push_screen(Screen::PdfTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if selection.is_empty() {
+                state.pdf.last_error = Some("no_pages_selected".into());
+            } else if let Some(raw_fd) = fd_handle.take() {
+                match handle_pdf_operation(
+                    &mut state,
+                    PdfOperation::Extract,
+                    Some(raw_fd),
+                    None,
+                    uri.as_deref(),
+                    None,
+                    &selection,
+                ) {
+                    Ok(_) => {}
+                    Err(e) => state.pdf.last_error = Some(e),
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfDelete { fd, uri, selection } => {
+            state.push_screen(Screen::PdfTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if selection.is_empty() {
+                state.pdf.last_error = Some("no_pages_selected".into());
+            } else if let Some(raw_fd) = fd_handle.take() {
+                match handle_pdf_operation(
+                    &mut state,
+                    PdfOperation::Delete,
+                    Some(raw_fd),
+                    None,
+                    uri.as_deref(),
+                    None,
+                    &selection,
+                ) {
+                    Ok(_) => {}
+                    Err(e) => state.pdf.last_error = Some(e),
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfMerge {
+            primary_fd,
+            primary_uri,
+            secondary_fd,
+            secondary_uri,
+        } => {
+            state.push_screen(Screen::PdfTools);
+            let mut primary = FdHandle::new(primary_fd);
+            let mut secondary = FdHandle::new(secondary_fd);
+            if let (Some(p_fd), Some(s_fd)) = (primary.take(), secondary.take()) {
+                match handle_pdf_operation(
+                    &mut state,
+                    PdfOperation::Merge,
+                    Some(p_fd),
+                    Some(s_fd),
+                    primary_uri.as_deref(),
+                    secondary_uri.as_deref(),
+                    &[],
+                ) {
+                    Ok(_) => {}
+                    Err(e) => state.pdf.last_error = Some(e),
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfSetTitle { fd, uri, title } => {
+            state.push_screen(Screen::PdfTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if let Some(raw_fd) = fd_handle.take() {
+                if let Err(e) = handle_pdf_title(&mut state, raw_fd, uri.as_deref(), title.as_deref()) {
+                    state.pdf.last_error = Some(e);
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfSign {
+            fd,
+            uri,
+            signature,
+            page,
+            pos_x,
+            pos_y,
+            width,
+            height,
+        } => {
+            state.push_screen(Screen::PdfTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if let Some(sig) = signature.or_else(|| state.pdf.signature_base64.clone()) {
+                if let Some(raw_fd) = fd_handle.take() {
+                    match handle_pdf_sign(
+                        &mut state,
+                        raw_fd,
+                        uri.as_deref(),
+                        &sig,
+                        page,
+                        pos_x,
+                        pos_y,
+                        width,
+                        height,
+                    ) {
+                        Ok(_) => {}
+                        Err(e) => state.pdf.last_error = Some(e),
+                    }
+                } else {
+                    state.pdf.last_error = Some("missing_fd".into());
+                }
+            } else {
+                state.pdf.last_error = Some("missing_signature".into());
+            }
+        }
+        Action::PdfSignatureStore { data } => {
+            state.pdf.signature_base64 = data;
+            state.pdf.last_error = None;
+            state.push_screen(Screen::PdfTools);
+        }
+        Action::PdfSignatureClear => {
+            state.pdf.signature_base64 = None;
+            state.pdf.last_error = None;
+            state.push_screen(Screen::PdfTools);
         }
         Action::ShaderDemo => state.push_screen(Screen::ShaderDemo),
         Action::LoadShader { path, fd, error } => {
@@ -600,6 +845,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::ProgressDemo => render_progress_demo_screen(state),
         Screen::Qr => render_qr_screen(state),
         Screen::ColorTools => render_color_screen(state),
+        Screen::PdfTools => render_pdf_screen(state),
     }
 }
 
@@ -802,6 +1048,14 @@ fn feature_catalog() -> Vec<Feature> {
             description: "size & MIME",
         },
         Feature {
+            id: "pdf_tools",
+            name: "📄 PDF pages",
+            category: "📁 Files",
+            action: "pdf_tools_screen",
+            requires_file_picker: false,
+            description: "extract/delete pages",
+        },
+        Feature {
             id: "image_to_webp_kotlin",
             name: "🖼️ Image → WebP (Kotlin)",
             category: "📸 Media",
@@ -909,6 +1163,8 @@ mod tests {
             bindings: None,
             loading_only: None,
             snapshot: None,
+            primary_fd: None,
+            primary_path: None,
         }
     }
 

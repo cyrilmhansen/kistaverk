@@ -4,6 +4,7 @@ pub mod kotlin_image;
 pub mod color_tools;
 pub mod qr;
 pub mod text_tools;
+pub mod pdf;
 
 use crate::state::AppState;
 use serde_json::Value;
