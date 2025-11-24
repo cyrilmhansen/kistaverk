@@ -11,7 +11,7 @@
 1. Core Architecture: From "Toy" to "Engine"
 Currently, we have a global integer counter. We need a robust system to manage complex states (file paths, loading states, navigation history).
 State Machine: AppState now holds a `Vec<Screen>` stack (Home-root) and typed `Action`/`TextAction` enums; hardware Back triggers a pop in Rust and returns the previous screen JSON.
-Next: add snapshot/restore serialization for AppState to survive process death; consider moving UI generation to serde-friendly builders for schema validation.
+Next: wire snapshot/restore into CI and add schema validation for renderer JSON; consider moving UI generation to serde-friendly builders for schema validation.
 2. The UI Engine: Expanding the Vocabulary
 The Kotlin UiRenderer now supports TextInput, Checkbox, Progress with bindings and propagates `content_description` for TalkBack. Grids render the menu with an auto column heuristic (1 column on narrow screens, 2 otherwise, or explicit override). MainActivity can overlay a spinner on the current screen for loading-only calls.
 Renderer guardrails: unknown/malformed widget types render inline error text instead of crashing; missing children show a warning row.
@@ -55,10 +55,10 @@ Tech: Complex binary parsing.
 
 ## Snapshot
 - Kotlin now launches the system file picker (detaching FDs), forwards a `bindings` map with UI state, and renders Text/Button/ShaderToy/TextInput/Checkbox/Progress; Columns wrap in ScrollView and Grids auto-pick columns (1/2). Overlay spinner keeps prior screen visible during loading-only calls.
-- Rust owns UI and navigation via a `Vec<Screen>` stack with typed `Action`/`TextAction`; hardware Back from Kotlin calls `back` and Rust pops safely (Home is root). Inline Back buttons only appear when depth > 1.
+- Rust owns UI and navigation via a `Vec<Screen>` stack with typed `Action`/`TextAction`; hardware Back from Kotlin calls `back` and Rust pops safely (Home is root). Inline Back buttons only appear when depth > 1. `snapshot`/`restore_state` serialize/rehydrate AppState; Kotlin persists the snapshot in the Activity bundle.
 - Features: streaming hashes (SHA-256/SHA-1/MD5/MD4/CRC32/BLAKE3), Shader demo, Kotlin image conversion flow with output dir selection, Text Tools (upper/lower/title/wrap/trim/count/Base64/URL/Hex) with copy/share hooks, Progress demo, File info.
 - Renderer guardrails render inline errors for unknown/malformed widgets. Accessibility strings flow through `content_description`.
-- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases) pass.
+- Build: release shrinks/obfuscates (`minifyEnabled` + `shrinkResources`), ABI splits arm64-only, symbols stripped; Cargo path resolved from env/PATH. Tests: `cargo test` + `./gradlew test` (Robolectric renderer cases + snapshot/restore coverage with JNI mocked) pass.
 
 ## Known Issues / Risks
 - Renderer still trusts incoming JSON and can crash on malformed output; Kotlin has a fallback but we lack schema validation and more granular error UI.
@@ -67,12 +67,12 @@ Tech: Complex binary parsing.
 - Gradle wrapper download may hit filesystem permission errors on some hosts; rerun with writable ~/.gradle or vendored distribution (current run succeeded with permissions).
 
 ## Next Implementation Step
-1. Add AppState snapshot/restore: serialize navigation stack + feature state in Rust, expose restore entrypoint, and persist via Android Bundle to survive process death.
+1. Add schema validation for renderer JSON (Rust/Kotlin) and move UI generation toward typed builders to reduce malformed output risk.
 
 ## Near-Term Tasks
 - Kotlin side: add schema validation/guardrails for renderer JSON; add a small loading indicator while hashing or converting; ensure fallback renders on malformed JSON.
 - Move UI generation toward serde structs/builders to align with schema validation and reduce ad-hoc JSON.
-- Implement AppState snapshot/restore path (Rust serialize/deserialize + Kotlin Bundle plumbing) and add tests.
+- Wire snapshot/restore path into CI and keep native loading mocked in Robolectric to avoid JNI deps.
 - Execute Robolectric tests routinely and wire into CI; fix Gradle wrapper permissions or vendor the distribution to keep tests runnable.
 - Align cargo build targets to arm64-only to avoid producing unused v7a libs and remove stale v7a .so; regenerate AAB and verify size with `scripts/size_report.sh`.
 

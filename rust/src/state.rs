@@ -12,6 +12,7 @@ pub enum Screen {
     ProgressDemo,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub counter: i32,
     pub nav_stack: Vec<Screen>,
