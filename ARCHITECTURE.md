@@ -12,7 +12,8 @@ There are no classic XML layout files for individual screens.
 - **Media saves:** Image conversions default to MediaStore into `Pictures/kistaverk` (gallery-visible). A user-chosen SAF directory overrides this, with Rust still rendering the result screen.
 - **Render fallback:** `MainActivity` catches `UiRenderer` errors and shows a minimal error screen (with a Back action), preventing renderer crashes from killing the app.
 - **Inputs & bindings:** `UiRenderer` renders `TextInput` (EditText) widgets and forwards a `bindings` map with user-entered strings on every action; buttons still carry `requires_file_picker` hints for picker routing.
-- **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, and TextInput to cover TalkBack without XML layouts.
+- **Checkboxes:** `UiRenderer` now supports `Checkbox` nodes with `bind_key`/`checked`/`content_description`, updating bindings on toggle and optionally firing an action (e.g., to refresh Rust UI).
+- **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, and Checkbox to cover TalkBack without XML layouts.
 - **Tests:** Robolectric tests exercise `UiRenderer` TextInput parsing and binding delivery to actions to catch JSON/render regressions early.
 
 ### 2. The DSL Protocol (JSON)

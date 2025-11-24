@@ -146,6 +146,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.text_input = None;
             state.text_output = None;
             state.text_operation = None;
+            state.text_aggressive_trim = false;
         }
         "shader_demo" => state.current_screen = Screen::ShaderDemo,
         "file_info_screen" => {
@@ -324,7 +325,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | "text_tools_char_count"
         | "text_tools_trim"
         | "text_tools_wrap"
-        | "text_tools_clear" => {
+        | "text_tools_clear"
+        | "text_tools_refresh" => {
             handle_text_action(&mut state, &action, &bindings);
         }
         "increment" => state.counter += 1,
@@ -753,6 +755,38 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains('\n'));
+    }
+
+    #[test]
+    fn text_tools_trim_respects_aggressive_flag() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut command = make_command("text_tools_trim");
+        command.bindings = Some(HashMap::from([
+            ("text_input".into(), "  a   b  ".into()),
+            ("aggressive_trim".into(), "true".into()),
+        ]));
+
+        let ui = handle_command(command).expect("trim command should succeed");
+        assert_contains_text(&ui, "Trim spacing (collapse)");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_output.as_deref(), Some("a b"));
+
+        drop(state);
+        reset_state();
+
+        let mut command2 = make_command("text_tools_trim");
+        command2.bindings = Some(HashMap::from([
+            ("text_input".into(), "  a   b  ".into()),
+            ("aggressive_trim".into(), "false".into()),
+        ]));
+
+        let ui2 = handle_command(command2).expect("trim command should succeed");
+        assert_contains_text(&ui2, "Trim edges");
+        let state2 = STATE.lock().unwrap();
+        assert_eq!(state2.text_output.as_deref(), Some("a   b"));
     }
 
     #[test]
