@@ -6,7 +6,9 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
@@ -20,7 +22,18 @@ class UiRenderer(
 ) {
 
     fun render(jsonString: String): View {
-        return createView(JSONObject(jsonString))
+        val root = createView(JSONObject(jsonString))
+        return if (root is LinearLayout) {
+            ScrollView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                addView(root)
+            }
+        } else {
+            root
+        }
     }
 
     private fun createView(data: JSONObject): View {

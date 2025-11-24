@@ -1,11 +1,12 @@
 use crate::state::AppState;
-use serde::Deserialize;
-use sha2::{Sha256, digest::Digest};
-use sha1::Sha1;
-use md5::Md5;
 use md4::Md4;
+use md5::Md5;
+use serde::Deserialize;
+use sha1::Sha1;
+use sha2::{digest::Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::os::unix::io::{FromRawFd, RawFd};
 
 #[derive(Debug, Clone, Copy)]
 pub enum HashAlgo {
@@ -21,36 +22,61 @@ pub struct Command {
     pub error: Option<String>,
 }
 
-pub fn handle_hash_action(state: &mut AppState, path: Option<&str>, algo: HashAlgo) {
-    match path {
-        Some(p) => match compute_hash(p, algo) {
-            Ok(hash) => {
-                state.last_hash = Some(hash);
-                state.last_error = None;
-            }
-            Err(e) => {
-                state.last_error = Some(e);
-                state.last_hash = None;
-            }
-        },
-        None => {
-            state.last_error = Some("missing_path".into());
+pub fn handle_hash_action(
+    state: &mut AppState,
+    fd: Option<i32>,
+    path: Option<&str>,
+    algo: HashAlgo,
+) {
+    let source = match fd {
+        Some(raw) if raw >= 0 => Some(HashSource::RawFd(raw as RawFd)),
+        _ => path.map(HashSource::Path),
+    };
+
+    let Some(source) = source else {
+        state.last_error = Some("missing_path".into());
+        state.last_hash = None;
+        return;
+    };
+
+    match compute_hash(source, algo) {
+        Ok(hash) => {
+            state.last_hash = Some(hash);
+            state.last_error = None;
+        }
+        Err(e) => {
+            state.last_error = Some(e);
             state.last_hash = None;
         }
     }
 }
 
-fn compute_hash(path: &str, algo: HashAlgo) -> Result<String, String> {
-    let file = File::open(path).map_err(|e| format!("open_failed:{e}"))?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = [0u8; 8192];
+enum HashSource<'a> {
+    RawFd(RawFd),
+    Path(&'a str),
+}
 
+fn compute_hash(source: HashSource<'_>, algo: HashAlgo) -> Result<String, String> {
+    let file = match source {
+        HashSource::RawFd(fd) => unsafe { File::from_raw_fd(fd) },
+        HashSource::Path(path) => File::open(path).map_err(|e| format!("open_failed:{e}"))?,
+    };
+    hash_stream(file, algo)
+}
+
+fn hash_stream<R: Read>(reader: R, algo: HashAlgo) -> Result<String, String> {
+    let mut reader = BufReader::new(reader);
+    let mut buffer = [0u8; 8192];
     match algo {
         HashAlgo::Sha256 => {
             let mut hasher = Sha256::new();
             loop {
-                let read = reader.read(&mut buffer).map_err(|e| format!("read_failed:{e}"))?;
-                if read == 0 { break; }
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..read]);
             }
             Ok(format!("{:x}", hasher.finalize()))
@@ -58,8 +84,12 @@ fn compute_hash(path: &str, algo: HashAlgo) -> Result<String, String> {
         HashAlgo::Sha1 => {
             let mut hasher = Sha1::new();
             loop {
-                let read = reader.read(&mut buffer).map_err(|e| format!("read_failed:{e}"))?;
-                if read == 0 { break; }
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..read]);
             }
             Ok(format!("{:x}", hasher.finalize()))
@@ -67,8 +97,12 @@ fn compute_hash(path: &str, algo: HashAlgo) -> Result<String, String> {
         HashAlgo::Md5 => {
             let mut hasher = Md5::new();
             loop {
-                let read = reader.read(&mut buffer).map_err(|e| format!("read_failed:{e}"))?;
-                if read == 0 { break; }
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..read]);
             }
             Ok(format!("{:x}", hasher.finalize()))
@@ -76,8 +110,12 @@ fn compute_hash(path: &str, algo: HashAlgo) -> Result<String, String> {
         HashAlgo::Md4 => {
             let mut hasher = Md4::new();
             loop {
-                let read = reader.read(&mut buffer).map_err(|e| format!("read_failed:{e}"))?;
-                if read == 0 { break; }
+                let read = reader
+                    .read(&mut buffer)
+                    .map_err(|e| format!("read_failed:{e}"))?;
+                if read == 0 {
+                    break;
+                }
                 hasher.update(&buffer[..read]);
             }
             Ok(format!("{:x}", hasher.finalize()))
