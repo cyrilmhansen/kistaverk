@@ -90,6 +90,22 @@ class MainActivity : ComponentActivity() {
         cm.setPrimaryClip(ClipData.newPlainText("text_tools_result", text))
     }
 
+    private fun readClipboardText(maxLen: Int = 256): String? {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+        val clip = cm.primaryClip ?: return null
+        val text = clip.getItemAt(0)?.coerceToText(this)?.toString()?.trim() ?: return null
+        return text.takeIf { it.length <= maxLen }
+    }
+
+    private fun readHexFromClipboard(): String? {
+        val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
+        val clip = cm.primaryClip ?: return null
+        val text = clip.getItemAt(0)?.coerceToText(this)?.toString()?.trim() ?: return null
+        val normalized = text.removePrefix("#")
+        val regex = Regex("^[0-9a-fA-F]{6}$")
+        return if (regex.matches(normalized)) "#$normalized" else null
+    }
+
     private fun shareResult() {
         val text = lastResult ?: return
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -145,6 +161,18 @@ class MainActivity : ComponentActivity() {
             if (action == "text_tools_copy_to_input") {
                 copyResultToClipboard()
             }
+            if (action == "color_copy_clipboard") {
+                copyResultToClipboard()
+                return@UiRenderer
+            }
+            if (action == "color_copy_hex_input") {
+                val fromClipboard = readHexFromClipboard()
+                val merged = if (fromClipboard != null) {
+                    bindings + mapOf("color_input" to fromClipboard)
+                } else bindings
+                dispatchWithOptionalLoading(action, bindings = merged)
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
@@ -192,15 +220,19 @@ class MainActivity : ComponentActivity() {
         loadingOnly: Boolean = false
     ) {
         lifecycleScope.launch {
+            val mergedBindings = bindings.toMutableMap()
+            readClipboardText()?.let { clip ->
+                mergedBindings.putIfAbsent("clipboard", clip)
+            }
             val command = JSONObject().apply {
                 put("action", action)
                 extras.forEach { (k, v) ->
                     // JSONObject handles proper escaping; null maps to JSON null
                     put(k, v)
                 }
-                if (bindings.isNotEmpty()) {
+                if (mergedBindings.isNotEmpty()) {
                     val bindingsObj = JSONObject()
-                    bindings.forEach { (k, v) -> bindingsObj.put(k, v) }
+                    mergedBindings.forEach { (k, v) -> bindingsObj.put(k, v) }
                     put("bindings", bindingsObj)
                 }
                 if (loadingOnly) {

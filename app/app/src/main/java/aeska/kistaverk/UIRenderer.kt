@@ -5,6 +5,8 @@ import android.graphics.Color
 import android.graphics.BitmapFactory
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -37,7 +39,8 @@ class UiRenderer(
         "Checkbox",
         "Progress",
         "Grid",
-        "ImageBase64"
+        "ImageBase64",
+        "ColorSwatch"
     )
 
     fun render(jsonString: String): View {
@@ -109,6 +112,7 @@ class UiRenderer(
             "Progress" -> createProgress(data)
             "Grid" -> createGrid(data)
             "ImageBase64" -> createImageBase64(data)
+            "ColorSwatch" -> createColorSwatch(data)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -123,6 +127,9 @@ class UiRenderer(
         }
         if (type == "ImageBase64" && !node.has("base64")) {
             return "ImageBase64 missing base64"
+        }
+        if (type == "ColorSwatch" && !node.has("color")) {
+            return "ColorSwatch missing color"
         }
         if (type == "Grid") {
             val children = node.optJSONArray("children") ?: return "Grid missing children"
@@ -202,6 +209,20 @@ class UiRenderer(
         return container
     }
 
+    private fun createColorSwatch(data: JSONObject): View {
+        val colorLong = data.optLong("color", 0xFF000000)
+        val view = View(context)
+        val size = dpToPx(context, 128f)
+        val lp = LinearLayout.LayoutParams(size, size)
+        lp.topMargin = dpToPx(context, 8f)
+        lp.bottomMargin = dpToPx(context, 8f)
+        view.layoutParams = lp
+        view.setBackgroundColor(colorLong.toInt())
+        val cd = data.optString("content_description", "")
+        if (cd.isNotEmpty()) view.contentDescription = cd
+        return view
+    }
+
     private fun createText(data: JSONObject): View {
         return TextView(context).apply {
             text = data.optString("text")
@@ -224,9 +245,15 @@ class UiRenderer(
         // Retrieve the action defined in the Rust JSON (e.g., "hash_file")
         val actionName = data.optString("action")
         val needsFilePicker = data.optBoolean("requires_file_picker", false)
+        val copyText = data.optString("copy_text", "")
 
         btn.setOnClickListener {
-            onAction(actionName, needsFilePicker, bindings.toMap())
+            if (copyText.isNotEmpty()) {
+                copyToClipboard(copyText)
+            }
+            if (actionName.isNotEmpty()) {
+                onAction(actionName, needsFilePicker, bindings.toMap())
+            }
         }
         return btn
     }
@@ -491,10 +518,15 @@ class UiRenderer(
                 gl_FragColor = vec4(col, 1.0);
             }
         """
+    }
 
-        private fun dpToPx(context: Context, dp: Float): Int {
-            val density = context.resources.displayMetrics.density
-            return (dp * density).toInt()
-        }
+    private fun dpToPx(context: Context, dp: Float): Int {
+        val density = context.resources.displayMetrics.density
+        return (dp * density).toInt()
+    }
+
+    private fun copyToClipboard(text: String) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        cm.setPrimaryClip(ClipData.newPlainText("copy", text))
     }
 }

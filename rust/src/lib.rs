@@ -11,7 +11,8 @@ use features::kotlin_image::{
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
-use ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Progress as UiProgress, Text as UiText};
+use features::color_tools::{handle_color_action, render_color_screen};
+use ui::{Button as UiButton, Column as UiColumn, Progress as UiProgress, Text as UiText};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -69,6 +70,10 @@ enum Action {
     QrGenerate {
         input: Option<String>,
     },
+    ColorFromHex { input: Option<String> },
+    ColorFromRgb { input: Option<String> },
+    ColorCopyHexInput { input: Option<String> },
+    ColorCopyClipboard,
     Hash {
         algo: HashAlgo,
         path: Option<String>,
@@ -225,6 +230,25 @@ fn parse_action(command: Command) -> Result<Action, String> {
             let input = bindings.get("qr_input").cloned().or(path);
             Ok(Action::QrGenerate { input })
         }
+        "color_from_hex" => Ok(Action::ColorFromHex {
+            input: bindings
+                .get("color_input")
+                .cloned()
+                .or_else(|| path.clone()),
+        }),
+        "color_from_rgb" => Ok(Action::ColorFromRgb {
+            input: bindings
+                .get("color_input")
+                .cloned()
+                .or_else(|| path.clone()),
+        }),
+        "color_copy_hex_input" => Ok(Action::ColorCopyHexInput {
+            input: bindings
+                .get("color_input")
+                .cloned()
+                .or_else(|| path.clone()),
+        }),
+        "color_copy_clipboard" => Ok(Action::ColorCopyClipboard),
         other => {
             if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
@@ -425,6 +449,27 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.last_error = Some(e);
             }
         }
+        Action::ColorFromHex { input } => {
+            state.push_screen(Screen::ColorTools);
+            let txt = input.unwrap_or_default();
+            handle_color_action(&mut state, "color_from_hex", &txt);
+        }
+        Action::ColorFromRgb { input } => {
+            state.push_screen(Screen::ColorTools);
+            let txt = input.unwrap_or_default();
+            handle_color_action(&mut state, "color_from_rgb", &txt);
+        }
+        Action::ColorCopyHexInput { input } => {
+            state.push_screen(Screen::ColorTools);
+            let val = input
+                .or_else(|| state.text_input.clone())
+                .unwrap_or_default();
+            handle_color_action(&mut state, "color_copy_hex_input", &val);
+        }
+        Action::ColorCopyClipboard => {
+            state.push_screen(Screen::ColorTools);
+            // no-op in Rust; Kotlin handles clipboard using cached Result text
+        }
         Action::Hash {
             algo,
             path,
@@ -553,6 +598,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Loading => render_loading_screen(state),
         Screen::ProgressDemo => render_progress_demo_screen(state),
         Screen::Qr => render_qr_screen(state),
+        Screen::ColorTools => render_color_screen(state),
     }
 }
 
@@ -817,6 +863,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "qr_generate",
             requires_file_picker: false,
             description: "encode text → QR",
+        },
+        Feature {
+            id: "color_converter",
+            name: "🎨 Color Converter",
+            category: "🧪 Experiments",
+            action: "color_from_hex",
+            requires_file_picker: false,
+            description: "Hex ↔ RGB/HSL",
         },
     ]
 }

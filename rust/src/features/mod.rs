@@ -1,6 +1,7 @@
 pub mod file_info;
 pub mod hashes;
 pub mod kotlin_image;
+pub mod color_tools;
 pub mod qr;
 pub mod text_tools;
 
@@ -19,7 +20,6 @@ pub struct Feature {
 
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
-    use serde_json::json;
     use std::collections::BTreeMap;
     use crate::ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Text as UiText};
 
@@ -40,6 +40,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             .map(|f| {
                 serde_json::to_value(
                     UiButton::new(&format!("{} – {}", f.name, f.description), f.action)
+                        .id(f.id)
                         .requires_file_picker(f.requires_file_picker),
                 )
                 .unwrap()
