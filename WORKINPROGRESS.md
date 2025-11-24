@@ -176,6 +176,7 @@ Validé précédemment : Pile infinie, conversion Hex/Bin/Dec en temps réel.
 Fonctionnalités cachées derrière les "7 taps", expérimentales ou très avancées.
 Kista-Forth (Langage de Script)
 Validé précédemment : Interpréteur Forth complet pour scripter les fonctions internes de l'app (hash, convert, math).
+Script Lua/Ravi léger
 Automata Lab (Wolfram NKS)
 Validé précédemment : Génération d'automates cellulaires 1D (Rule 30, 110) avec rendu Bitmap.
 Transfert de Données Haute Densité (Color QR / JAB Code)
@@ -186,6 +187,11 @@ Capteurs & Hardware (Système Android)
 Besoin : Debugger le matériel.
 Tech (Kotlin) : Utiliser SensorManager pour lire Magnétomètre, Gyroscope, Pression, et BatteryManager.
 Tech (Rust) : Recevoir les données brutes, appliquer des filtres (Kalman ?) ou des stats, et renvoyer le JSON pour afficher des graphiques en temps réel.
+moteur de solveur numérique type Noyau maths minimal (type Mercury sans “Exact”)
+Parser : TinyExpr ou muParser
+Solve / optimisation : NLopt ou LM maison/Minpack
+Fonctions spéciales : libm + quelques morceaux de Cephes
+Intégrales, dérivées, limites, sommes : numérique maison
 ❌ Idées écartées (Pour l'instant)
 WebView pour le PDF : Trop lourd, trop variable selon les versions d'Android, risque de failles de sécurité. On préfère PdfRenderer (natif).
 Intégration Giac/Xcas complète : Trop lourd (plusieurs Mo). On préfère un solveur Rust léger "fait maison" inspiré de Mercury.
