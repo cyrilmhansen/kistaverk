@@ -418,6 +418,9 @@ pub fn handle_pdf_sign(
     pos_y: f64,
     width: f64,
     height: f64,
+    img_width_px: Option<f64>,
+    img_height_px: Option<f64>,
+    img_dpi: Option<f64>,
 ) -> Result<(), String> {
     let mut doc = load_document(fd)?;
     let target_page = page
@@ -427,6 +430,7 @@ pub fn handle_pdf_sign(
     let page_id = *pages
         .get(&target_page)
         .ok_or_else(|| "page_out_of_range".to_string())?;
+    let (_, page_height) = page_dimensions(&doc, page_id)?;
 
     let sig_bytes = B64
         .decode(signature_base64.as_bytes())
@@ -506,10 +510,51 @@ pub fn handle_pdf_sign(
         page_dict.set("Resources", resources_obj);
     }
 
+    let px_to_pt = img_dpi.filter(|d| *d > 0.0).map(|dpi| 72.0 / dpi);
+    let aspect = if img_w > 0 && img_h > 0 {
+        Some(img_h as f64 / img_w as f64)
+    } else {
+        img_width_px.and_then(|w| img_height_px.and_then(|h| if w > 0.0 { Some(h / w) } else { None }))
+    };
+    let mut target_width = if width > 0.0 {
+        width
+    } else if let (Some(w_px), Some(scale)) = (img_width_px, px_to_pt) {
+        (w_px * scale).max(1.0)
+    } else {
+        180.0
+    };
+    let mut target_height = if height > 0.0 {
+        height
+    } else if let Some(ratio) = aspect {
+        (target_width * ratio).max(1.0)
+    } else if let (Some(h_px), Some(scale)) = (img_height_px, px_to_pt) {
+        (h_px * scale).max(1.0)
+    } else {
+        60.0
+    };
+    if target_width <= 0.0 {
+        target_width = 1.0;
+    }
+    if target_height <= 0.0 {
+        target_height = 1.0;
+    }
+
+    let pos_x_pt = if let Some(scale) = px_to_pt {
+        pos_x * scale
+    } else {
+        pos_x
+    };
+    let pos_y_top = if let Some(scale) = px_to_pt {
+        pos_y * scale
+    } else {
+        pos_y
+    };
+    let pdf_y = (page_height - pos_y_top - target_height).max(0.0);
+
     // Add content stream that draws the image
     let content = format!(
         "q {} 0 0 {} {} {} cm /ImSig Do Q",
-        width, height, pos_x, pos_y
+        target_width, target_height, pos_x_pt, pdf_y
     );
     doc.add_page_contents(page_id, content.into_bytes())
         .map_err(|e| format!("signature_add_content_failed:{e}"))?;
@@ -523,6 +568,50 @@ pub fn handle_pdf_sign(
     state.pdf.page_count = Some(page_count);
     state.replace_current(Screen::PdfTools);
     Ok(())
+}
+
+fn page_dimensions(doc: &Document, page_id: lopdf::ObjectId) -> Result<(f64, f64), String> {
+    let mut current = Some(page_id);
+    while let Some(id) = current {
+        let dict = doc
+            .get_object(id)
+            .and_then(|o| o.as_dict())
+            .map_err(|_| "signature_page_missing_dict")?;
+        if let Some((w, h)) = extract_media_box(doc, dict) {
+            return Ok((w, h));
+        }
+        current = dict
+            .get(b"Parent")
+            .and_then(|p| p.as_reference())
+            .ok();
+    }
+    // Fallback to a reasonable page size (A4-ish) if metadata is missing.
+    Ok((595.0, 842.0))
+}
+
+fn extract_media_box(doc: &Document, dict: &lopdf::Dictionary) -> Option<(f64, f64)> {
+    let raw = dict.get(b"MediaBox").ok()?;
+    let resolved = match raw {
+        Object::Reference(id) => doc.get_object(*id).ok()?,
+        other => other,
+    };
+    let arr = resolved.as_array().ok()?;
+    if arr.len() != 4 {
+        return None;
+    }
+    let llx = obj_to_f64(&arr[0])?;
+    let lly = obj_to_f64(&arr[1])?;
+    let urx = obj_to_f64(&arr[2])?;
+    let ury = obj_to_f64(&arr[3])?;
+    Some((urx - llx, ury - lly))
+}
+
+fn obj_to_f64(obj: &Object) -> Option<f64> {
+    match obj {
+        Object::Integer(i) => Some(*i as f64),
+        Object::Real(f) => Some((*f).into()),
+        _ => None,
+    }
 }
 
 fn ensure_xobject_dict<'a>(

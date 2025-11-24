@@ -135,6 +135,9 @@ enum Action {
         pos_y: f64,
         width: f64,
         height: f64,
+        img_width_px: Option<f64>,
+        img_height_px: Option<f64>,
+        img_dpi: Option<f64>,
     },
     PdfSetTitle {
         fd: Option<i32>,
@@ -239,6 +242,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
             pos_y: parse_f64_binding(&bindings, "pdf_signature_y").unwrap_or(32.0),
             width: parse_f64_binding(&bindings, "pdf_signature_width").unwrap_or(180.0),
             height: parse_f64_binding(&bindings, "pdf_signature_height").unwrap_or(60.0),
+            img_width_px: parse_f64_binding(&bindings, "signature_width_px"),
+            img_height_px: parse_f64_binding(&bindings, "signature_height_px"),
+            img_dpi: parse_f64_binding(&bindings, "signature_dpi"),
         }),
         "pdf_signature_store" => Ok(Action::PdfSignatureStore {
             data: bindings.get("signature_base64").cloned(),
@@ -642,6 +648,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
             pos_y,
             width,
             height,
+            img_width_px,
+            img_height_px,
+            img_dpi,
         } => {
             state.push_screen(Screen::PdfTools);
             let mut fd_handle = FdHandle::new(fd);
@@ -657,6 +666,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
                         pos_y,
                         width,
                         height,
+                        img_width_px,
+                        img_height_px,
+                        img_dpi,
                     ) {
                         Ok(_) => {}
                         Err(e) => state.pdf.last_error = Some(e),

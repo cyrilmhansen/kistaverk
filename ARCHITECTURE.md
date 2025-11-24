@@ -6,7 +6,7 @@ The application follows a **Rendering Engine (Kotlin) <-> JNI Bridge <-> Core Lo
 ### 1. The UI Layer (Kotlin): "The Renderer"
 There are no classic XML layout files for individual screens.
 - **Single Activity:** `MainActivity` handles the global lifecycle and delegates rendering/navigation to JSON coming from Rust.
-- **UiRenderer:** Accepts JSON from Rust and dynamically instantiates native Android `View` objects (LinearLayout, TextView, Button, ScrollView wrapper for Columns, plus a ShaderToy view).
+- **UiRenderer:** Accepts JSON from Rust and dynamically instantiates native Android `View` objects (LinearLayout, TextView, Button, optional ScrollView wrapper for Columns/Grids via a `scrollable` flag, plus a ShaderToy view).
 - **Feature modules:** Feature-specific Kotlin code lives under `app/src/main/java/aeska/kistaverk/features` (e.g., Kotlin-side image conversion) so platform logic stays isolated from the activity.
 - **Async boundary:** Blocking work runs on `Dispatchers.IO`; UI updates happen on the main thread after Rust returns JSON (or after Kotlin completes a local pipeline and reports the outcome back to Rust).
 - **Media saves:** Image conversions default to MediaStore into `Pictures/kistaverk` (gallery-visible). A user-chosen SAF directory overrides this, with Rust still rendering the result screen.
@@ -16,7 +16,7 @@ There are no classic XML layout files for individual screens.
 - **Loading/Progress:** `UiRenderer` renders a `Progress` widget (indeterminate spinner + optional label) for loading states; used by Rust “Computing…” screens.
 - **Overlay spinner:** MainActivity wraps content in a frame with a translucent overlay spinner for loading-only calls (hashes, progress demo) so the prior screen stays visible.
 - **Grid layout:** The home menu renders categories as 2-column grids (auto-falls back to 1 column on narrow screens unless `columns` is set explicitly) to reduce scroll.
-- **PDF widgets:** `PdfPagePicker` renders page thumbnails via `PdfRenderer` with multi-select bindings; `SignaturePad` captures a drawn signature to base64 PNG for Rust to stamp into PDFs.
+- **PDF widgets:** `PdfPagePicker` renders page thumbnails via `PdfRenderer` with multi-select bindings; `SignaturePad` captures a drawn signature to base64 PNG and reports bitmap dimensions/DPI so Rust can scale and position accurately in PDF points.
 - **PDF metadata:** UI wiring allows updating the PDF Title (Info dictionary) via Rust lopdf, alongside page ops and signature stamping.
 - **Hardware Back:** `OnBackPressedDispatcher` sends a `back` action into Rust, which pops the navigation stack and returns the previous screen JSON; inline Back buttons are only shown when stack depth > 1.
 - **State persistence:** `MainActivity` saves a Rust snapshot during `onSaveInstanceState` and restores it on recreate. Robolectric tests cover the snapshot/restore path with JNI loading stubbed to avoid native deps.
@@ -29,8 +29,7 @@ There are no classic XML layout files for individual screens.
 - **Launcher alias:** A secondary `activity-alias` exposes a “Sign PDF” icon (distinct badge/icon) pointing to `MainActivity` with an `entry=pdf_signature` extra to land on the PDF tools/signature flow while keeping a single APK.
 - **About screen:** Rust renders an About view (version, copyright, GPLv3) reachable from the home menu; navigation/back handled by the Rust screen stack.
 - **Dependency listing:** A build-time script (`rust/scripts/generate_deps_metadata.sh`) writes `deps.json` from `cargo metadata` into Android assets; `DepsList` widget renders it in a scrollable list inside About.
-- **Sensor logger:** Rust screen now exposes sensor toggles (accel/gyro/mag/pressure/GPS/battery), interval binding, status/error text, and share gating. Kotlin consumes bindings, registers only selected sensors at the requested interval on a background thread, writes CSV to app-private storage, updates status/path via bindings, and shares via FileProvider. GPS paths request location permission only when needed.
-- **Sensor logger:** Rust screen now exposes sensor toggles (accel/gyro/mag/pressure/GPS/battery), interval binding, status/error text, and share gating. Kotlin consumes bindings, registers only selected sensors at the requested interval on a background thread, writes CSV to user-visible Documents when possible, throttles status UI updates to keep the screen responsive, and shares via FileProvider. GPS paths request location permission only when needed.
+- **Sensor logger:** Rust screen exposes sensor toggles (accel/gyro/mag/pressure/GPS/battery), interval binding, status/error text, and share gating. Kotlin registers only selected sensors at the requested interval on a background thread, writes CSV to Documents when possible (fallback app-private), throttles status UI updates to keep the screen responsive, and shares via FileProvider. GPS paths request location permission only when needed. A volatile `isLogging` flag guards late callbacks so writers are not touched after stop.
 - **Text viewer:** Rust drives a text/CSV preview screen (256 KB cap) with a file picker or direct intent-view from Files. Kotlin filters picker MIME types to text/CSV (and handles ACTION_VIEW intents), opens a detached FD, and relays path + fd to Rust for safe UTF-8/lossey decoding with inline error reporting.
 
 ### 2. The DSL Protocol (JSON)
@@ -172,48 +171,18 @@ Improvement: Implement Action payloads.
 When Action::PdfSelect is fired, the result should not just update a global variable; it should ideally transition the state machine specific to that screen.
 Consider making the Screen enum hold data: Screen::PdfTools(PdfState).
 2. Obvious Bugs & Fixes
-🐛 Bug 1 : Sensor Logger Race Condition (Threading)
+🐛 Bug 1 : Sensor Logger Race Condition (Threading) — **Fixed**
 Location: MainActivity.kt
-Description: In stopSensorLogging, you close logWriter and set it to null. However, the SensorEventListener runs on a separate HandlerThread. It is possible for onSensorChanged to fire one last time after logWriter is nulled/closed but before the listener is fully unregistered.
-Fix:
-Add a synchronization block or a volatile flag, and check safety inside the listener.
-code
-Kotlin
-// In MainActivity.kt
-@Volatile private var isLogging = false
-
-// In startSensorLogging
-isLogging = true
-sensorListener = object : SensorEventListener {
-    override fun onSensorChanged(event: SensorEvent) {
-        if (!isLogging || logWriter == null) return // Fast exit
-        // ... write logic
-    }
-}
-
-// In stopSensorLogging
-isLogging = false // Signal stop first
-sensorManager?.unregisterListener(sensorListener)
-// ... then close writer
-🐛 Bug 2 : PDF Coordinate System Mismatch
+Resolution: Added `@Volatile isLogging` and early exits in both sensor and GPS listeners so late callbacks cannot write after stop; stop flips the flag before unregistering/closing.
+🐛 Bug 2 : PDF Coordinate System Mismatch — **Fixed**
 Location: features/pdf.rs & MainActivity.kt (SignaturePad)
-Description: Android views (and your SignaturePad) work in Pixels (px) relative to the top-left. PDF documents use Points (pt) (1/72 inch) relative to the bottom-left (usually).
-Consequence: The signature will appear upside down or at the wrong Y location on the PDF.
-Fix:
-Rust: You need to know the page height to flip the Y coordinate: pdf_y = page_height - view_y_converted.
-Kotlin: Send the aspect ratio or image dimensions of the signature so Rust can scale it appropriately, rather than hardcoding 180.0 width.
-🐛 Bug 3 : ScrollView Logic in Renderer
+Resolution: SignaturePad now sends bitmap dimensions + DPI; Rust derives px→pt, preserves aspect ratio, reads page MediaBox height, and flips Y (`pdf_y = page_height - top_px_in_pt - height`) to align top-left view coordinates with bottom-left PDF coordinates.
+🐛 Bug 3 : ScrollView Logic in Renderer — **Fixed**
 Location: UiRenderer.kt -> render()
-Description:
-code
-Kotlin
-return if (root is LinearLayout) { ScrollView(...) } else { root }
-If the root element is a Grid (which returns a LinearLayout wrapper), it gets wrapped in a ScrollView. This is generally fine.
-However, if you implement a ListView or RecyclerView later (for the Archive viewer), wrapping it in a ScrollView will break scrolling (nested scrolling conflict).
-Fix: Add a property scrollable to the Column/Grid JSON schema. Only wrap in ScrollView if scrollable: true (defaulting to true for now is fine, but needs explicit 
+Resolution: Root wrapping is now controlled by a `scrollable` flag (default true); roots can opt out to avoid nested scrolling conflicts with future list/recycler widgets.
 
 
-. Internationalization (i18n) Strategy
+Internationalization (i18n) Strategy
 Since you want the Core to remain the "Single Source of Truth", Rust must handle translations. Do not use Android's strings.xml.
 Here is the most extensible way to implement this without bloating the binary:
 Step 1: Define Locales in Rust
