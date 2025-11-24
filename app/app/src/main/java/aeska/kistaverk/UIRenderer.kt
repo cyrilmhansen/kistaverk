@@ -2,6 +2,7 @@ package aeska.kistaverk
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.BitmapFactory
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.View
@@ -35,7 +36,8 @@ class UiRenderer(
         "TextInput",
         "Checkbox",
         "Progress",
-        "Grid"
+        "Grid",
+        "ImageBase64"
     )
 
     fun render(jsonString: String): View {
@@ -86,7 +88,13 @@ class UiRenderer(
             setOnClickListener { onAction("reset", false, emptyMap()) }
         })
 
-        return layout
+        return ScrollView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            addView(layout)
+        }
     }
 
     private fun createView(data: JSONObject): View {
@@ -100,6 +108,7 @@ class UiRenderer(
             "Checkbox" -> createCheckbox(data)
             "Progress" -> createProgress(data)
             "Grid" -> createGrid(data)
+            "ImageBase64" -> createImageBase64(data)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -111,6 +120,9 @@ class UiRenderer(
         if (!allowedTypes.contains(type)) return "Unknown widget: $type"
         if ((type == "Column" || type == "Grid") && !node.has("children")) {
             return "$type missing children"
+        }
+        if (type == "ImageBase64" && !node.has("base64")) {
+            return "ImageBase64 missing base64"
         }
         if (type == "Grid") {
             val children = node.optJSONArray("children") ?: return "Grid missing children"
@@ -150,6 +162,44 @@ class UiRenderer(
             layout.addView(createErrorView("Missing children"))
         }
         return layout
+    }
+
+    private fun createImageBase64(data: JSONObject): View {
+        val b64 = data.optString("base64", "")
+        if (b64.isBlank()) return createErrorView("Missing base64")
+        val bytes = try {
+            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+        } catch (_: Exception) {
+            null
+        } ?: return createErrorView("Invalid base64")
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        val iv = android.widget.ImageView(context).apply {
+            setImageBitmap(bmp)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true // let it scale to available width
+        }
+        val cd = data.optString("content_description", "")
+        if (cd.isNotEmpty()) iv.contentDescription = cd
+        val padding = dpToPx(context, 16f) // quiet zone
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(padding, padding, padding, padding)
+            setBackgroundColor(Color.WHITE)
+            val stroke = dpToPx(context, 2f)
+            setPadding(padding, padding, padding, padding)
+            setWillNotDraw(false)
+            // Add a simple border by using background drawable-less: fallback to a view outline via elevation
+            elevation = dpToPx(context, 2f).toFloat()
+        }
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.topMargin = dpToPx(context, 12f)
+        lp.bottomMargin = dpToPx(context, 12f)
+        container.layoutParams = lp
+        container.addView(iv)
+        return container
     }
 
     private fun createText(data: JSONObject): View {

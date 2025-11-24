@@ -8,6 +8,7 @@ use features::kotlin_image::{
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
+use features::qr::{handle_qr_action, render_qr_screen};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Progress as UiProgress, Text as UiText};
@@ -64,6 +65,9 @@ enum Action {
     KotlinImageOutputDir {
         target: Option<ImageTarget>,
         output_dir: Option<String>,
+    },
+    QrGenerate {
+        input: Option<String>,
     },
     Hash {
         algo: HashAlgo,
@@ -217,6 +221,10 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "restore_state" => snapshot
             .ok_or_else(|| "missing_snapshot".to_string())
             .map(|snap| Action::Restore { snapshot: snap }),
+        "qr_generate" => {
+            let input = bindings.get("qr_input").cloned().or(path);
+            Ok(Action::QrGenerate { input })
+        }
         other => {
             if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
@@ -410,6 +418,13 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::KotlinImageOutputDir { target, output_dir } => {
             handle_kotlin_image_output_dir(&mut state, target, output_dir);
         }
+        Action::QrGenerate { input } => {
+            state.push_screen(Screen::Qr);
+            let text = input.unwrap_or_default();
+            if let Err(e) = handle_qr_action(&mut state, &text) {
+                state.last_error = Some(e);
+            }
+        }
         Action::Hash {
             algo,
             path,
@@ -537,6 +552,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::TextTools => render_text_tools_screen(state),
         Screen::Loading => render_loading_screen(state),
         Screen::ProgressDemo => render_progress_demo_screen(state),
+        Screen::Qr => render_qr_screen(state),
     }
 }
 
@@ -793,6 +809,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "text_tools_screen",
             requires_file_picker: false,
             description: "case & counts",
+        },
+        Feature {
+            id: "qr_generator",
+            name: "🔳 QR Generator",
+            category: "🧪 Experiments",
+            action: "qr_generate",
+            requires_file_picker: false,
+            description: "encode text → QR",
         },
     ]
 }

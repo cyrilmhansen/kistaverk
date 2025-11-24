@@ -26,8 +26,10 @@ class UiRendererMalformedJsonTest {
 
         val view = renderer.render(ui)
         val root = (view as ScrollView).getChildAt(0) as LinearLayout
-        val error = root.getChildAt(0) as TextView
-        assertTrue(error.text.toString().contains("Unknown"))
+        val title = root.getChildAt(0) as TextView
+        val msg = root.getChildAt(1) as TextView
+        assertTrue(title.text.toString().contains("Render error"))
+        assertTrue(msg.text.toString().contains("Unknown widget"))
     }
 
     @Test
@@ -37,7 +39,9 @@ class UiRendererMalformedJsonTest {
 
         val view = renderer.render(ui)
         val root = (view as ScrollView).getChildAt(0) as LinearLayout
-        val error = root.getChildAt(0) as TextView
-        assertTrue(error.text.toString().contains("Missing children"))
+        val title = root.getChildAt(0) as TextView
+        val msg = root.getChildAt(1) as TextView
+        assertTrue(title.text.toString().contains("Render error"))
+        assertTrue(msg.text.toString().contains("missing children", ignoreCase = true))
     }
 }

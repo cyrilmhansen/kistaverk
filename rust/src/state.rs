@@ -10,6 +10,7 @@ pub enum Screen {
     TextTools,
     Loading,
     ProgressDemo,
+    Qr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ pub struct AppState {
     pub loading_message: Option<String>,
     pub progress_status: Option<String>,
     pub loading_with_spinner: bool,
+    pub last_qr_base64: Option<String>,
 }
 
 impl AppState {
@@ -50,6 +52,7 @@ impl AppState {
             loading_message: None,
             progress_status: None,
             loading_with_spinner: true,
+            last_qr_base64: None,
         }
     }
 
@@ -112,5 +115,6 @@ impl AppState {
         self.loading_message = None;
         self.progress_status = None;
         self.loading_with_spinner = true;
+        self.last_qr_base64 = None;
     }
 }

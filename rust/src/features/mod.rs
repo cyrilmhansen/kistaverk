@@ -1,6 +1,7 @@
 pub mod file_info;
 pub mod hashes;
 pub mod kotlin_image;
+pub mod qr;
 pub mod text_tools;
 
 use crate::state::AppState;

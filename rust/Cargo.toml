@@ -18,6 +18,9 @@ md4 = { version = "0.10", default-features = false, features = ["std"] }
 crc32fast = "1"
 blake3 = { version = "1", default-features = false, features = ["std"] }
 infer = "0.15"
+qrcode = { version = "0.14", default-features = false, features = ["image"] }
+image = { version = "0.24", default-features = false, features = ["png"] }
+base64 = { version = "0.21", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tempfile = "3"
