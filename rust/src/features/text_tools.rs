@@ -70,6 +70,40 @@ pub fn handle_text_action(state: &mut AppState, action: &str, bindings: &HashMap
             state.text_output = Some(wrapped);
             state.text_operation = Some("Wrap to 72 cols".into());
         }
+        "text_tools_base64_encode" => {
+            state.text_output = Some(encode_base64(input.as_bytes()));
+            state.text_operation = Some("Base64 encode".into());
+        }
+        "text_tools_base64_decode" => match decode_base64(input.as_bytes()) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(s) => {
+                    state.text_output = Some(s);
+                    state.text_operation = Some("Base64 decode".into());
+                }
+                Err(_) => {
+                    state.text_output = Some("<non-UTF8 data>".into());
+                    state.text_operation = Some("Base64 decode (binary)".into());
+                }
+            },
+            Err(e) => {
+                state.text_output = Some(format!("Decode error: {e}"));
+                state.text_operation = Some("Base64 decode failed".into());
+            }
+        },
+        "text_tools_url_encode" => {
+            state.text_output = Some(url_encode(&input));
+            state.text_operation = Some("URL encode".into());
+        }
+        "text_tools_url_decode" => match url_decode(&input) {
+            Ok(s) => {
+                state.text_output = Some(s);
+                state.text_operation = Some("URL decode".into());
+            }
+            Err(e) => {
+                state.text_output = Some(format!("Decode error: {e}"));
+                state.text_operation = Some("URL decode failed".into());
+            }
+        },
         "text_tools_clear" => {
             state.text_input = Some(String::new());
             state.text_output = None;
@@ -124,6 +158,111 @@ fn wrap_text(input: &str, width: usize) -> String {
     lines.join("\n")
 }
 
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut chunks = bytes.chunks(3);
+    while let Some(chunk) = chunks.next() {
+        let b0 = chunk.get(0).copied().unwrap_or(0);
+        let b1 = chunk.get(1).copied().unwrap_or(0);
+        let b2 = chunk.get(2).copied().unwrap_or(0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | b2 as u32;
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(n & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+fn decode_base64(input: &[u8]) -> Result<Vec<u8>, String> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4];
+    let mut idx = 0;
+    for &b in input {
+        if b == b'=' || b == b'\r' || b == b'\n' || b == b' ' {
+            continue;
+        }
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return Err("invalid_base64_char".into()),
+        };
+        chunk[idx] = val;
+        idx += 1;
+        if idx == 4 {
+            let n = ((chunk[0] as u32) << 18)
+                | ((chunk[1] as u32) << 12)
+                | ((chunk[2] as u32) << 6)
+                | (chunk[3] as u32);
+            buf.push(((n >> 16) & 0xff) as u8);
+            buf.push(((n >> 8) & 0xff) as u8);
+            buf.push((n & 0xff) as u8);
+            idx = 0;
+        }
+    }
+    if idx == 2 {
+        let n = ((chunk[0] as u32) << 18) | ((chunk[1] as u32) << 12);
+        buf.push(((n >> 16) & 0xff) as u8);
+    } else if idx == 3 {
+        let n = ((chunk[0] as u32) << 18) | ((chunk[1] as u32) << 12) | ((chunk[2] as u32) << 6);
+        buf.push(((n >> 16) & 0xff) as u8);
+        buf.push(((n >> 8) & 0xff) as u8);
+    }
+    Ok(buf)
+}
+
+fn url_encode(input: &str) -> String {
+    fn is_unreserved(byte: u8) -> bool {
+        (byte.is_ascii_alphanumeric()) || matches!(byte, b'-' | b'_' | b'.' | b'~')
+    }
+    let mut out = String::new();
+    for b in input.as_bytes() {
+        if is_unreserved(*b) {
+            out.push(*b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+fn url_decode(input: &str) -> Result<String, String> {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'%' if i + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).map_err(|_| "invalid_utf8")?;
+                let val = u8::from_str_radix(hex, 16).map_err(|_| "invalid_hex")?;
+                out.push(val);
+                i += 3;
+            }
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            other => {
+                out.push(other);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).map_err(|_| "invalid_utf8_output".into())
+}
+
 pub fn render_text_tools_screen(state: &AppState) -> Value {
     let input = state.text_input.clone().unwrap_or_default();
     let mut children = vec![
@@ -170,6 +309,10 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
                 { "type": "Button", "text": "Character count", "action": "text_tools_char_count" },
                 { "type": "Button", "text": "Trim spacing", "action": "text_tools_trim" },
                 { "type": "Button", "text": "Wrap to 72 cols", "action": "text_tools_wrap" },
+                { "type": "Button", "text": "Base64 encode", "action": "text_tools_base64_encode" },
+                { "type": "Button", "text": "Base64 decode", "action": "text_tools_base64_decode" },
+                { "type": "Button", "text": "URL encode", "action": "text_tools_url_encode" },
+                { "type": "Button", "text": "URL decode", "action": "text_tools_url_decode" },
                 { "type": "Button", "text": "Clear", "action": "text_tools_clear" }
             ]
         }),
