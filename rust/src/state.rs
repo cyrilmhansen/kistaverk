@@ -8,6 +8,8 @@ pub enum Screen {
     KotlinImage,
     FileInfo,
     TextTools,
+    Loading,
+    ProgressDemo,
 }
 
 pub struct AppState {
@@ -23,6 +25,8 @@ pub struct AppState {
     pub text_output: Option<String>,
     pub text_operation: Option<String>,
     pub text_aggressive_trim: bool,
+    pub loading_message: Option<String>,
+    pub progress_status: Option<String>,
 }
 
 impl AppState {
@@ -41,6 +45,8 @@ impl AppState {
             text_output: None,
             text_operation: None,
             text_aggressive_trim: false,
+            loading_message: None,
+            progress_status: None,
         }
     }
 }

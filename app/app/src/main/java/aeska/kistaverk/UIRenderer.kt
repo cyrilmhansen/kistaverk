@@ -9,12 +9,14 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.CheckBox
+import android.widget.LinearLayout.LayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.text.Editable
 import android.text.TextWatcher
+import android.widget.ProgressBar
 import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -75,6 +77,7 @@ class UiRenderer(
             "ShaderToy" -> createShaderToy(data)
             "TextInput" -> createTextInput(data)
             "Checkbox" -> createCheckbox(data)
+            "Progress" -> createProgress(data)
             else -> createErrorView("Unknown: $type")
         }
     }
@@ -200,6 +203,36 @@ class UiRenderer(
             view.contentDescription = contentDescription
         }
         return view
+    }
+
+    private fun createProgress(data: JSONObject): View {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.WRAP_CONTENT
+            )
+        }
+        val bar = ProgressBar(context).apply {
+            isIndeterminate = true
+        }
+        val text = data.optString("text", "")
+        if (text.isNotEmpty()) {
+            container.addView(TextView(context).apply {
+                this.text = text
+                textSize = 14f
+                val margin = dpToPx(context, 8f)
+                val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+                lp.bottomMargin = margin
+                layoutParams = lp
+            })
+        }
+        container.addView(bar)
+        val contentDescription = data.optString("content_description", "")
+        if (contentDescription.isNotEmpty()) {
+            container.contentDescription = contentDescription
+        }
+        return container
     }
 
     private fun createCheckbox(data: JSONObject): View {
