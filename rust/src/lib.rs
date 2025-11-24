@@ -117,7 +117,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
 
     let mut fd_handle = FdHandle::new(fd);
 
-    let mut state = STATE.lock().map_err(|_| "state_lock_failed".to_string())?;
+    let mut lock_poisoned = false;
+    let mut state = match STATE.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            lock_poisoned = true;
+            poisoned.into_inner()
+        }
+    };
 
     let command_error = error;
 
@@ -271,6 +278,10 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.last_hash = None;
             }
         }
+    }
+
+    if lock_poisoned && state.last_error.is_none() {
+        state.last_error = Some("state_poisoned".into());
     }
 
     Ok(render_ui(&state))
