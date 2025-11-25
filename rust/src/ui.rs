@@ -353,3 +353,41 @@ impl ColorSwatch {
         self
     }
 }
+
+#[derive(Serialize)]
+pub struct PdfPagePicker<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub page_count: u32,
+    pub bind_key: &'a str,
+    pub source_uri: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_pages: Option<&'a [u32]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> PdfPagePicker<'a> {
+    pub fn new(page_count: u32, bind_key: &'a str, source_uri: &'a str) -> Self {
+        Self {
+            kind: "PdfPagePicker",
+            page_count,
+            bind_key,
+            source_uri,
+            selected_pages: None,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn selected_pages(mut self, pages: &'a [u32]) -> Self {
+        self.selected_pages = Some(pages);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}

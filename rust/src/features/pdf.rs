@@ -12,7 +12,7 @@ use base64::Engine;
 use lopdf::{dictionary, Document, Object, Stream, StringFormat};
 
 use crate::state::{AppState, Screen};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
+use crate::ui::{Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfState {
@@ -146,14 +146,14 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         // Page picker rendered in Kotlin using PdfRenderer.
         children.push(
             serde_json::to_value(
-                UiColumn::new(vec![json!({
-                    "type": "PdfPagePicker",
-                    "page_count": count,
-                    "bind_key": "pdf_selected_pages",
-                    "selected_pages": state.pdf.selected_pages,
-                    "source_uri": uri,
-                    "content_description": "PDF page picker"
-                })])
+                UiColumn::new(vec![
+                    serde_json::to_value(
+                        UiPdfPagePicker::new(count, "pdf_selected_pages", uri)
+                            .selected_pages(&state.pdf.selected_pages)
+                            .content_description("PDF page picker"),
+                    )
+                    .unwrap(),
+                ])
                 .content_description("pdf_page_picker_container"),
             )
             .unwrap(),
