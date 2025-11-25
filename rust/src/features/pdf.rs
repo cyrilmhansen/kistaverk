@@ -142,12 +142,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     }
 
     if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
-        children.push(
-            serde_json::to_value(
-                UiText::new(&format!("Pages: {}", count)).size(12.0),
-            )
-            .unwrap(),
-        );
+        children.push(serde_json::to_value(UiText::new(&format!("Pages: {}", count)).size(12.0)).unwrap());
 
         // Page picker rendered in Kotlin using PdfRenderer.
         children.push(
@@ -190,18 +185,15 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     }
 
     // Title editing
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_title",
-        "hint": "Document title (metadata)",
-        "single_line": true
-    }));
     children.push(
         serde_json::to_value(
-            UiButton::new("Set PDF title", "pdf_set_title"),
+            crate::ui::TextInput::new("pdf_title")
+                .hint("Document title (metadata)")
+                .single_line(true),
         )
         .unwrap(),
     );
+    children.push(serde_json::to_value(UiButton::new("Set PDF title", "pdf_set_title")).unwrap());
 
     if let Some(out) = &state.pdf.last_output {
         children.push(
@@ -213,13 +205,10 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     }
 
     // Signature section
-    children.push(
-        serde_json::to_value(UiText::new("Signature").size(16.0)).unwrap(),
-    );
+    children.push(serde_json::to_value(UiText::new("Signature").size(16.0)).unwrap());
     children.push(
         serde_json::to_value(
-            UiText::new("Draw or load a signature, then pick page/position to stamp it.")
-                .size(12.0),
+            UiText::new("Draw or load a signature, then pick page/position to stamp it.").size(12.0),
         )
         .unwrap(),
     );
@@ -250,44 +239,61 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             .unwrap(),
         );
     }
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_signature_page",
-        "hint": "Page number (1-based)",
-        "single_line": true
-    }));
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_signature_x",
-        "hint": "X position (points)",
-        "single_line": true
-    }));
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_signature_y",
-        "hint": "Y position (points)",
-        "single_line": true
-    }));
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_signature_width",
-        "hint": "Width (points)",
-        "text": state.pdf.signature_width_pt.map(|w| format!("{:.1}", w)).unwrap_or_default(),
-        "single_line": true
-    }));
-    children.push(json!({
-        "type": "TextInput",
-        "bind_key": "pdf_signature_height",
-        "hint": "Height (points)",
-        "text": state.pdf.signature_height_pt.map(|h| format!("{:.1}", h)).unwrap_or_default(),
-        "single_line": true
-    }));
     children.push(
         serde_json::to_value(
-            UiButton::new("Apply signature", "pdf_sign"),
+            crate::ui::TextInput::new("pdf_signature_page")
+                .hint("Page number (1-based)")
+                .single_line(true),
         )
         .unwrap(),
     );
+    children.push(
+        serde_json::to_value(
+            crate::ui::TextInput::new("pdf_signature_x")
+                .hint("X position (points)")
+                .single_line(true),
+        )
+        .unwrap(),
+    );
+    children.push(
+        serde_json::to_value(
+            crate::ui::TextInput::new("pdf_signature_y")
+                .hint("Y position (points)")
+                .single_line(true),
+        )
+        .unwrap(),
+    );
+    children.push(
+        serde_json::to_value(
+            crate::ui::TextInput::new("pdf_signature_width")
+                .hint("Width (points)")
+                .text(
+                    &state
+                        .pdf
+                        .signature_width_pt
+                        .map(|w| format!("{:.1}", w))
+                        .unwrap_or_default(),
+                )
+                .single_line(true),
+        )
+        .unwrap(),
+    );
+    children.push(
+        serde_json::to_value(
+            crate::ui::TextInput::new("pdf_signature_height")
+                .hint("Height (points)")
+                .text(
+                    &state
+                        .pdf
+                        .signature_height_pt
+                        .map(|h| format!("{:.1}", h))
+                        .unwrap_or_default(),
+                )
+                .single_line(true),
+        )
+        .unwrap(),
+    );
+    children.push(serde_json::to_value(UiButton::new("Apply signature", "pdf_sign")).unwrap());
 
     if let Some(err) = &state.pdf.last_error {
         children.push(
