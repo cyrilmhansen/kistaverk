@@ -200,3 +200,5 @@ UI Engine : Ajouter les widgets manquants (TreeView pour archives, Canvas/Bitmap
 Implémentation P1 : PDF + Archives + Dithering.
 Implémentation P2 : Solveur + Logic tools.
 Implémentation P3 : Le "Mode Geek" (Forth + Automates).
+
+- Dependency listing: A build-time script (rust/scripts/generate_deps_metadata.sh) writes deps.json from cargo metadata into Android assets; DepsList widget renders it in a scrollable list inside About screen (covered by a stubbed-assets Robolectric test).
