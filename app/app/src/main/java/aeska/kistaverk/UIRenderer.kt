@@ -32,6 +32,7 @@ import org.json.JSONArray
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.ProgressBar
+import android.widget.HorizontalScrollView
 import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
@@ -492,30 +493,24 @@ class UiRenderer(
         }
 
         val thumbnails = renderPdfThumbnails(uri, pageCount)
-        val wrapper = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+        val scroller = HorizontalScrollView(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        }
+        val strip = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
             val pad = dpToPx(context, 8f)
             setPadding(pad, pad, pad, pad)
+            layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
         }
         val cd = data.optString("content_description", "")
-        if (cd.isNotEmpty()) wrapper.contentDescription = cd
+        if (cd.isNotEmpty()) strip.contentDescription = cd
 
-        val columns = computeColumns(data)
-        var row: LinearLayout? = null
         for (i in 0 until pageCount) {
-            if (i % columns == 0) {
-                row = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-                }
-                wrapper.addView(row)
-            }
             val pageNumber = i + 1
             val cell = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                val lp = LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
-                lp.marginEnd = dpToPx(context, 6f)
+                val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+                lp.marginEnd = dpToPx(context, 10f)
                 layoutParams = lp
             }
             val thumb = thumbnails.getOrNull(i)
@@ -524,7 +519,7 @@ class UiRenderer(
                     setImageBitmap(thumb)
                     adjustViewBounds = true
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    val lp = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                    val lp = LayoutParams(dpToPx(context, 140f), LayoutParams.WRAP_CONTENT)
                     lp.bottomMargin = dpToPx(context, 6f)
                     layoutParams = lp
                 }
@@ -541,11 +536,12 @@ class UiRenderer(
                 }
             }
             cell.addView(check)
-            row?.addView(cell)
+            strip.addView(cell)
         }
 
         pushSelection()
-        return wrapper
+        scroller.addView(strip)
+        return scroller
     }
 
     private fun renderPdfThumbnails(uri: Uri, pageCount: Int): List<Bitmap?> {
