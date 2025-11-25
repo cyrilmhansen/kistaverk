@@ -15,6 +15,7 @@ use features::text_viewer::{load_text_from_fd, load_text_from_path};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use features::color_tools::{handle_color_action, render_color_screen};
+use features::archive::{handle_archive_open, render_archive_screen};
 use ui::{Button as UiButton, Column as UiColumn, DepsList as UiDepsList, Progress as UiProgress, Text as UiText};
 
 use jni::objects::{JClass, JString};
@@ -163,6 +164,8 @@ enum Action {
     Increment,
     Snapshot,
     Restore { snapshot: String },
+    ArchiveToolsScreen,
+    ArchiveOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
 }
 
 struct FdHandle(Option<i32>);
@@ -363,6 +366,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
                 .or_else(|| path.clone()),
         }),
         "color_copy_clipboard" => Ok(Action::ColorCopyClipboard),
+        "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
+        "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
         other => {
             if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
@@ -538,6 +543,23 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::Back => {
             state.pop_screen();
             state.loading_message = None;
+        }
+        Action::ArchiveToolsScreen => {
+            state.push_screen(Screen::ArchiveTools);
+            state.archive.reset();
+        }
+        Action::ArchiveOpen { fd, path, error } => {
+            state.push_screen(Screen::ArchiveTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if let Some(err) = error {
+                state.archive.error = Some(err);
+            } else if let Some(raw_fd) = fd_handle.take() {
+                if let Err(e) = handle_archive_open(&mut state, raw_fd, path.as_deref()) {
+                    state.archive.error = Some(e);
+                }
+            } else {
+                state.archive.error = Some("missing_fd".into());
+            }
         }
         Action::PdfToolsScreen => {
             state.push_screen(Screen::PdfTools);
@@ -949,6 +971,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::About => render_about_screen(state),
         Screen::SensorLogger => render_sensor_logger_screen(state),
         Screen::TextViewer => render_text_viewer_screen(state),
+        Screen::ArchiveTools => render_archive_screen(state),
     }
 }
 
@@ -1315,6 +1338,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "text_viewer_screen",
             requires_file_picker: true,
             description: "preview text/CSV",
+        },
+        Feature {
+            id: "archive_tools",
+            name: "📦 Archive Viewer",
+            category: "📁 Files",
+            action: "archive_tools_screen",
+            requires_file_picker: false,
+            description: "list .zip contents",
         },
         Feature {
             id: "pdf_tools",

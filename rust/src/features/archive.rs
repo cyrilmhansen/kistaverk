@@ -1,0 +1,140 @@
+use crate::state::{AppState, Screen};
+use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fs::File;
+use std::os::unix::io::{FromRawFd, RawFd};
+use zip::ZipArchive;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveEntry {
+    pub name: String,
+    pub size: u64,
+    pub is_dir: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveState {
+    pub path: Option<String>,
+    pub entries: Vec<ArchiveEntry>,
+    pub error: Option<String>,
+}
+
+impl ArchiveState {
+    pub const fn new() -> Self {
+        Self {
+            path: None,
+            entries: Vec::new(),
+            error: None,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.path = None;
+        self.entries.clear();
+        self.error = None;
+    }
+}
+
+pub fn handle_archive_open(
+    state: &mut AppState,
+    fd: RawFd,
+    path: Option<&str>,
+) -> Result<(), String> {
+    state.archive.reset();
+    state.archive.path = path.map(|s| s.to_string());
+
+    let file = unsafe { File::from_raw_fd(fd) };
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_open_failed:{e}"))?;
+
+    let mut entries = Vec::new();
+    let limit = 200.min(archive.len());
+    for i in 0..limit {
+        if let Ok(file) = archive.by_index(i) {
+            entries.push(ArchiveEntry {
+                name: file.name().to_string(),
+                size: file.size(),
+                is_dir: file.name().ends_with('/'),
+            });
+        }
+    }
+    state.archive.entries = entries;
+    state.archive.error = None;
+    state.replace_current(Screen::ArchiveTools);
+    Ok(())
+}
+
+pub fn render_archive_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Archive Viewer").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new("View contents of .zip files.").size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiButton::new("Open Archive", "archive_open")
+                .requires_file_picker(true)
+                .content_description("Pick an archive to list"),
+        )
+        .unwrap(),
+    ];
+
+    if let Some(err) = &state.archive.error {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Error: {}", err))
+                    .size(14.0)
+                    .content_description("archive_error"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if let Some(path) = &state.archive.path {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
+        );
+    }
+
+    if !state.archive.entries.is_empty() {
+        children.push(serde_json::to_value(UiText::new("Contents:").size(16.0)).unwrap());
+        let mut rows = Vec::new();
+        for entry in &state.archive.entries {
+            let icon = if entry.is_dir { "📁" } else { "📄" };
+            let size_str = if entry.is_dir {
+                String::new()
+            } else {
+                format!("({})", human_bytes(entry.size))
+            };
+            rows.push(
+                serde_json::to_value(
+                    UiText::new(&format!("{icon} {} {size_str}", entry.name))
+                        .size(14.0)
+                        .content_description("archive_entry"),
+                )
+                .unwrap(),
+            );
+        }
+        children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
+    }
+
+    if state.nav_depth() > 1 {
+        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+    }
+
+    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
+}
+
+fn human_bytes(b: u64) -> String {
+    const KB: f64 = 1024.0;
+    if b < 1024 {
+        return format!("{} B", b);
+    }
+    let kb = b as f64 / KB;
+    if kb < KB {
+        return format!("{:.1} KB", kb);
+    }
+    let mb = kb / KB;
+    if mb < KB {
+        return format!("{:.1} MB", mb);
+    }
+    let gb = mb / KB;
+    format!("{:.1} GB", gb)
+}
