@@ -18,6 +18,7 @@ pub struct ArchiveState {
     pub path: Option<String>,
     pub entries: Vec<ArchiveEntry>,
     pub error: Option<String>,
+    pub truncated: bool,
 }
 
 impl ArchiveState {
@@ -26,6 +27,7 @@ impl ArchiveState {
             path: None,
             entries: Vec::new(),
             error: None,
+            truncated: false,
         }
     }
 
@@ -33,6 +35,7 @@ impl ArchiveState {
         self.path = None;
         self.entries.clear();
         self.error = None;
+        self.truncated = false;
     }
 }
 
@@ -48,7 +51,7 @@ pub fn handle_archive_open(
     let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_open_failed:{e}"))?;
 
     let mut entries = Vec::new();
-    let limit = 200.min(archive.len());
+    let limit = 500.min(archive.len());
     for i in 0..limit {
         if let Ok(file) = archive.by_index(i) {
             entries.push(ArchiveEntry {
@@ -59,6 +62,7 @@ pub fn handle_archive_open(
         }
     }
     state.archive.entries = entries;
+    state.archive.truncated = archive.len() > limit;
     state.archive.error = None;
     state.replace_current(Screen::ArchiveTools);
     Ok(())
@@ -113,6 +117,25 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             );
         }
         children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
+        if state.archive.truncated {
+            children.push(
+                serde_json::to_value(
+                    UiText::new("Showing first 500 entries (truncated)")
+                        .size(12.0)
+                        .content_description("archive_truncated"),
+                )
+                .unwrap(),
+            );
+        }
+    } else if state.archive.error.is_none() && state.archive.path.is_some() {
+        children.push(
+            serde_json::to_value(
+                UiText::new("No entries found or archive empty.")
+                    .size(12.0)
+                    .content_description("archive_empty"),
+            )
+            .unwrap(),
+        );
     }
 
     if state.nav_depth() > 1 {
