@@ -8,9 +8,15 @@ import org.robolectric.shadows.ShadowActivity
 
 @Implements(MainActivity::class)
 class ShadowMainActivity : ShadowActivity() {
+    companion object {
+        val actions: MutableList<String> = mutableListOf()
+        fun reset() = actions.clear()
+    }
+
     @Implementation
     fun dispatch(input: String): String {
         val action = runCatching { JSONObject(input).optString("action") }.getOrDefault("")
+        actions.add(action)
         return when (action) {
             "snapshot" -> """{ "snapshot": "{\"type\":\"Column\",\"children\":[]}" }"""
             "restore_state" -> """{ "type": "Column", "children": [] }"""
