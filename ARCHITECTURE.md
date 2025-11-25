@@ -16,7 +16,7 @@ There are no classic XML layout files for individual screens.
 - **Loading/Progress:** `UiRenderer` renders a `Progress` widget (indeterminate spinner + optional label) for loading states; used by Rust “Computing…” screens.
 - **Overlay spinner:** MainActivity wraps content in a frame with a translucent overlay spinner for loading-only calls (hashes, progress demo) so the prior screen stays visible.
 - **Grid layout:** The home menu renders categories as 2-column grids (auto-falls back to 1 column on narrow screens unless `columns` is set explicitly) to reduce scroll.
-- **PDF widgets:** `PdfPagePicker` renders page thumbnails via `PdfRenderer` with multi-select bindings (now in a horizontal carousel strip); `SignaturePad` captures a drawn signature to base64 PNG and reports bitmap dimensions/DPI so Rust can scale and position accurately in PDF points.
+- **PDF widgets:** `PdfPagePicker` renders page thumbnails via `PdfRenderer` with multi-select bindings (now in a horizontal carousel strip); `SignaturePad` captures a drawn signature to base64 PNG and reports bitmap dimensions/DPI so Rust can scale and position accurately in PDF points and prefill width/height based on the image aspect ratio.
 - **PDF metadata:** UI wiring allows updating the PDF Title (Info dictionary) via Rust lopdf, alongside page ops and signature stamping.
 - **Hardware Back:** `OnBackPressedDispatcher` sends a `back` action into Rust, which pops the navigation stack and returns the previous screen JSON; inline Back buttons are only shown when stack depth > 1.
 - **State persistence:** `MainActivity` saves a Rust snapshot during `onSaveInstanceState` and restores it on recreate. Robolectric tests cover the snapshot/restore path with JNI loading stubbed to avoid native deps.
