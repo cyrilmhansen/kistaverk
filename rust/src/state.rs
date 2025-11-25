@@ -1,3 +1,4 @@
+use crate::features::archive::ArchiveState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
 use crate::features::sensor_logger::SensorSelection;
@@ -18,6 +19,7 @@ pub enum Screen {
     About,
     SensorLogger,
     TextViewer,
+    ArchiveTools,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +48,7 @@ pub struct AppState {
     pub text_view_content: Option<String>,
     pub text_view_path: Option<String>,
     pub text_view_error: Option<String>,
+    pub archive: ArchiveState,
 }
 
 impl AppState {
@@ -76,6 +79,7 @@ impl AppState {
             text_view_content: None,
             text_view_path: None,
             text_view_error: None,
+            archive: ArchiveState::new(),
         }
     }
 
@@ -147,5 +151,6 @@ impl AppState {
         self.text_view_content = None;
         self.text_view_path = None;
         self.text_view_error = None;
+        self.archive.reset();
     }
 }
