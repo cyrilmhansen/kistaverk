@@ -22,6 +22,8 @@ pub struct PdfState {
     pub last_output: Option<String>,
     pub last_error: Option<String>,
     pub signature_base64: Option<String>,
+    pub signature_width_pt: Option<f64>,
+    pub signature_height_pt: Option<f64>,
 }
 
 impl PdfState {
@@ -33,6 +35,8 @@ impl PdfState {
             last_output: None,
             last_error: None,
             signature_base64: None,
+            signature_width_pt: None,
+            signature_height_pt: None,
         }
     }
 
@@ -43,6 +47,8 @@ impl PdfState {
         self.last_output = None;
         self.last_error = None;
         self.signature_base64 = None;
+        self.signature_width_pt = None;
+        self.signature_height_pt = None;
     }
 }
 
@@ -266,12 +272,14 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         "type": "TextInput",
         "bind_key": "pdf_signature_width",
         "hint": "Width (points)",
+        "text": state.pdf.signature_width_pt.map(|w| format!("{:.1}", w)).unwrap_or_default(),
         "single_line": true
     }));
     children.push(json!({
         "type": "TextInput",
         "bind_key": "pdf_signature_height",
         "hint": "Height (points)",
+        "text": state.pdf.signature_height_pt.map(|h| format!("{:.1}", h)).unwrap_or_default(),
         "single_line": true
     }));
     children.push(
@@ -571,6 +579,8 @@ pub fn handle_pdf_sign(
     state.pdf.source_uri = uri.map(|u| u.to_string()).or_else(|| state.pdf.source_uri.clone());
     state.pdf.last_error = None;
     state.pdf.signature_base64 = Some(signature_base64.to_string());
+    state.pdf.signature_width_pt = Some(target_width);
+    state.pdf.signature_height_pt = Some(target_height);
     state.pdf.page_count = Some(page_count);
     state.replace_current(Screen::PdfTools);
     Ok(())

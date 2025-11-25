@@ -682,11 +682,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         Action::PdfSignatureStore { data } => {
             state.pdf.signature_base64 = data;
+            state.pdf.signature_width_pt = None;
+            state.pdf.signature_height_pt = None;
             state.pdf.last_error = None;
             state.push_screen(Screen::PdfTools);
         }
         Action::PdfSignatureClear => {
             state.pdf.signature_base64 = None;
+            state.pdf.signature_width_pt = None;
+            state.pdf.signature_height_pt = None;
             state.pdf.last_error = None;
             state.push_screen(Screen::PdfTools);
         }
