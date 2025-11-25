@@ -20,7 +20,7 @@ There are no classic XML layout files for individual screens.
 - **PDF metadata:** UI wiring allows updating the PDF Title (Info dictionary) via Rust lopdf, alongside page ops and signature stamping.
 - **Hardware Back:** `OnBackPressedDispatcher` sends a `back` action into Rust, which pops the navigation stack and returns the previous screen JSON; inline Back buttons are only shown when stack depth > 1.
 - **State persistence:** `MainActivity` saves a Rust snapshot during `onSaveInstanceState` and restores it on recreate. Robolectric tests cover the snapshot/restore path with JNI loading stubbed to avoid native deps.
-- **Schema guardrails:** Renderer validates incoming JSON (widget whitelist + required children for Column/Grid) before rendering and falls back to an inline error screen if malformed.
+- **Schema guardrails:** Renderer validates incoming JSON (widget whitelist + required children for Column/Grid + required fields for Button/TextInput/Checkbox/ImageBase64/ColorSwatch) before rendering and falls back to an inline error screen if malformed.
 - **Clipboard & copy actions:** Buttons may specify `copy_text` to push values to clipboard client-side; Color converter buttons copy Hex/RGB/HSL independently. MainActivity injects small clipboard text into bindings and reuses clipboard Hex for “Put Hex in input”.
 - **Accessibility:** JSON `content_description` is applied on Text, Button, Column, ShaderToy, TextInput, Checkbox, Grid, and Progress to cover TalkBack without XML layouts.
 - **Tests:** Robolectric tests exercise `UiRenderer` TextInput/Checkbox/Progress parsing and binding delivery to actions to catch JSON/render regressions early.

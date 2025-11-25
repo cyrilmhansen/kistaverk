@@ -1,6 +1,5 @@
 use crate::state::{AppState, Screen};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
-use serde_json::json;
+use crate::ui::{Button as UiButton, Column as UiColumn, ColorSwatch as UiColorSwatch, Text as UiText, TextInput as UiTextInput};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rgb {
@@ -125,11 +124,12 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
                 | ((parts[0] as u32) << 16)
                 | ((parts[1] as u32) << 8)
                 | parts[2] as u32) as i64;
-            children.push(json!({
-                "type": "ColorSwatch",
-                "color": color,
-                "content_description": "Color preview"
-            }));
+            children.push(
+                serde_json::to_value(
+                    UiColorSwatch::new(color).content_description("Color preview"),
+                )
+                .unwrap(),
+            );
             let swatch_hex = format!("#{:02X}{:02X}{:02X}", parts[0], parts[1], parts[2]);
             children.push(
                 serde_json::to_value(

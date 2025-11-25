@@ -72,11 +72,12 @@ pub fn render_qr_screen(state: &AppState) -> serde_json::Value {
 
     if let Some(b64) = &state.last_qr_base64 {
         children.push(serde_json::to_value(UiText::new("Result:").size(14.0)).unwrap());
-        children.push(json!({
-            "type": "ImageBase64",
-            "base64": b64,
-            "content_description": "Generated QR"
-        }));
+        children.push(
+            serde_json::to_value(
+                crate::ui::ImageBase64::new(b64).content_description("Generated QR"),
+            )
+            .unwrap(),
+        );
     }
 
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()

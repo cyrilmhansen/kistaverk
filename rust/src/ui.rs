@@ -302,3 +302,54 @@ impl<'a> TextInput<'a> {
         self
     }
 }
+
+
+#[derive(Serialize)]
+pub struct ImageBase64<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub base64: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> ImageBase64<'a> {
+    pub fn new(base64: &'a str) -> Self {
+        Self {
+            kind: "ImageBase64",
+            base64,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
+pub struct ColorSwatch {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub color: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'static str>,
+}
+
+impl ColorSwatch {
+    pub fn new(color: i64) -> Self {
+        Self {
+            kind: "ColorSwatch",
+            color,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'static str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
