@@ -17,6 +17,7 @@ class MainActivitySnapshotTest {
     @Test
     fun snapshotIsRestoredOnRecreate() {
         System.setProperty("kistaverk.skipNativeLoad", "true")
+        ShadowMainActivity.reset()
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller.get()
 
@@ -46,6 +47,8 @@ class MainActivitySnapshotTest {
             .apply { isAccessible = true }
             .invoke(restored) as? String).orEmpty()
         assertTrue("Snapshot after restore must be valid JSON", runCatching { JSONObject(json) }.isSuccess)
+        assertTrue("Snapshot should have been requested", ShadowMainActivity.actions.contains("snapshot"))
+        assertTrue("Restore should have been invoked", ShadowMainActivity.actions.contains("restore_state"))
 
         restoredController.pause().stop().destroy()
     }
