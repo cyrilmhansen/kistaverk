@@ -391,3 +391,27 @@ impl<'a> PdfPagePicker<'a> {
         self
     }
 }
+
+
+#[derive(Serialize)]
+pub struct DepsList<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> DepsList<'a> {
+    pub fn new() -> Self {
+        Self {
+            kind: "DepsList",
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}

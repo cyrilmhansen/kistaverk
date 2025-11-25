@@ -15,7 +15,7 @@ use features::text_viewer::{load_text_from_fd, load_text_from_path};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use features::color_tools::{handle_color_action, render_color_screen};
-use ui::{Button as UiButton, Column as UiColumn, Progress as UiProgress, Text as UiText};
+use ui::{Button as UiButton, Column as UiColumn, DepsList as UiDepsList, Progress as UiProgress, Text as UiText};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -1118,7 +1118,7 @@ fn render_about_screen(state: &AppState) -> Value {
                 .size(12.0),
         )
         .unwrap(),
-        json!({ "type": "DepsList" }),
+        serde_json::to_value(UiDepsList::new()).unwrap(),
     ];
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
