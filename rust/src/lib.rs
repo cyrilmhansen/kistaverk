@@ -1132,29 +1132,58 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
                 .size(14.0),
         )
         .unwrap(),
-        json!({
-            "type": "Text",
-            "text": "Sensors",
-            "size": 14.0
-        }),
-        json!({
-            "type": "Column",
-            "children": [
-                {"type": "Checkbox", "text": "Accelerometer", "bind_key": "sensor_accel", "checked": state.sensor_selection.map(|s| s.accel).unwrap_or(true)},
-                {"type": "Checkbox", "text": "Gyroscope", "bind_key": "sensor_gyro", "checked": state.sensor_selection.map(|s| s.gyro).unwrap_or(true)},
-                {"type": "Checkbox", "text": "Magnetometer", "bind_key": "sensor_mag", "checked": state.sensor_selection.map(|s| s.mag).unwrap_or(true)},
-                {"type": "Checkbox", "text": "Barometer", "bind_key": "sensor_pressure", "checked": state.sensor_selection.map(|s| s.pressure).unwrap_or(false)},
-                {"type": "Checkbox", "text": "GPS", "bind_key": "sensor_gps", "checked": state.sensor_selection.map(|s| s.gps).unwrap_or(false)},
-                {"type": "Checkbox", "text": "Battery", "bind_key": "sensor_battery", "checked": state.sensor_selection.map(|s| s.battery).unwrap_or(true)},
-            ]
-        }),
-        json!({
-            "type": "TextInput",
-            "hint": "Interval ms (50-10000)",
-            "bind_key": "sensor_interval_ms",
-            "text": state.sensor_interval_ms.map(|v| v.to_string()).unwrap_or_else(|| "200".into()),
-            "keyboard": "number"
-        }),
+        serde_json::to_value(UiText::new("Sensors").size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiColumn::new(vec![
+                serde_json::to_value(
+                    ui::Checkbox::new(
+                        "Accelerometer",
+                        "sensor_accel",
+                    )
+                    .checked(state.sensor_selection.map(|s| s.accel).unwrap_or(true)),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    ui::Checkbox::new("Gyroscope", "sensor_gyro")
+                        .checked(state.sensor_selection.map(|s| s.gyro).unwrap_or(true)),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    ui::Checkbox::new("Magnetometer", "sensor_mag")
+                        .checked(state.sensor_selection.map(|s| s.mag).unwrap_or(true)),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    ui::Checkbox::new("Barometer", "sensor_pressure")
+                        .checked(state.sensor_selection.map(|s| s.pressure).unwrap_or(false)),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    ui::Checkbox::new("GPS", "sensor_gps")
+                        .checked(state.sensor_selection.map(|s| s.gps).unwrap_or(false)),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    ui::Checkbox::new("Battery", "sensor_battery")
+                        .checked(state.sensor_selection.map(|s| s.battery).unwrap_or(true)),
+                )
+                .unwrap(),
+            ])
+            .padding(8),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            ui::TextInput::new("sensor_interval_ms")
+                .hint("Interval ms (50-10000)")
+                .text(
+                    &state
+                        .sensor_interval_ms
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "200".into()),
+                )
+                .content_description("Sensor interval ms"),
+        )
+        .unwrap(),
         serde_json::to_value(UiButton::new("Start logging", "sensor_logger_start")).unwrap(),
         serde_json::to_value(UiButton::new("Stop logging", "sensor_logger_stop")).unwrap(),
     ];
