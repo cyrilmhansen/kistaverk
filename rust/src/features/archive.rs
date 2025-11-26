@@ -1,3 +1,4 @@
+use crate::features::text_viewer::read_text_from_reader;
 use crate::state::{AppState, Screen};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use serde::{Deserialize, Serialize};
@@ -100,7 +101,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
     if !state.archive.entries.is_empty() {
         children.push(serde_json::to_value(UiText::new("Contents:").size(16.0)).unwrap());
         let mut rows = Vec::new();
-        for entry in &state.archive.entries {
+        for (idx, entry) in state.archive.entries.iter().enumerate() {
             let icon = if entry.is_dir { "📁" } else { "📄" };
             let size_str = if entry.is_dir {
                 String::new()
@@ -108,12 +109,21 @@ pub fn render_archive_screen(state: &AppState) -> Value {
                 format!("({})", human_bytes(entry.size))
             };
             rows.push(
-                serde_json::to_value(
-                    UiText::new(&format!("{icon} {} {size_str}", entry.name))
-                        .size(14.0)
-                        .content_description("archive_entry"),
-                )
-                .unwrap(),
+                if is_text_entry(entry) {
+                    let label = format!("{icon} {} {size_str}", entry.name);
+                    let action = format!("archive_open_text:{idx}");
+                    serde_json::to_value(
+                        UiButton::new(&label, &action).content_description("archive_entry_text"),
+                    )
+                    .unwrap()
+                } else {
+                    serde_json::to_value(
+                        UiText::new(&format!("{icon} {} {size_str}", entry.name))
+                            .size(14.0)
+                            .content_description("archive_entry"),
+                    )
+                    .unwrap()
+                },
             );
         }
         children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
@@ -160,4 +170,48 @@ fn human_bytes(b: u64) -> String {
     }
     let gb = mb / KB;
     format!("{:.1} GB", gb)
+}
+
+fn is_text_entry(entry: &ArchiveEntry) -> bool {
+    if entry.is_dir {
+        return false;
+    }
+    let name = entry.name.to_ascii_lowercase();
+    const TEXT_EXTENSIONS: [&str; 22] = [
+        ".txt", ".csv", ".md", ".log", ".json", ".xml", ".yaml", ".yml", ".ini", ".cfg", ".conf",
+        ".properties", ".toml", ".rs", ".c", ".cpp", ".h", ".py", ".java", ".kt", ".sh", ".go",
+    ];
+    TEXT_EXTENSIONS.iter().any(|ext| name.ends_with(ext))
+}
+
+pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String), String> {
+    let archive_path = state
+        .archive
+        .path
+        .as_ref()
+        .ok_or_else(|| "archive_missing_path".to_string())?;
+    let entry = state
+        .archive
+        .entries
+        .get(index)
+        .ok_or_else(|| "archive_entry_out_of_range".to_string())?;
+
+    if entry.is_dir {
+        return Err("archive_entry_is_directory".into());
+    }
+    if !is_text_entry(entry) {
+        return Err("archive_entry_not_text".into());
+    }
+
+    let file = File::open(archive_path)
+        .map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut entry_file = archive
+        .by_index(index)
+        .map_err(|e| format!("archive_entry_open_failed:{e}"))?;
+
+    let text = read_text_from_reader(&mut entry_file)?;
+    let label = format!("{} ⟂ {}", entry.name, archive_path);
+    Ok((label, text))
 }

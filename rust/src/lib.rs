@@ -11,12 +11,12 @@ use features::kotlin_image::{
 use features::pdf::{handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen, PdfOperation};
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::sensor_logger::{apply_status_from_bindings, parse_bindings as parse_sensor_bindings};
-use features::text_viewer::{load_text_from_fd, load_text_from_path};
+use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_text_from_path};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::{render_menu, Feature};
 use features::color_tools::{handle_color_action, render_color_screen};
 use features::archive::{handle_archive_open, render_archive_screen};
-use ui::{Button as UiButton, Column as UiColumn, DepsList as UiDepsList, Progress as UiProgress, Text as UiText};
+use ui::{Button as UiButton, CodeView as UiCodeView, Column as UiColumn, DepsList as UiDepsList, Progress as UiProgress, Text as UiText};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -152,6 +152,8 @@ enum Action {
     About,
     TextViewerScreen,
     TextViewerOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
+    TextViewerToggleTheme,
+    TextViewerToggleLineNumbers,
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -166,6 +168,7 @@ enum Action {
     Restore { snapshot: String },
     ArchiveToolsScreen,
     ArchiveOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
+    ArchiveOpenText { index: usize },
 }
 
 struct FdHandle(Option<i32>);
@@ -256,6 +259,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
+        "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
+        "text_viewer_toggle_line_numbers" => Ok(Action::TextViewerToggleLineNumbers),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
@@ -369,7 +374,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
         other => {
-            if let Some(text_action) = parse_text_action(other) {
+            if let Some(idx) = other.strip_prefix("archive_open_text:") {
+                let index = idx
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid_archive_index:{idx}"))?;
+                Ok(Action::ArchiveOpenText { index })
+            } else if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
                     action: text_action,
                     bindings,
@@ -561,6 +571,34 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.archive.error = Some("missing_fd".into());
             }
         }
+        Action::ArchiveOpenText { index } => {
+            state.push_screen(Screen::TextViewer);
+            match features::archive::read_text_entry(&state, index) {
+                Ok((label, text)) => {
+                    state.text_view_path = Some(label);
+                    state.text_view_content = Some(text);
+                    state.text_view_error = None;
+                    if let Some(entry) = state.archive.entries.get(index) {
+                        state.text_view_language = guess_language_from_path(&entry.name);
+                    } else {
+                        state.text_view_language = None;
+                    }
+                }
+                Err(e) => {
+                    state.text_view_error = Some(e);
+                    state.text_view_content = None;
+                    state.text_view_language = None;
+                    if let Some(entry) = state.archive.entries.get(index) {
+                        state.text_view_path = state
+                            .archive
+                            .path
+                            .as_ref()
+                            .map(|p| format!("{} ⟂ {}", entry.name, p))
+                            .or_else(|| Some(entry.name.clone()));
+                    }
+                }
+            }
+        }
         Action::PdfToolsScreen => {
             state.push_screen(Screen::PdfTools);
             state.pdf.last_error = None;
@@ -722,6 +760,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::TextViewerScreen => {
             state.push_screen(Screen::TextViewer);
             state.text_view_error = None;
+            state.text_view_language = None;
         }
         Action::TextViewerOpen { fd, path, error } => {
             state.push_screen(Screen::TextViewer);
@@ -729,6 +768,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             let mut fd_handle = FdHandle::new(fd);
             if error.is_some() {
                 state.text_view_content = None;
+                state.text_view_language = None;
             } else if let Some(raw_fd) = fd_handle.take() {
                 load_text_from_fd(&mut state, raw_fd as RawFd, path.as_deref());
             } else if let Some(p) = path.as_deref() {
@@ -736,7 +776,16 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 state.text_view_error = Some("missing_source".into());
                 state.text_view_content = None;
+                state.text_view_language = None;
             }
+        }
+        Action::TextViewerToggleTheme => {
+            state.text_view_dark = !state.text_view_dark;
+            state.replace_current(Screen::TextViewer);
+        }
+        Action::TextViewerToggleLineNumbers => {
+            state.text_view_line_numbers = !state.text_view_line_numbers;
+            state.replace_current(Screen::TextViewer);
         }
         Action::SensorLoggerScreen => {
             state.push_screen(Screen::SensorLogger);
@@ -1244,7 +1293,8 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Open a text or CSV file to preview up to 256 KB.").size(14.0),
+            UiText::new("Open a text or CSV file to preview up to 256 KB with syntax highlighting.")
+                .size(14.0),
         )
         .unwrap(),
         json!({
@@ -1260,21 +1310,48 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
         children.push(serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap());
     }
 
+    let theme_label = if state.text_view_dark { "Switch to light" } else { "Switch to dark" };
+    children.push(
+        serde_json::to_value(
+            UiButton::new(theme_label, "text_viewer_toggle_theme")
+                .content_description("text_viewer_toggle_theme"),
+        )
+        .unwrap(),
+    );
+    let ln_label = if state.text_view_line_numbers { "Hide line numbers" } else { "Show line numbers" };
+    children.push(
+        serde_json::to_value(
+            UiButton::new(ln_label, "text_viewer_toggle_line_numbers")
+                .content_description("text_viewer_toggle_line_numbers"),
+        )
+        .unwrap(),
+    );
+
     if let Some(err) = &state.text_view_error {
         children.push(serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap());
     }
 
     if let Some(content) = &state.text_view_content {
-        children.push(json!({
-            "type": "Text",
-            "text": content,
-            "size": 13.0
-        }));
+        let mut lang = state.text_view_language.clone();
+        if lang.is_none() {
+            if let Some(path) = &state.text_view_path {
+                lang = guess_language_from_path(path);
+            }
+        }
+        let theme = if state.text_view_dark { "dark" } else { "light" };
+        let mut code = UiCodeView::new(content)
+            .wrap(true)
+            .theme(theme)
+            .line_numbers(state.text_view_line_numbers);
+        if let Some(lang_str) = lang.as_deref() {
+            code = code.language(lang_str);
+        }
+        children.push(serde_json::to_value(code).unwrap());
     }
 
     maybe_push_back(&mut children, state);
 
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
 }
 
 const SAMPLE_SHADER: &str = r#"
@@ -1457,6 +1534,7 @@ mod tests {
     use std::os::unix::io::IntoRawFd;
     use std::sync::Mutex;
     use tempfile::NamedTempFile;
+    use zip::write::FileOptions;
 
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -1863,6 +1941,58 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.text_view_path.as_deref(), Some(file.path().to_string_lossy().as_ref()));
         assert!(state.text_view_error.is_none());
+    }
+
+    #[test]
+    fn archive_text_entry_opens_in_viewer() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut zip_file = NamedTempFile::new().unwrap();
+        {
+            let mut writer = zip::ZipWriter::new(&mut zip_file);
+            let options = FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            writer.start_file("note.txt", options).unwrap();
+            writer.write_all(b"hello from zip").unwrap();
+            writer.start_file("data.bin", options).unwrap();
+            writer.write_all(&[0u8, 1, 2]).unwrap();
+            writer.finish().unwrap();
+        }
+
+        let fd = File::open(zip_file.path()).unwrap().into_raw_fd();
+        let mut open_cmd = make_command("archive_open");
+        open_cmd.fd = Some(fd);
+        open_cmd.path = Some(zip_file.path().to_string_lossy().into_owned());
+        handle_command(open_cmd).expect("archive open should succeed");
+
+        let ui = handle_command(make_command("archive_open_text:0"))
+            .expect("text entry open should succeed");
+        assert_contains_text(&ui, "hello from zip");
+
+        let state = STATE.lock().unwrap();
+        assert!(state
+            .text_view_path
+            .as_deref()
+            .map(|p| p.contains("note.txt"))
+            .unwrap_or(false));
+        assert_eq!(state.text_view_content.as_deref(), Some("hello from zip"));
+        assert!(matches!(state.current_screen(), Screen::TextViewer));
+        assert_eq!(state.nav_depth(), 3);
+    }
+
+    #[test]
+    fn qr_screen_has_back_button_when_nested() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut cmd = make_command("qr_generate");
+        cmd.bindings = Some(HashMap::from([("qr_input".into(), "hi".into())]));
+        let ui = handle_command(cmd).expect("qr generate should succeed");
+
+        assert_contains_text(&ui, "Back");
+        let state = STATE.lock().unwrap();
+        assert!(matches!(state.current_screen(), Screen::Qr));
+        assert!(state.nav_depth() > 1);
     }
 
     #[test]
