@@ -80,5 +80,9 @@ pub fn render_qr_screen(state: &AppState) -> serde_json::Value {
         );
     }
 
+    if state.nav_depth() > 1 {
+        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+    }
+
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }

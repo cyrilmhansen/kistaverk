@@ -24,6 +24,8 @@ import android.widget.CheckBox
 import android.widget.LinearLayout.LayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.webkit.WebSettings
+import android.webkit.WebView
 import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.TextView
@@ -57,6 +59,8 @@ class UiRenderer(
         "PdfPagePicker",
         "SignaturePad",
         "DepsList"
+        ,
+        "CodeView"
     )
 
     fun render(jsonString: String): View {
@@ -133,6 +137,7 @@ class UiRenderer(
             "PdfPagePicker" -> createPdfPagePicker(data)
             "SignaturePad" -> createSignaturePad(data)
             "DepsList" -> createDepsList()
+            "CodeView" -> createCodeView(data)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -176,6 +181,9 @@ class UiRenderer(
         }
         if (type == "DepsList") {
             // no required fields
+        }
+        if (type == "CodeView" && !node.has("text")) {
+            return "CodeView missing text"
         }
         if (type == "Grid") {
             val children = node.optJSONArray("children") ?: return "Grid missing children"
@@ -278,6 +286,81 @@ class UiRenderer(
                 this.contentDescription = contentDescription
             }
         }
+    }
+
+    private fun createCodeView(data: JSONObject): View {
+        val text = data.optString("text", "")
+        val language = data.optString("language", "none").ifBlank { "none" }
+        val wrap = data.optBoolean("wrap", true)
+        val theme = data.optString("theme", "light")
+        val contentDescription = data.optString("content_description", "")
+
+        val webView = WebView(context)
+        webView.settings.javaScriptEnabled = true
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        webView.settings.setSupportZoom(false)
+        webView.settings.displayZoomControls = false
+        webView.settings.builtInZoomControls = false
+        webView.settings.domStorageEnabled = false
+        webView.settings.setSupportMultipleWindows(false)
+        webView.isVerticalScrollBarEnabled = true
+        webView.isHorizontalScrollBarEnabled = !wrap
+        webView.setBackgroundColor(Color.TRANSPARENT)
+        if (contentDescription.isNotEmpty()) {
+            webView.contentDescription = contentDescription
+        }
+
+        val escaped = escapeHtml(text)
+        val background = if (theme == "dark") "#0f111a" else "#fafafa"
+        val foreground = if (theme == "dark") "#e6e6e6" else "#1a1a1a"
+        val wrapClass = if (wrap) "wrap" else "nowrap"
+        val lineNumbers = data.optBoolean("line_numbers", false)
+        val lineClass = if (lineNumbers) "line-numbers" else ""
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width,initial-scale=1" />
+              <link rel="stylesheet" href="prism.min.css" />
+              <link rel="stylesheet" href="prism-line-numbers.min.css" />
+              <style>
+                body { margin: 0; padding: 12px; background: $background; color: $foreground; }
+                pre { margin: 0; font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 14px; line-height: 1.4; }
+                pre.wrap code { white-space: pre-wrap; word-break: break-word; }
+                pre.nowrap { overflow-x: auto; }
+                code { display: block; }
+              </style>
+            </head>
+            <body>
+              <pre class="$wrapClass $lineClass"><code class="language-$language">$escaped</code></pre>
+              <script src="prism.min.js"></script>
+              <script src="prism-line-numbers.min.js"></script>
+              <script src="prism-json.min.js"></script>
+              <script src="prism-rust.min.js"></script>
+              <script src="prism-yaml.min.js"></script>
+              <script src="prism-toml.min.js"></script>
+              <script src="prism-markdown.min.js"></script>
+              <script>if(window.Prism){Prism.manual=false;Prism.highlightAll();}</script>
+            </body>
+            </html>
+        """.trimIndent()
+
+        webView.loadDataWithBaseURL(
+            "file:///android_asset/prism/",
+            html,
+            "text/html",
+            "utf-8",
+            null
+        )
+
+        val lp = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
+        val margin = dpToPx(context, 8f)
+        lp.topMargin = margin
+        lp.bottomMargin = margin
+        webView.layoutParams = lp
+
+        return webView
     }
 
     private fun createButton(data: JSONObject): View {
@@ -828,6 +911,15 @@ class UiRenderer(
                 gl_FragColor = vec4(col, 1.0);
             }
         """
+    }
+
+    private fun escapeHtml(text: String): String {
+        return text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
     }
 
     private fun dpToPx(context: Context, dp: Float): Int {

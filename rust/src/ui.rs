@@ -112,6 +112,11 @@ impl<'a> Column<'a> {
         self
     }
 
+    pub fn scrollable(mut self, scrollable: bool) -> Self {
+        self.scrollable = Some(scrollable);
+        self
+    }
+
     #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
@@ -407,6 +412,66 @@ impl<'a> DepsList<'a> {
             kind: "DepsList",
             content_description: None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
+pub struct CodeView<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub text: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wrap: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_numbers: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> CodeView<'a> {
+    pub fn new(text: &'a str) -> Self {
+        Self {
+            kind: "CodeView",
+            text,
+            language: None,
+            wrap: None,
+            theme: None,
+            line_numbers: None,
+            content_description: None,
+        }
+    }
+
+    pub fn language(mut self, lang: &'a str) -> Self {
+        self.language = Some(lang);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.wrap = Some(wrap);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn theme(mut self, theme: &'a str) -> Self {
+        self.theme = Some(theme);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn line_numbers(mut self, enabled: bool) -> Self {
+        self.line_numbers = Some(enabled);
+        self
     }
 
     #[allow(dead_code)]

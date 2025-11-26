@@ -80,7 +80,8 @@ Tech: Complex binary parsing.
 - Add UI/UX for signature placement preview and validate PDF alias entry path (activity-alias); verify PdfRenderer/FD flows under TalkBack.
 - Ensure deps.json generation stays wired (rust/scripts/generate_deps_metadata.sh hooked to Gradle preBuild) and About shows scrollable deps list from assets.
 - Sensor logger: on-device QA (TalkBack labels, permission UX), tune GPS sampling interval and throttling, and validate CSV content/share flow.
-- Text viewer: on-device check for large files (truncation UX), binary/invalid UTF-8 handling, and TalkBack labels.
+- Text viewer: on-device check for large files (truncation UX), binary/invalid UTF-8 handling, TalkBack labels, and verify Prism syntax highlighting + theme/line-number toggles in the WebView.
+- Navigation: ensure inline Back buttons remain present on nested screens (QR/text tools/archive viewer/sensor logger/color converter/Kotlin image flows) to mirror hardware Back.
 
 ## MVP / Easy Wins
 - Add lightweight unit tests for Kotlin renderer JSON parsing beyond TextInput/Checkbox (e.g., unknown type handling).
