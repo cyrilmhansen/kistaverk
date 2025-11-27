@@ -119,6 +119,10 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
             }
             if let Some(path) = &result.path {
                 children.push(serde_json::to_value(UiText::new(&format!("Path: {path}"))).unwrap());
+                children.push(
+                    serde_json::to_value(UiButton::new("Save as…", "kotlin_image_save_as"))
+                        .unwrap(),
+                );
             }
             if let Some(size) = &result.size {
                 children.push(serde_json::to_value(UiText::new(&format!("Size: {size}"))).unwrap());

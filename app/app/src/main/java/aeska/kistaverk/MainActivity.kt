@@ -36,7 +36,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -65,6 +68,8 @@ class MainActivity : ComponentActivity() {
     private var contentHolder: FrameLayout? = null
     private var overlayView: View? = null
     private var lastResult: String? = null
+    private var lastFileOutputPath: String? = null
+    private var lastFileOutputMime: String? = null
     private var lastSensorLogPath: String? = null
     private var lastSensorUiTs: Long = 0L
     private val snapshotKey = "rust_snapshot"
@@ -141,6 +146,8 @@ class MainActivity : ComponentActivity() {
 
     private fun cacheLastResult(json: String) {
         val obj = runCatching { JSONObject(json) }.getOrNull() ?: return
+        lastFileOutputPath = null
+        lastFileOutputMime = null
         fun findResult(o: JSONObject): String? {
             val t = o.optString("text", "")
             if (t.startsWith("Result")) {
@@ -153,7 +160,38 @@ class MainActivity : ComponentActivity() {
             }
             return null
         }
+        fun findOutputPath(o: JSONObject) {
+            val t = o.optString("text", "")
+            if (t.startsWith("Result saved to:")) {
+                val path = t.removePrefix("Result saved to:").trim()
+                if (path.isNotEmpty()) {
+                    lastFileOutputPath = path
+                    lastFileOutputMime = "application/pdf"
+                }
+            } else if (t.startsWith("Path:")) {
+                val path = t.removePrefix("Path:").trim()
+                if (path.isNotEmpty()) {
+                    lastFileOutputPath = path
+                    lastFileOutputMime = guessMimeFromPath(path)
+                }
+            }
+            val children = o.optJSONArray("children") ?: return
+            for (i in 0 until children.length()) {
+                findOutputPath(children.getJSONObject(i))
+            }
+        }
         lastResult = findResult(obj)
+        findOutputPath(obj)
+    }
+
+    private fun guessMimeFromPath(path: String): String? {
+        return when {
+            path.lowercase(Locale.US).endsWith(".pdf") -> "application/pdf"
+            path.lowercase(Locale.US).endsWith(".png") -> "image/png"
+            path.lowercase(Locale.US).endsWith(".webp") -> "image/webp"
+            path.lowercase(Locale.US).endsWith(".jpg") || path.lowercase(Locale.US).endsWith(".jpeg") -> "image/jpeg"
+            else -> null
+        }
     }
 
     private fun copyResultToClipboard() {
@@ -187,6 +225,54 @@ class MainActivity : ComponentActivity() {
         startActivity(Intent.createChooser(intent, "Share result"))
     }
 
+    private fun launchSaveAs(sourcePath: String?, mime: String) {
+        if (sourcePath == null) return
+        val suggested = runCatching { File(sourcePath).name.takeIf { it.isNotBlank() } }
+            .getOrNull()
+            ?: "output"
+        pendingSaveSourcePath = sourcePath
+        pendingSaveMime = mime
+        pendingSaveSuggested = suggested
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mime
+            putExtra(Intent.EXTRA_TITLE, suggested)
+        }
+        saveAsLauncher.launch(intent)
+    }
+
+    private fun copyFileToUri(sourcePath: String, target: Uri, mime: String?) {
+        val input: InputStream = if (sourcePath.startsWith("content://")) {
+            contentResolver.openInputStream(Uri.parse(sourcePath)) ?: return
+        } else {
+            val file = File(sourcePath)
+            if (!file.exists()) return
+            FileInputStream(file)
+        }
+        input.use { inp ->
+            val out: OutputStream = contentResolver.openOutputStream(target, "w") ?: return
+            out.use { dst ->
+                val buf = ByteArray(8 * 1024)
+                while (true) {
+                    val read = inp.read(buf)
+                    if (read <= 0) break
+                    dst.write(buf, 0, read)
+                }
+                dst.flush()
+            }
+        }
+        if (mime != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    target,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+                // best effort
+            }
+        }
+    }
+
     private val pickDirLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -207,6 +293,22 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+    }
+
+    private var pendingSaveSourcePath: String? = null
+    private var pendingSaveMime: String? = null
+    private var pendingSaveSuggested: String? = null
+    private val saveAsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data
+        val sourcePath = pendingSaveSourcePath
+        val mime = pendingSaveMime
+        pendingSaveSourcePath = null
+        pendingSaveMime = null
+        pendingSaveSuggested = null
+        if (uri == null || sourcePath == null) return@registerForActivityResult
+        copyFileToUri(sourcePath, uri, mime)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -255,6 +357,10 @@ class MainActivity : ComponentActivity() {
                 dispatchPdfAction(action, bindings)
                 return@UiRenderer
             }
+            if (action == "pdf_save_as") {
+                launchSaveAs(lastFileOutputPath, lastFileOutputMime ?: "application/pdf")
+                return@UiRenderer
+            }
             if (action == "sensor_logger_start") {
                 startSensorLogging(bindings)
                 return@UiRenderer
@@ -267,20 +373,27 @@ class MainActivity : ComponentActivity() {
                 shareLastLog()
                 return@UiRenderer
             }
+            if (action == "kotlin_image_save_as") {
+                val mime = lastFileOutputMime ?: "image/*"
+                launchSaveAs(lastFileOutputPath, mime)
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
                 pendingBindingsAfterPicker = bindings
-            val mimeTypes = when {
-                action.startsWith("pdf_") -> arrayOf("application/pdf")
-                action == "text_viewer_open" -> arrayOf("text/*", "text/plain", "text/csv", "application/csv")
-                else -> arrayOf("*/*")
-            }
-            pickFileLauncher.launch(mimeTypes)
-        } else {
+                val mimeTypes = when {
+                    action.startsWith("pdf_") -> arrayOf("application/pdf")
+                    action == "text_viewer_open" -> arrayOf("text/*", "text/plain", "text/csv", "application/csv")
+                    else -> arrayOf("*/*")
+                }
+                pickFileLauncher.launch(mimeTypes)
+            } else {
                 if (action == "reset") {
                     selectedOutputDir = null
                     pdfSourceUri = null
+                    lastFileOutputPath = null
+                    lastFileOutputMime = null
                     stopSensorLogging()
                 }
                 dispatchWithOptionalLoading(action, bindings = bindings)
