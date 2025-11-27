@@ -26,14 +26,34 @@ pub struct SensorConfig {
 }
 
 /// Parse bindings coming from Kotlin UI to a typed sensor config.
-pub fn parse_bindings(bindings: &std::collections::HashMap<String, String>) -> Result<SensorConfig, String> {
+pub fn parse_bindings(
+    bindings: &std::collections::HashMap<String, String>,
+) -> Result<SensorConfig, String> {
     let sel = SensorSelection {
-        accel: bindings.get("sensor_accel").map(|v| v == "true").unwrap_or(true),
-        gyro: bindings.get("sensor_gyro").map(|v| v == "true").unwrap_or(true),
-        mag: bindings.get("sensor_mag").map(|v| v == "true").unwrap_or(true),
-        pressure: bindings.get("sensor_pressure").map(|v| v == "true").unwrap_or(false),
-        gps: bindings.get("sensor_gps").map(|v| v == "true").unwrap_or(false),
-        battery: bindings.get("sensor_battery").map(|v| v == "true").unwrap_or(true),
+        accel: bindings
+            .get("sensor_accel")
+            .map(|v| v == "true")
+            .unwrap_or(true),
+        gyro: bindings
+            .get("sensor_gyro")
+            .map(|v| v == "true")
+            .unwrap_or(true),
+        mag: bindings
+            .get("sensor_mag")
+            .map(|v| v == "true")
+            .unwrap_or(true),
+        pressure: bindings
+            .get("sensor_pressure")
+            .map(|v| v == "true")
+            .unwrap_or(false),
+        gps: bindings
+            .get("sensor_gps")
+            .map(|v| v == "true")
+            .unwrap_or(false),
+        battery: bindings
+            .get("sensor_battery")
+            .map(|v| v == "true")
+            .unwrap_or(true),
     };
 
     if !sel.any() {
@@ -46,10 +66,16 @@ pub fn parse_bindings(bindings: &std::collections::HashMap<String, String>) -> R
         .filter(|v| *v >= 50 && *v <= 10_000)
         .unwrap_or(200);
 
-    Ok(SensorConfig { selection: sel, interval_ms })
+    Ok(SensorConfig {
+        selection: sel,
+        interval_ms,
+    })
 }
 
-pub fn apply_status_from_bindings(state: &mut AppState, bindings: &std::collections::HashMap<String, String>) {
+pub fn apply_status_from_bindings(
+    state: &mut AppState,
+    bindings: &std::collections::HashMap<String, String>,
+) {
     if let Some(s) = bindings.get("sensor_status") {
         state.sensor_status = Some(s.clone());
     }

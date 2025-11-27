@@ -42,12 +42,7 @@ pub fn handle_qr_action(state: &mut AppState, input: &str) -> Result<(), String>
     let mut buf = Vec::new();
     let encoder = PngEncoder::new(&mut buf);
     encoder
-        .write_image(
-            &scaled,
-            scaled.width(),
-            scaled.height(),
-            ColorType::L8,
-        )
+        .write_image(&scaled, scaled.width(), scaled.height(), ColorType::L8)
         .map_err(|e| format!("qr_png_failed:{e}"))?;
 
     let b64 = base64::engine::general_purpose::STANDARD.encode(buf);

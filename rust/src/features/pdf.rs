@@ -4,15 +4,182 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use memmap2::MmapOptions;
 use lopdf::{dictionary, Document, Object, Stream, StringFormat};
+use memmap2::MmapOptions;
+use time::{macros::format_description, OffsetDateTime};
+
+fn append_page_content(
+    doc: &mut Document,
+    page_id: lopdf::ObjectId,
+    content: Vec<u8>,
+) -> Result<(), String> {
+    let content_stream = Stream::new(dictionary! {}, content);
+    let content_id = doc.add_object(content_stream);
+
+    // Copy out existing Contents to avoid overlapping borrows.
+    let existing_contents: Option<Object> = {
+        let page_dict = doc
+            .get_object(page_id)
+            .and_then(|o| o.as_dict())
+            .map_err(|_| "signature_page_missing_dict")?;
+        page_dict.get(b"Contents").cloned().ok()
+    };
+
+    let mut new_contents: Vec<Object> = Vec::new();
+    if let Some(existing) = existing_contents {
+        match existing {
+            Object::Array(arr) => new_contents.extend(arr),
+            Object::Reference(id) => new_contents.push(Object::Reference(id)),
+            Object::Stream(stream) => {
+                let stream_id = doc.add_object(stream);
+                new_contents.push(Object::Reference(stream_id));
+            }
+            other => new_contents.push(other),
+        }
+    }
+    new_contents.push(Object::Reference(content_id));
+
+    let page_dict = doc
+        .get_object_mut(page_id)
+        .and_then(|o| o.as_dict_mut())
+        .map_err(|_| "signature_page_missing_dict")?;
+    page_dict.set("Contents", Object::Array(new_contents));
+    Ok(())
+}
+
+fn preferred_temp_dir() -> PathBuf {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(env_tmp) = std::env::var("TMPDIR") {
+        candidates.push(PathBuf::from(env_tmp));
+    }
+    candidates.push(PathBuf::from("/data/user/0/aeska.kistaverk/cache"));
+    candidates.push(PathBuf::from("/data/data/aeska.kistaverk/cache"));
+    candidates.push(std::env::temp_dir());
+
+    for dir in candidates {
+        if let Ok(meta) = std::fs::metadata(&dir) {
+            if meta.is_dir() {
+                log_pdf_debug(&format!("preferred_temp_dir: using existing {:?}", dir));
+                return dir;
+            }
+        }
+    }
+    let fallback = std::env::temp_dir();
+    log_pdf_debug(&format!(
+        "preferred_temp_dir: falling back to {:?}",
+        fallback
+    ));
+    fallback
+}
+
+fn extract_pdf_title(doc: &Document) -> Option<String> {
+    let info_id = doc.trailer.get(b"Info").ok()?.as_reference().ok()?;
+    let info_dict = doc.get_object(info_id).ok()?.as_dict().ok()?;
+    match info_dict.get(b"Title").ok()? {
+        Object::String(bytes, _) => String::from_utf8(bytes.clone()).ok(),
+        Object::Name(name) => Some(String::from_utf8_lossy(name).to_string()),
+        _ => None,
+    }
+}
+
+fn parse_file_uri_path(uri: &str) -> Option<PathBuf> {
+    if let Some(rest) = uri.strip_prefix("file://") {
+        return Some(PathBuf::from(rest));
+    }
+    if uri.starts_with('/') {
+        return Some(PathBuf::from(uri));
+    }
+    None
+}
+
+fn output_dir_for(source_uri: Option<&str>) -> PathBuf {
+    if let Some(uri) = source_uri {
+        if let Some(path) = parse_file_uri_path(uri) {
+            if let Some(parent) = path.parent() {
+                log_pdf_debug(&format!(
+                    "output_dir_for: using parent of source {:?}",
+                    parent
+                ));
+                return parent.to_path_buf();
+            }
+        }
+        if uri.starts_with("content://") {
+            if let Some(dl) = downloads_dir() {
+                log_pdf_debug(&format!("output_dir_for: using downloads dir {:?}", dl));
+                return dl;
+            } else {
+                log_pdf_debug("output_dir_for: downloads dir unavailable, falling back");
+            }
+        }
+    }
+    preferred_temp_dir()
+}
+
+fn timestamp_suffix() -> String {
+    const FMT: &[time::format_description::FormatItem<'_>] =
+        format_description!("[year repr:last_two][month repr:numerical padding:zero][day padding:zero][hour repr:24 padding:zero][minute padding:zero]");
+    OffsetDateTime::now_utc()
+        .format(&FMT)
+        .unwrap_or_else(|_| "0000000000".to_string())
+}
+
+fn output_filename(source_uri: Option<&str>) -> String {
+    let suffix = timestamp_suffix();
+    let base = source_uri
+        .and_then(parse_file_uri_path)
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "kistaverk_pdf".to_string());
+    let sanitized = base
+        .trim_end_matches(".pdf")
+        .trim_end_matches(".PDF")
+        .to_string();
+    format!("{sanitized}_modified_{suffix}.pdf")
+}
+
+fn downloads_dir() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(root) = std::env::var("EXTERNAL_STORAGE") {
+        candidates.push(PathBuf::from(root).join("Download"));
+    }
+    candidates.push(PathBuf::from("/storage/emulated/0/Download"));
+    candidates.push(PathBuf::from("/sdcard/Download"));
+
+    for dir in candidates {
+        if let Ok(meta) = std::fs::metadata(&dir) {
+            if meta.is_dir() {
+                return Some(dir);
+            }
+        }
+    }
+    None
+}
 
 use crate::state::{AppState, Screen};
-use crate::ui::{Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText};
+use crate::ui::{
+    Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText,
+};
+
+#[cfg(target_os = "android")]
+fn log_pdf_debug(message: &str) {
+    use android_log_sys::__android_log_write;
+    use std::ffi::CString;
+
+    const ANDROID_LOG_DEBUG: i32 = 3; // matches android/log.h debug priority
+
+    if let (Ok(tag), Ok(text)) = (CString::new("kistaverk"), CString::new(message)) {
+        unsafe {
+            __android_log_write(ANDROID_LOG_DEBUG, tag.as_ptr(), text.as_ptr());
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn log_pdf_debug(message: &str) {
+    eprintln!("[kistaverk][pdf][debug] {message}");
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfState {
@@ -21,6 +188,10 @@ pub struct PdfState {
     pub selected_pages: Vec<u32>,
     pub last_output: Option<String>,
     pub last_error: Option<String>,
+    pub current_title: Option<String>,
+    pub signature_target_page: Option<u32>,
+    pub signature_x_pct: Option<f64>,
+    pub signature_y_pct: Option<f64>,
     pub signature_base64: Option<String>,
     pub signature_width_pt: Option<f64>,
     pub signature_height_pt: Option<f64>,
@@ -34,6 +205,10 @@ impl PdfState {
             selected_pages: Vec::new(),
             last_output: None,
             last_error: None,
+            current_title: None,
+            signature_target_page: None,
+            signature_x_pct: None,
+            signature_y_pct: None,
             signature_base64: None,
             signature_width_pt: None,
             signature_height_pt: None,
@@ -46,6 +221,10 @@ impl PdfState {
         self.selected_pages.clear();
         self.last_output = None;
         self.last_error = None;
+        self.current_title = None;
+        self.signature_target_page = None;
+        self.signature_x_pct = None;
+        self.signature_y_pct = None;
         self.signature_base64 = None;
         self.signature_width_pt = None;
         self.signature_height_pt = None;
@@ -64,11 +243,17 @@ pub fn handle_pdf_select(
     fd: Option<i32>,
     uri: Option<&str>,
 ) -> Result<(), String> {
+    log_pdf_debug(&format!("pdf_select: fd={fd:?} uri={uri:?}"));
     state.pdf.page_count = None;
     state.pdf.selected_pages.clear();
     state.pdf.last_output = None;
+    state.pdf.current_title = None;
+    state.pdf.signature_target_page = None;
+    state.pdf.signature_x_pct = None;
+    state.pdf.signature_y_pct = None;
     let raw_fd = fd.ok_or_else(|| "missing_fd".to_string())? as RawFd;
     let doc = load_document(raw_fd)?;
+    state.pdf.current_title = extract_pdf_title(&doc);
     let pages = doc.get_pages();
     state.pdf.page_count = Some(pages.len() as u32);
     state.pdf.source_uri = uri.map(|u| u.to_string());
@@ -88,19 +273,27 @@ pub fn handle_pdf_operation(
     _secondary_uri: Option<&str>,
     selected_pages: &[u32],
 ) -> Result<String, String> {
+    log_pdf_debug(&format!(
+        "pdf_operation: op={op:?} primary_fd={primary_fd:?} secondary_fd={secondary_fd:?} primary_uri={primary_uri:?} selection={selected_pages:?}"
+    ));
     let primary_fd = primary_fd.ok_or_else(|| "missing_fd".to_string())? as RawFd;
     let doc = load_document(primary_fd)?;
     let output_doc = match op {
         PdfOperation::Extract => keep_pages(doc, selected_pages)?,
         PdfOperation::Delete => delete_pages(doc, selected_pages)?,
         PdfOperation::Merge => {
-            let secondary_fd = secondary_fd.ok_or_else(|| "missing_fd_secondary".to_string())? as RawFd;
+            let secondary_fd =
+                secondary_fd.ok_or_else(|| "missing_fd_secondary".to_string())? as RawFd;
             let secondary = load_document(secondary_fd)?;
             merge_documents(doc, secondary)?
         }
     };
     let page_count = output_doc.get_pages().len() as u32;
-    let out_path = write_pdf(output_doc)?;
+    let new_title = extract_pdf_title(&output_doc);
+    let out_path = write_pdf(output_doc, primary_uri)?;
+    log_pdf_debug(&format!(
+        "pdf_operation_complete: op={op:?} page_count={page_count} output_path={out_path}"
+    ));
     state.pdf.last_output = Some(out_path.clone());
     state.pdf.source_uri = primary_uri
         .map(|u| u.to_string())
@@ -108,6 +301,7 @@ pub fn handle_pdf_operation(
     state.pdf.last_error = None;
     state.pdf.selected_pages = selected_pages.to_vec();
     state.pdf.page_count = Some(page_count);
+    state.pdf.current_title = new_title;
     state.replace_current(Screen::PdfTools);
     Ok(out_path)
 }
@@ -116,8 +310,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("PDF tools").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Select a PDF, pick pages, then extract or delete them.")
-                .size(14.0),
+            UiText::new("Select a PDF, pick pages, then extract or delete them.").size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
@@ -130,31 +323,25 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 
     if let Some(uri) = &state.pdf.source_uri {
         children.push(
-            serde_json::to_value(
-                UiText::new(&format!(
-                    "Selected PDF: {}",
-                    uri
-                ))
-                .size(12.0),
-            )
-            .unwrap(),
+            serde_json::to_value(UiText::new(&format!("Selected PDF: {}", uri)).size(12.0))
+                .unwrap(),
         );
     }
 
     if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
-        children.push(serde_json::to_value(UiText::new(&format!("Pages: {}", count)).size(12.0)).unwrap());
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Pages: {}", count)).size(12.0)).unwrap(),
+        );
 
         // Page picker rendered in Kotlin using PdfRenderer.
         children.push(
             serde_json::to_value(
-                UiColumn::new(vec![
-                    serde_json::to_value(
-                        UiPdfPagePicker::new(count, "pdf_selected_pages", uri)
-                            .selected_pages(&state.pdf.selected_pages)
-                            .content_description("PDF page picker"),
-                    )
-                    .unwrap(),
-                ])
+                UiColumn::new(vec![serde_json::to_value(
+                    UiPdfPagePicker::new(count, "pdf_selected_pages", uri)
+                        .selected_pages(&state.pdf.selected_pages)
+                        .content_description("PDF page picker"),
+                )
+                .unwrap()])
                 .content_description("pdf_page_picker_container"),
             )
             .unwrap(),
@@ -162,15 +349,13 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 
         children.push(
             serde_json::to_value(
-                UiButton::new("Extract selected pages", "pdf_extract")
-                    .id("pdf_extract_btn"),
+                UiButton::new("Extract selected pages", "pdf_extract").id("pdf_extract_btn"),
             )
             .unwrap(),
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Delete selected pages", "pdf_delete")
-                    .id("pdf_delete_btn"),
+                UiButton::new("Delete selected pages", "pdf_delete").id("pdf_delete_btn"),
             )
             .unwrap(),
         );
@@ -189,18 +374,31 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_title")
                 .hint("Document title (metadata)")
+                .text(state.pdf.current_title.as_deref().unwrap_or_default())
                 .single_line(true),
         )
         .unwrap(),
     );
     children.push(serde_json::to_value(UiButton::new("Set PDF title", "pdf_set_title")).unwrap());
+    if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
+        children.push(json!({
+            "type": "PdfSignPlacement",
+            "source_uri": uri,
+            "page_count": count,
+            "selected_page": state.pdf.signature_target_page.unwrap_or(1),
+            "bind_key_page": "pdf_signature_page",
+            "bind_key_x_pct": "pdf_signature_x_pct",
+            "bind_key_y_pct": "pdf_signature_y_pct",
+            "selected_x_pct": state.pdf.signature_x_pct,
+            "selected_y_pct": state.pdf.signature_y_pct,
+            "content_description": "Signature placement picker"
+        }));
+    }
 
     if let Some(out) = &state.pdf.last_output {
         children.push(
-            serde_json::to_value(
-                UiText::new(&format!("Result saved to: {}", out)).size(12.0),
-            )
-            .unwrap(),
+            serde_json::to_value(UiText::new(&format!("Result saved to: {}", out)).size(12.0))
+                .unwrap(),
         );
     }
 
@@ -208,7 +406,8 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(serde_json::to_value(UiText::new("Signature").size(16.0)).unwrap());
     children.push(
         serde_json::to_value(
-            UiText::new("Draw or load a signature, then pick page/position to stamp it.").size(12.0),
+            UiText::new("Draw or load a signature, then pick page/position to stamp it.")
+                .size(12.0),
         )
         .unwrap(),
     );
@@ -220,24 +419,15 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     }));
     children.push(
         serde_json::to_value(
-            UiButton::new("Load signature image", "pdf_signature_load")
-                .requires_file_picker(true),
+            UiButton::new("Load signature image", "pdf_signature_load").requires_file_picker(true),
         )
         .unwrap(),
     );
     children.push(
-        serde_json::to_value(
-            UiButton::new("Clear signature", "pdf_signature_clear"),
-        )
-        .unwrap(),
+        serde_json::to_value(UiButton::new("Clear signature", "pdf_signature_clear")).unwrap(),
     );
     if state.pdf.signature_base64.is_some() {
-        children.push(
-            serde_json::to_value(
-                UiText::new("Signature ready").size(12.0),
-            )
-            .unwrap(),
-        );
+        children.push(serde_json::to_value(UiText::new("Signature ready").size(12.0)).unwrap());
     }
     children.push(
         serde_json::to_value(
@@ -315,10 +505,14 @@ fn load_document(fd: RawFd) -> Result<Document, String> {
     if fd < 0 {
         return Err("invalid_fd".into());
     }
+    log_pdf_debug(&format!("load_document: fd={fd}"));
     let file = unsafe { File::from_raw_fd(fd) };
     let file_len = file
         .metadata()
-        .map_err(|e| format!("pdf_read_failed:{e}"))?
+        .map_err(|e| {
+            log_pdf_debug(&format!("pdf_read_failed_metadata: fd={fd} err={e}"));
+            format!("pdf_read_failed:{e}")
+        })?
         .len();
     if file_len == 0 {
         return Err("pdf_read_failed:empty_file".into());
@@ -327,9 +521,15 @@ fn load_document(fd: RawFd) -> Result<Document, String> {
         MmapOptions::new()
             .len(file_len as usize)
             .map(&file)
-            .map_err(|e| format!("pdf_read_failed:{e}"))?
+            .map_err(|e| {
+                log_pdf_debug(&format!("pdf_read_failed_mmap: fd={fd} err={e}"));
+                format!("pdf_read_failed:{e}")
+            })?
     };
-    Document::load_mem(&mmap).map_err(|e| format!("pdf_parse_failed:{e}"))
+    Document::load_mem(&mmap).map_err(|e| {
+        log_pdf_debug(&format!("pdf_parse_failed: fd={fd} err={e}"));
+        format!("pdf_parse_failed:{e}")
+    })
 }
 
 fn keep_pages(mut doc: Document, selection: &[u32]) -> Result<Document, String> {
@@ -406,7 +606,10 @@ fn merge_documents(mut primary: Document, mut secondary: Document) -> Result<Doc
     }
 
     for page_id in secondary_page_ids {
-        if let Ok(page_dict) = primary.get_object_mut(page_id).and_then(|o| o.as_dict_mut()) {
+        if let Ok(page_dict) = primary
+            .get_object_mut(page_id)
+            .and_then(|o| o.as_dict_mut())
+        {
             page_dict.set("Parent", pages_root_id);
         }
     }
@@ -414,18 +617,24 @@ fn merge_documents(mut primary: Document, mut secondary: Document) -> Result<Doc
     Ok(primary)
 }
 
-fn write_pdf(mut doc: Document) -> Result<String, String> {
-    let mut path = PathBuf::from(std::env::temp_dir());
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    path.push(format!("kistaverk_pdf_{millis}.pdf"));
-    doc.save(&path)
-        .map_err(|e| format!("pdf_save_failed:{e}"))?;
-    path.to_str()
+fn write_pdf(mut doc: Document, source_uri: Option<&str>) -> Result<String, String> {
+    let mut path = output_dir_for(source_uri);
+    let filename = output_filename(source_uri);
+    log_pdf_debug(&format!(
+        "write_pdf: using_dir={:?} filename={}",
+        path, filename
+    ));
+    path.push(filename);
+    doc.save(&path).map_err(|e| {
+        log_pdf_debug(&format!("pdf_save_failed: path={:?} err={e}", path));
+        format!("pdf_save_failed:{e}")
+    })?;
+    let path_str: String = path
+        .to_str()
         .map(|s| s.to_string())
-        .ok_or_else(|| "path_not_utf8".into())
+        .ok_or_else(|| String::from("path_not_utf8"))?;
+    log_pdf_debug(&format!("write_pdf_complete: path={path_str}"));
+    Ok(path_str)
 }
 
 fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
@@ -444,6 +653,8 @@ pub fn handle_pdf_sign(
     uri: Option<&str>,
     signature_base64: &str,
     page: Option<u32>,
+    page_x_pct: Option<f64>,
+    page_y_pct: Option<f64>,
     pos_x: f64,
     pos_y: f64,
     width: f64,
@@ -452,15 +663,19 @@ pub fn handle_pdf_sign(
     img_height_px: Option<f64>,
     img_dpi: Option<f64>,
 ) -> Result<(), String> {
+    log_pdf_debug(&format!(
+        "pdf_sign: fd={fd} uri={uri:?} page={page:?} pos=({pos_x},{pos_y}) pct=({page_x_pct:?},{page_y_pct:?}) size=({width}x{height}) img_px=({img_width_px:?}x{img_height_px:?}) dpi={img_dpi:?}"
+    ));
     let mut doc = load_document(fd)?;
     let target_page = page
+        .or(state.pdf.signature_target_page)
         .or(state.pdf.page_count)
         .unwrap_or(1);
     let pages = doc.get_pages();
     let page_id = *pages
         .get(&target_page)
         .ok_or_else(|| "page_out_of_range".to_string())?;
-    let (_, page_height) = page_dimensions(&doc, page_id)?;
+    let (page_width, page_height) = page_dimensions(&doc, page_id)?;
 
     let sig_bytes = B64
         .decode(signature_base64.as_bytes())
@@ -544,7 +759,8 @@ pub fn handle_pdf_sign(
     let aspect = if img_w > 0 && img_h > 0 {
         Some(img_h as f64 / img_w as f64)
     } else {
-        img_width_px.and_then(|w| img_height_px.and_then(|h| if w > 0.0 { Some(h / w) } else { None }))
+        img_width_px
+            .and_then(|w| img_height_px.and_then(|h| if w > 0.0 { Some(h / w) } else { None }))
     };
     let mut target_width = if width > 0.0 {
         width
@@ -569,31 +785,65 @@ pub fn handle_pdf_sign(
         target_height = 1.0;
     }
 
-    let pos_x_pt = if let Some(scale) = px_to_pt {
+    let norm_x = page_x_pct
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0.0, 1.0));
+    let norm_y = page_y_pct
+        .filter(|v| v.is_finite())
+        .map(|v| v.clamp(0.0, 1.0));
+    let pos_x_pt = if let Some(nx) = norm_x {
+        nx * page_width
+    } else if let Some(scale) = px_to_pt {
         pos_x * scale
     } else {
         pos_x
     };
-    let pos_y_top = if let Some(scale) = px_to_pt {
+    let pos_y_top = if let Some(ny) = norm_y {
+        ny * page_height
+    } else if let Some(scale) = px_to_pt {
         pos_y * scale
     } else {
         pos_y
     };
     let pdf_y = (page_height - pos_y_top - target_height).max(0.0);
+    let final_norm_x = norm_x.or_else(|| {
+        if page_width > 0.0 {
+            Some((pos_x_pt / page_width).clamp(0.0, 1.0))
+        } else {
+            None
+        }
+    });
+    let final_norm_y = norm_y.or_else(|| {
+        if page_height > 0.0 {
+            Some((pos_y_top / page_height).clamp(0.0, 1.0))
+        } else {
+            None
+        }
+    });
 
     // Add content stream that draws the image
     let content = format!(
         "q {} 0 0 {} {} {} cm /ImSig Do Q",
         target_width, target_height, pos_x_pt, pdf_y
     );
-    doc.add_page_contents(page_id, content.into_bytes())
+    append_page_content(&mut doc, page_id, content.into_bytes())
         .map_err(|e| format!("signature_add_content_failed:{e}"))?;
 
     let page_count = doc.get_pages().len() as u32;
-    let out_path = write_pdf(doc)?;
+    let new_title = extract_pdf_title(&doc);
+    let out_path = write_pdf(doc, uri)?;
+    log_pdf_debug(&format!(
+        "pdf_sign_complete: output_path={out_path} page_count={page_count} target_page={target_page}"
+    ));
     state.pdf.last_output = Some(out_path.clone());
-    state.pdf.source_uri = uri.map(|u| u.to_string()).or_else(|| state.pdf.source_uri.clone());
+    state.pdf.source_uri = uri
+        .map(|u| u.to_string())
+        .or_else(|| state.pdf.source_uri.clone());
     state.pdf.last_error = None;
+    state.pdf.current_title = new_title;
+    state.pdf.signature_target_page = Some(target_page);
+    state.pdf.signature_x_pct = final_norm_x;
+    state.pdf.signature_y_pct = final_norm_y;
     state.pdf.signature_base64 = Some(signature_base64.to_string());
     state.pdf.signature_width_pt = Some(target_width);
     state.pdf.signature_height_pt = Some(target_height);
@@ -612,10 +862,7 @@ fn page_dimensions(doc: &Document, page_id: lopdf::ObjectId) -> Result<(f64, f64
         if let Some((w, h)) = extract_media_box(doc, dict) {
             return Ok((w, h));
         }
-        current = dict
-            .get(b"Parent")
-            .and_then(|p| p.as_reference())
-            .ok();
+        current = dict.get(b"Parent").and_then(|p| p.as_reference()).ok();
     }
     // Fallback to a reasonable page size (A4-ish) if metadata is missing.
     Ok((595.0, 842.0))
@@ -672,6 +919,10 @@ pub fn handle_pdf_title(
     uri: Option<&str>,
     title: Option<&str>,
 ) -> Result<(), String> {
+    log_pdf_debug(&format!(
+        "pdf_set_title: fd={fd} uri={uri:?} title_present={}",
+        title.map(|t| !t.trim().is_empty()).unwrap_or(false)
+    ));
     let title = title
         .filter(|t| !t.trim().is_empty())
         .ok_or_else(|| "missing_title".to_string())?
@@ -679,11 +930,7 @@ pub fn handle_pdf_title(
         .to_string();
 
     let mut doc = load_document(fd)?;
-    let info_id = match doc
-        .trailer
-        .get(b"Info")
-        .and_then(|o| o.as_reference())
-    {
+    let info_id = match doc.trailer.get(b"Info").and_then(|o| o.as_reference()) {
         Ok(id) => id,
         Err(_) => {
             let new_info = doc.add_object(Object::Dictionary(dictionary! {}));
@@ -699,15 +946,21 @@ pub fn handle_pdf_title(
             .map_err(|_| "pdf_info_missing_dict".to_string())?;
         info_dict.set(
             "Title",
-            Object::String(title.into_bytes(), StringFormat::Literal),
+            Object::String(title.clone().into_bytes(), StringFormat::Literal),
         );
     }
 
     let page_count = doc.get_pages().len() as u32;
-    let out_path = write_pdf(doc)?;
+    let out_path = write_pdf(doc, uri)?;
+    log_pdf_debug(&format!(
+        "pdf_set_title_complete: output_path={out_path} page_count={page_count}"
+    ));
     state.pdf.last_output = Some(out_path.clone());
-    state.pdf.source_uri = uri.map(|u| u.to_string()).or_else(|| state.pdf.source_uri.clone());
+    state.pdf.source_uri = uri
+        .map(|u| u.to_string())
+        .or_else(|| state.pdf.source_uri.clone());
     state.pdf.last_error = None;
+    state.pdf.current_title = Some(title);
     state.pdf.page_count = Some(page_count);
     state.replace_current(Screen::PdfTools);
     Ok(())

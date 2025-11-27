@@ -72,7 +72,8 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
     let target = state.image.target.unwrap_or(ImageTarget::Webp);
     let (title, short_label) = image_target_labels(target);
     let mut children = vec![
-        serde_json::to_value(UiText::new(&format!("{} (Kotlin pipeline)", title)).size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&format!("{} (Kotlin pipeline)", title)).size(20.0))
+            .unwrap(),
         serde_json::to_value(
             UiText::new("Conversion happens on the Kotlin side; Rust keeps navigation and status.")
                 .size(14.0),
@@ -96,8 +97,11 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
-            UiButton::new(&format!("Select image → {}", short_label), convert_action_for_target(target))
-                .requires_file_picker(true),
+            UiButton::new(
+                &format!("Select image → {}", short_label),
+                convert_action_for_target(target),
+            )
+            .requires_file_picker(true),
         )
         .unwrap(),
     ];
@@ -114,21 +118,18 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
                 );
             }
             if let Some(path) = &result.path {
-                children.push(
-                    serde_json::to_value(UiText::new(&format!("Path: {path}"))).unwrap(),
-                );
+                children.push(serde_json::to_value(UiText::new(&format!("Path: {path}"))).unwrap());
             }
             if let Some(size) = &result.size {
-                children.push(
-                    serde_json::to_value(UiText::new(&format!("Size: {size}"))).unwrap(),
-                );
+                children.push(serde_json::to_value(UiText::new(&format!("Size: {size}"))).unwrap());
             }
         }
     }
 
     if state.nav_depth() > 1 {
         children.push(
-            serde_json::to_value(UiButton::new("Back", "back").requires_file_picker(false)).unwrap(),
+            serde_json::to_value(UiButton::new("Back", "back").requires_file_picker(false))
+                .unwrap(),
         );
     }
 

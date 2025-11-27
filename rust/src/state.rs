@@ -96,15 +96,16 @@ impl AppState {
     }
 
     pub fn current_screen(&self) -> Screen {
-        self.nav_stack
-            .last()
-            .cloned()
-            .unwrap_or(Screen::Home)
+        self.nav_stack.last().cloned().unwrap_or(Screen::Home)
     }
 
     pub fn nav_depth(&self) -> usize {
         let depth = self.nav_stack.len();
-        if depth == 0 { 1 } else { depth }
+        if depth == 0 {
+            1
+        } else {
+            depth
+        }
     }
 
     pub fn push_screen(&mut self, screen: Screen) {

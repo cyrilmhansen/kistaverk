@@ -1,6 +1,8 @@
 mod features;
 mod state;
 mod ui;
+use features::archive::{handle_archive_open, render_archive_screen};
+use features::color_tools::{handle_color_action, render_color_screen};
 use features::file_info::{file_info_from_fd, file_info_from_path};
 use features::hashes::{handle_hash_action, HashAlgo};
 use features::kotlin_image::{
@@ -8,15 +10,21 @@ use features::kotlin_image::{
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
-use features::pdf::{handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen, PdfOperation};
+use features::pdf::{
+    handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen,
+    PdfOperation,
+};
 use features::qr::{handle_qr_action, render_qr_screen};
-use features::sensor_logger::{apply_status_from_bindings, parse_bindings as parse_sensor_bindings};
-use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_text_from_path};
+use features::sensor_logger::{
+    apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
+};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
+use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_text_from_path};
 use features::{render_menu, Feature};
-use features::color_tools::{handle_color_action, render_color_screen};
-use features::archive::{handle_archive_open, render_archive_screen};
-use ui::{Button as UiButton, CodeView as UiCodeView, Column as UiColumn, DepsList as UiDepsList, Progress as UiProgress, Text as UiText};
+use ui::{
+    Button as UiButton, CodeView as UiCodeView, Column as UiColumn, DepsList as UiDepsList,
+    Progress as UiProgress, Text as UiText,
+};
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -76,9 +84,15 @@ enum Action {
     QrGenerate {
         input: Option<String>,
     },
-    ColorFromHex { input: Option<String> },
-    ColorFromRgb { input: Option<String> },
-    ColorCopyHexInput { input: Option<String> },
+    ColorFromHex {
+        input: Option<String>,
+    },
+    ColorFromRgb {
+        input: Option<String>,
+    },
+    ColorCopyHexInput {
+        input: Option<String>,
+    },
     ColorCopyClipboard,
     Hash {
         algo: HashAlgo,
@@ -132,6 +146,8 @@ enum Action {
         uri: Option<String>,
         signature: Option<String>,
         page: Option<u32>,
+        page_x_pct: Option<f64>,
+        page_y_pct: Option<f64>,
         pos_x: f64,
         pos_y: f64,
         width: f64,
@@ -151,7 +167,11 @@ enum Action {
     PdfSignatureClear,
     About,
     TextViewerScreen,
-    TextViewerOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
+    TextViewerOpen {
+        fd: Option<i32>,
+        path: Option<String>,
+        error: Option<String>,
+    },
     TextViewerToggleTheme,
     TextViewerToggleLineNumbers,
     SensorLoggerScreen,
@@ -165,10 +185,18 @@ enum Action {
     },
     Increment,
     Snapshot,
-    Restore { snapshot: String },
+    Restore {
+        snapshot: String,
+    },
     ArchiveToolsScreen,
-    ArchiveOpen { fd: Option<i32>, path: Option<String>, error: Option<String> },
-    ArchiveOpenText { index: usize },
+    ArchiveOpen {
+        fd: Option<i32>,
+        path: Option<String>,
+        error: Option<String>,
+    },
+    ArchiveOpenText {
+        index: usize,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -217,7 +245,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "reset" => Ok(Action::Reset),
         "back" => Ok(Action::Back),
         "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
-        "pdf_select" => Ok(Action::PdfSelect { fd, uri: path, error }),
+        "pdf_select" => Ok(Action::PdfSelect {
+            fd,
+            uri: path,
+            error,
+        }),
         "pdf_extract" => Ok(Action::PdfExtract {
             fd,
             uri: path,
@@ -244,6 +276,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
             uri: path,
             signature: bindings.get("signature_base64").cloned(),
             page: parse_u32_binding(&bindings, "pdf_signature_page"),
+            page_x_pct: parse_f64_binding(&bindings, "pdf_signature_x_pct"),
+            page_y_pct: parse_f64_binding(&bindings, "pdf_signature_y_pct"),
             pos_x: parse_f64_binding(&bindings, "pdf_signature_x").unwrap_or(32.0),
             pos_y: parse_f64_binding(&bindings, "pdf_signature_y").unwrap_or(32.0),
             width: parse_f64_binding(&bindings, "pdf_signature_width").unwrap_or(180.0),
@@ -265,9 +299,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
         "sensor_logger_share" => Ok(Action::SensorLoggerShare),
-        "sensor_logger_status" => Ok(Action::SensorLoggerStatus {
-            bindings,
-        }),
+        "sensor_logger_status" => Ok(Action::SensorLoggerStatus { bindings }),
         "shader_demo" => Ok(Action::ShaderDemo),
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
@@ -415,7 +447,10 @@ fn parse_text_action(name: &str) -> Option<TextAction> {
 }
 
 fn parse_pdf_selection(bindings: &HashMap<String, String>) -> Vec<u32> {
-    let raw = bindings.get("pdf_selected_pages").cloned().unwrap_or_default();
+    let raw = bindings
+        .get("pdf_selected_pages")
+        .cloned()
+        .unwrap_or_default();
     raw.split(',')
         .filter_map(|s| s.trim().parse::<u32>().ok())
         .collect()
@@ -470,15 +505,15 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             error: Some("invalid_json".into()),
             target: None,
             result_path: None,
-        result_size: None,
-        result_format: None,
-        output_dir: None,
-        bindings: None,
-        loading_only: None,
-        snapshot: None,
-        primary_fd: None,
-        primary_path: None,
-    });
+            result_size: None,
+            result_format: None,
+            output_dir: None,
+            bindings: None,
+            loading_only: None,
+            snapshot: None,
+            primary_fd: None,
+            primary_path: None,
+        });
 
         handle_command(command)
     }));
@@ -528,24 +563,22 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         Action::Snapshot => {
             state.ensure_navigation();
-            let snap = serde_json::to_string(&*state)
-                .map_err(|e| format!("snapshot_failed:{e}"))?;
+            let snap =
+                serde_json::to_string(&*state).map_err(|e| format!("snapshot_failed:{e}"))?;
             return Ok(json!({
                 "type": "Snapshot",
                 "snapshot": snap
             }));
         }
-        Action::Restore { snapshot } => {
-            match serde_json::from_str::<AppState>(&snapshot) {
-                Ok(mut restored) => {
-                    restored.ensure_navigation();
-                    *state = restored;
-                }
-                Err(e) => {
-                    state.last_error = Some(format!("restore_failed:{e}"));
-                }
+        Action::Restore { snapshot } => match serde_json::from_str::<AppState>(&snapshot) {
+            Ok(mut restored) => {
+                restored.ensure_navigation();
+                *state = restored;
             }
-        }
+            Err(e) => {
+                state.last_error = Some(format!("restore_failed:{e}"));
+            }
+        },
         Action::Reset => {
             state.reset_runtime();
             state.reset_navigation();
@@ -692,7 +725,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.push_screen(Screen::PdfTools);
             let mut fd_handle = FdHandle::new(fd);
             if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_pdf_title(&mut state, raw_fd, uri.as_deref(), title.as_deref()) {
+                if let Err(e) =
+                    handle_pdf_title(&mut state, raw_fd, uri.as_deref(), title.as_deref())
+                {
                     state.pdf.last_error = Some(e);
                 }
             } else {
@@ -704,6 +739,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
             uri,
             signature,
             page,
+            page_x_pct,
+            page_y_pct,
             pos_x,
             pos_y,
             width,
@@ -722,6 +759,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
                         uri.as_deref(),
                         &sig,
                         page,
+                        page_x_pct,
+                        page_y_pct,
                         pos_x,
                         pos_y,
                         width,
@@ -1035,12 +1074,10 @@ fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
 }
 
 fn render_file_info_screen(state: &AppState) -> Value {
-        let mut children = vec![
+    let mut children = vec![
         serde_json::to_value(UiText::new("File info").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Select a file to see its size and MIME type").size(14.0),
-        )
-        .unwrap(),
+        serde_json::to_value(UiText::new("Select a file to see its size and MIME type").size(14.0))
+            .unwrap(),
         json!({
             "type": "Button",
             "text": "Pick file",
@@ -1093,10 +1130,9 @@ fn render_loading_screen(state: &AppState) -> Value {
     let message = state.loading_message.as_deref().unwrap_or("Working...");
     let mut children = vec![serde_json::to_value(UiText::new(message).size(16.0)).unwrap()];
     if state.loading_with_spinner {
-        children.push(serde_json::to_value(
-            UiProgress::new().content_description("In progress"),
-        )
-        .unwrap());
+        children.push(
+            serde_json::to_value(UiProgress::new().content_description("In progress")).unwrap(),
+        );
     }
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
 }
@@ -1172,22 +1208,13 @@ fn render_about_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("About Kistaverk").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new(&format!("Version: {}", env!("CARGO_PKG_VERSION")))
-                .size(14.0),
+            UiText::new(&format!("Version: {}", env!("CARGO_PKG_VERSION"))).size(14.0),
         )
         .unwrap(),
+        serde_json::to_value(UiText::new("Copyright © 2025 Kistaverk").size(14.0)).unwrap(),
+        serde_json::to_value(UiText::new("License: GPLv3").size(14.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Copyright © 2025 Kistaverk")
-                .size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiText::new("License: GPLv3").size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiText::new("This app is open-source under GPL-3.0; contributions welcome.")
-                .size(12.0),
+            UiText::new("This app is open-source under GPL-3.0; contributions welcome.").size(12.0),
         )
         .unwrap(),
         serde_json::to_value(UiDepsList::new()).unwrap(),
@@ -1200,19 +1227,15 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Sensor Logger").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Select sensors and start logging to CSV in app storage.")
-                .size(14.0),
+            UiText::new("Select sensors and start logging to CSV in app storage.").size(14.0),
         )
         .unwrap(),
         serde_json::to_value(UiText::new("Sensors").size(14.0)).unwrap(),
         serde_json::to_value(
             UiColumn::new(vec![
                 serde_json::to_value(
-                    ui::Checkbox::new(
-                        "Accelerometer",
-                        "sensor_accel",
-                    )
-                    .checked(state.sensor_selection.map(|s| s.accel).unwrap_or(true)),
+                    ui::Checkbox::new("Accelerometer", "sensor_accel")
+                        .checked(state.sensor_selection.map(|s| s.accel).unwrap_or(true)),
                 )
                 .unwrap(),
                 serde_json::to_value(
@@ -1272,16 +1295,10 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     }
     if let Some(path) = &state.last_sensor_log {
         children.push(
-            serde_json::to_value(
-                UiText::new(&format!("Last log: {}", path)).size(12.0),
-            )
-            .unwrap(),
+            serde_json::to_value(UiText::new(&format!("Last log: {}", path)).size(12.0)).unwrap(),
         );
         children.push(
-            serde_json::to_value(
-                UiButton::new("Share last log", "sensor_logger_share"),
-            )
-            .unwrap(),
+            serde_json::to_value(UiButton::new("Share last log", "sensor_logger_share")).unwrap(),
         );
     }
 
@@ -1293,8 +1310,10 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Open a text or CSV file to preview up to 256 KB with syntax highlighting.")
-                .size(14.0),
+            UiText::new(
+                "Open a text or CSV file to preview up to 256 KB with syntax highlighting.",
+            )
+            .size(14.0),
         )
         .unwrap(),
         json!({
@@ -1307,10 +1326,16 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     ];
 
     if let Some(path) = &state.text_view_path {
-        children.push(serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap());
+        children.push(
+            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
+        );
     }
 
-    let theme_label = if state.text_view_dark { "Switch to light" } else { "Switch to dark" };
+    let theme_label = if state.text_view_dark {
+        "Switch to light"
+    } else {
+        "Switch to dark"
+    };
     children.push(
         serde_json::to_value(
             UiButton::new(theme_label, "text_viewer_toggle_theme")
@@ -1318,7 +1343,11 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
         )
         .unwrap(),
     );
-    let ln_label = if state.text_view_line_numbers { "Hide line numbers" } else { "Show line numbers" };
+    let ln_label = if state.text_view_line_numbers {
+        "Hide line numbers"
+    } else {
+        "Show line numbers"
+    };
     children.push(
         serde_json::to_value(
             UiButton::new(ln_label, "text_viewer_toggle_line_numbers")
@@ -1328,7 +1357,9 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     );
 
     if let Some(err) = &state.text_view_error {
-        children.push(serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap());
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+        );
     }
 
     if let Some(content) = &state.text_view_content {
@@ -1338,7 +1369,11 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
                 lang = guess_language_from_path(path);
             }
         }
-        let theme = if state.text_view_dark { "dark" } else { "light" };
+        let theme = if state.text_view_dark {
+            "dark"
+        } else {
+            "light"
+        };
         let mut code = UiCodeView::new(content)
             .wrap(true)
             .theme(theme)
@@ -1878,8 +1913,9 @@ mod tests {
 
     #[test]
     fn sensor_bindings_default_and_interval_clamp() {
-        let cfg = parse_sensor_bindings(&HashMap::from([("sensor_interval_ms".into(), "5".into())]))
-            .expect("parse should succeed with defaults");
+        let cfg =
+            parse_sensor_bindings(&HashMap::from([("sensor_interval_ms".into(), "5".into())]))
+                .expect("parse should succeed with defaults");
         assert!(cfg.selection.accel);
         assert!(cfg.selection.gyro);
         assert!(cfg.selection.mag);
@@ -1939,7 +1975,10 @@ mod tests {
         assert_contains_text(&ui, "hello from csv");
 
         let state = STATE.lock().unwrap();
-        assert_eq!(state.text_view_path.as_deref(), Some(file.path().to_string_lossy().as_ref()));
+        assert_eq!(
+            state.text_view_path.as_deref(),
+            Some(file.path().to_string_lossy().as_ref())
+        );
         assert!(state.text_view_error.is_none());
     }
 
