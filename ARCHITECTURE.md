@@ -15,15 +15,16 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - Kotlin SAF picker opens `ParcelFileDescriptor` and passes detached FDs/paths to Rust. Rust avoids panics across JNI and reports errors as UI JSON.
 
 ## UI/UX Highlights
-- **Text viewer**: WebView + bundled Prism (MIT) assets in `assets/prism/`; syntax highlighting for JSON/Markdown/TOML/YAML/Rust, theme toggle, wrap, line numbers, internal scroll. Archive text-like entries are tappable and open directly.
-- **PDF tools**: PdfRenderer thumbnails via `PdfPagePicker`; lopdf handles extract/delete/merge/title/signature with px→pt scaling from SignaturePad dimensions/DPI; Y flipped using MediaBox height.
-- **Kotlin image flow**: Conversion on Kotlin side; Rust drives screens, output dir selection, results.
+- **Renderer diffing**: Kotlin assigns stable IDs (explicit `id`, `bind_key`, or action) and reuses Views instead of nuking the tree, reducing jank and keeping input focus/keyboard stable across updates.
+- **Text viewer**: WebView + bundled Prism (MIT) assets in `assets/prism/`; syntax highlighting for JSON/Markdown/TOML/YAML/Rust, theme toggle, wrap, line numbers, internal scroll. Archive text-like entries are tappable and open directly. Large-log UX gaps remain (pagination/search, see TODOs).
+- **PDF tools**: PdfRenderer thumbnails via `PdfPagePicker`; lopdf handles extract/delete/merge/title/signature with px→pt scaling from SignaturePad dimensions/DPI; Y flipped using MediaBox height. Memory mapping (memmap2) prevents loading entire PDFs into heap.
+- **Kotlin image flow**: Conversion on Kotlin side; Rust drives screens, output dir selection, results. Future: add resize/quality controls for mail-friendly outputs.
 - **Archive viewer**: ZIP listing (capped, truncated flag); text entries are buttons that load into the text viewer.
 - **Color/Text tools/QR/Sensor logger**: Pure-Rust logic with native UI; QR encoded via `qrcode` and shown as base64 image.
 - **Accessibility**: `content_description` propagated on widgets; Back buttons consistent; renderer guardrails prevent crashes on malformed payloads.
 
 ## Assets & Licensing
-- Prism assets (core + minimal languages + line numbers) and MIT license live in `app/src/main/assets/prism/PRISM_LICENSE.txt`. Keep asset set small to honor APK budget (<5 MB target).
+- Prism assets (core + minimal languages + line numbers) are bundled into a single `prism-bundle.min.js`; MIT license lives in `app/src/main/assets/prism/PRISM_LICENSE.txt`. Keep asset set small to honor APK budget (<5 MB target).
 
 ## Build & Testing
 - Rust: `cargo test` (panic-catching JNI, typed UI builders). Android: Gradle builds arm64-only, shrink/obfuscate enabled; deps metadata generated to assets for About screen. Robolectric tests validate renderer JSON schema (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList) and should be extended for `CodeView`.
@@ -31,3 +32,4 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 ## Pending
 - Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads.
 - On-device QA: text viewer (large files, binary/UTF-8 errors, TalkBack), sensor logger permissions/CSV, size audits via `scripts/size_report.sh`.
+- UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls, DSL grouping widget.

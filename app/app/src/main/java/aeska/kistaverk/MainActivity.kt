@@ -25,6 +25,7 @@ import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -808,8 +809,15 @@ class MainActivity : ComponentActivity() {
 
     private fun attachContent(view: View) {
         ensureContainers()
-        contentHolder?.removeAllViews()
-        contentHolder?.addView(view)
+        val holder = contentHolder ?: return
+        if (holder.childCount == 1 && holder.getChildAt(0) === view) {
+            return
+        }
+        if (view.parent != null && view.parent !== holder) {
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
+        holder.removeAllViews()
+        holder.addView(view)
     }
 
     private fun buildOverlay(): View {
