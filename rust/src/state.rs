@@ -48,6 +48,7 @@ pub struct AppState {
     pub text_view_content: Option<String>,
     pub text_view_path: Option<String>,
     pub text_view_error: Option<String>,
+    pub text_view_hex_preview: Option<String>,
     pub text_view_language: Option<String>,
     pub text_view_dark: bool,
     pub text_view_line_numbers: bool,
@@ -82,6 +83,7 @@ impl AppState {
             text_view_content: None,
             text_view_path: None,
             text_view_error: None,
+            text_view_hex_preview: None,
             text_view_language: None,
             text_view_dark: false,
             text_view_line_numbers: false,
@@ -158,6 +160,7 @@ impl AppState {
         self.text_view_content = None;
         self.text_view_path = None;
         self.text_view_error = None;
+        self.text_view_hex_preview = None;
         self.text_view_language = None;
         self.text_view_dark = false;
         self.text_view_line_numbers = false;
