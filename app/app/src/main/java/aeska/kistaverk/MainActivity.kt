@@ -44,6 +44,7 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
 
+    private val maxSnapshotSize = 200_000 // guard against TransactionTooLarge
     private lateinit var renderer: UiRenderer
     private var sensorManager: SensorManager? = null
     private var sensorThread: HandlerThread? = null
@@ -311,7 +312,7 @@ class MainActivity : ComponentActivity() {
         val snapshot = runBlocking {
             withContext(Dispatchers.IO) { requestSnapshot() }
         }
-        if (snapshot != null) {
+        if (snapshot != null && snapshot.length <= maxSnapshotSize) {
             outState.putString(snapshotKey, snapshot)
         }
     }

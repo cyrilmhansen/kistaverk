@@ -49,9 +49,9 @@ class UiRenderer(
     private data class PdfPickerCache(val uri: String, val pageCount: Int)
     private data class SignatureState(val base64: String, val widthPx: Int, val heightPx: Int, val dpi: Float)
 
-    private val renderMetaTag = View.generateViewId()
-    private val bindKeyTag = View.generateViewId()
-    private val dataTag = View.generateViewId()
+    private val renderMetaTag = R.id.render_meta_tag
+    private val bindKeyTag = R.id.bind_key_tag
+    private val dataTag = R.id.data_tag
     private val host = FrameLayout(context).apply {
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
