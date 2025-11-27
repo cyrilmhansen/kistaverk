@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use std::fs::File;
+use std::io::BufReader;
 use std::io::Read;
-use std::io::{BufReader};
 use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
 
