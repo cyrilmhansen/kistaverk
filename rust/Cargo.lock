@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "android_log-sys"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84521a3cf562bc62942e294181d9eef17eb38ceb8c68677bc49f144e4c3d4f8d"
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -433,6 +439,7 @@ dependencies = [
 name = "kistaverk_core"
 version = "0.1.0"
 dependencies = [
+ "android_log-sys",
  "base64",
  "blake3",
  "crc32fast",
@@ -449,6 +456,7 @@ dependencies = [
  "sha1",
  "sha2",
  "tempfile",
+ "time",
  "zip",
 ]
 

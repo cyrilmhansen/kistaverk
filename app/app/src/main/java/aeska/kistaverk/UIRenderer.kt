@@ -18,6 +18,8 @@ import android.util.Base64
 import android.view.View
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.Gravity
+import android.graphics.Matrix
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -25,6 +27,7 @@ import android.widget.CheckBox
 import android.widget.LinearLayout.LayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.Space
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.ScrollView
@@ -74,6 +77,7 @@ class UiRenderer(
         "ColorSwatch",
         "PdfPagePicker",
         "SignaturePad",
+        "PdfSignPlacement",
         "DepsList"
         ,
         "CodeView"
@@ -183,6 +187,7 @@ class UiRenderer(
             "ColorSwatch" -> createColorSwatch(data, matched)
             "PdfPagePicker" -> createPdfPagePicker(data, matched as? HorizontalScrollView)
             "SignaturePad" -> createSignaturePad(data, matched as? SignaturePadView)
+            "PdfSignPlacement" -> createPdfSignPlacement(data, matched as? SignPlacementView)
             "DepsList" -> createDepsList(data, matched as? LinearLayout)
             "CodeView" -> createCodeView(data, matched as? WebView)
             "" -> createErrorView("Missing type")
@@ -225,6 +230,10 @@ class UiRenderer(
         }
         if (type == "SignaturePad") {
             if (!node.has("bind_key")) return "SignaturePad missing bind_key"
+        }
+        if (type == "PdfSignPlacement") {
+            if (!node.has("source_uri")) return "PdfSignPlacement missing source_uri"
+            if (!node.has("page_count")) return "PdfSignPlacement missing page_count"
         }
         if (type == "DepsList") {
             // no required fields
@@ -845,6 +854,29 @@ class UiRenderer(
         return pad
     }
 
+    private fun createPdfSignPlacement(data: JSONObject, existing: SignPlacementView?): View {
+        val pageCount = data.optInt("page_count", 0)
+        val bindPage = data.optString("bind_key_page", "pdf_signature_page")
+        val bindX = data.optString("bind_key_x_pct", "pdf_signature_x_pct")
+        val bindY = data.optString("bind_key_y_pct", "pdf_signature_y_pct")
+        val sourceUri = data.optString("source_uri", "")
+        val selectedPage = data.optInt("selected_page", 1).coerceAtLeast(1)
+        val selectedX = if (data.has("selected_x_pct")) data.optDouble("selected_x_pct", Double.NaN).toFloat() else Float.NaN
+        val selectedY = if (data.has("selected_y_pct")) data.optDouble("selected_y_pct", Double.NaN).toFloat() else Float.NaN
+        if (pageCount <= 0 || sourceUri.isBlank()) return createErrorView("SignPlacement missing data")
+        val uri = runCatching { Uri.parse(sourceUri) }.getOrNull() ?: return createErrorView("Invalid PDF URI")
+        val view = existing ?: SignPlacementView(context)
+        view.bind(uri, pageCount, selectedPage, selectedX, selectedY) { page, nx, ny ->
+            bindings[bindPage] = page.toString()
+            bindings[bindX] = nx.toString()
+            bindings[bindY] = ny.toString()
+        }
+        val cd = data.optString("content_description", "")
+        view.contentDescription = cd.takeIf { it.isNotEmpty() }
+        setMeta(view, "PdfSignPlacement", resolveNodeId(data))
+        return view
+    }
+
     private class SignaturePadView(
         context: Context,
         private val onUpdate: (String, Int, Int, Float) -> Unit
@@ -870,14 +902,20 @@ class UiRenderer(
             val y = event.y
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
                     path.moveTo(x, y)
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
                     path.lineTo(x, y)
                 }
                 MotionEvent.ACTION_UP -> {
                     path.lineTo(x, y)
                     exportAndSend()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 }
             }
             invalidate()
@@ -905,11 +943,245 @@ class UiRenderer(
         }
     }
 
+    private class SignPlacementView(
+        context: Context
+    ) : LinearLayout(context) {
+        private var pageCount: Int = 0
+        private var currentPage: Int = 1
+        private var sourceUri: Uri? = null
+        private var onChange: ((Int, Float, Float) -> Unit)? = null
+        private val label = TextView(context).apply {
+            textSize = 14f
+        }
+        private val image = ImageView(context).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPxLocal(320f))
+            setBackgroundColor(Color.WHITE)
+        }
+        private val overlayView = SignOverlay(context, image) { nx, ny ->
+            onChange?.invoke(currentPage, nx, ny)
+            updateLabel()
+        }
+        private val frame = FrameLayout(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            addView(image)
+            addView(overlayView)
+        }
+
+        init {
+            orientation = VERTICAL
+            val controls = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val pad = dpToPxLocal(4f)
+                setPadding(pad, pad, pad, pad)
+            }
+            val prev = Button(context).apply {
+                text = "<"
+                setOnClickListener { changePage(currentPage - 1) }
+            }
+            val next = Button(context).apply {
+                text = ">"
+                setOnClickListener { changePage(currentPage + 1) }
+            }
+            val spacer = Space(context).apply {
+                layoutParams = LayoutParams(0, 1, 1f)
+            }
+            controls.addView(prev)
+            controls.addView(spacer)
+            controls.addView(label)
+            controls.addView(Space(context).apply { layoutParams = LayoutParams(0, 1, 1f) })
+            controls.addView(next)
+            addView(controls)
+            addView(frame)
+        }
+
+        fun bind(
+            uri: Uri,
+            pageCount: Int,
+            selectedPage: Int,
+            selectedX: Float,
+            selectedY: Float,
+            onChange: (Int, Float, Float) -> Unit
+        ) {
+            this.sourceUri = uri
+            this.pageCount = pageCount
+            this.currentPage = selectedPage.coerceIn(1, pageCount)
+            this.onChange = onChange
+            val nx = if (selectedX.isFinite()) selectedX else 0.5f
+            val ny = if (selectedY.isFinite()) selectedY else 0.5f
+            overlayView.setNormalized(nx, ny)
+            updateLabel()
+            renderPage()
+            this.onChange?.invoke(currentPage, nx, ny)
+        }
+
+        private fun changePage(target: Int) {
+            val clamped = target.coerceIn(1, pageCount)
+            if (clamped == currentPage) return
+            currentPage = clamped
+            overlayView.setNormalized(0.5f, 0.5f)
+            updateLabel()
+            renderPage()
+            onChange?.invoke(currentPage, overlayView.normalizedX(), overlayView.normalizedY())
+        }
+
+        private fun updateLabel() {
+            label.text = "Tap to place signature • Page $currentPage / $pageCount"
+        }
+
+        private fun renderPage() {
+            val uri = sourceUri ?: return
+            val widthHint = frame.width.takeIf { it > 0 } ?: dpToPxLocal(320f)
+            val heightHint = frame.height.takeIf { it > 0 } ?: dpToPxLocal(400f)
+            post {
+                val pfd = try {
+                    context.contentResolver.openFileDescriptor(uri, "r")
+                } catch (_: Exception) {
+                    null
+                } ?: return@post
+                pfd.use { descriptor ->
+                    try {
+                        PdfRenderer(descriptor).use { renderer ->
+                            if (renderer.pageCount <= 0) return@use
+                            val pageIndex = (currentPage - 1).coerceIn(0, renderer.pageCount - 1)
+                            renderer.openPage(pageIndex).use { page ->
+                                val targetWidth = widthHint.coerceAtLeast(dpToPxLocal(240f))
+                                val targetHeight = (targetWidth.toFloat() / page.width * page.height)
+                                    .toInt()
+                                    .coerceAtLeast(dpToPxLocal(160f))
+                                    .coerceAtMost(heightHint.coerceAtLeast(dpToPxLocal(160f)))
+                                val bmp = Bitmap.createBitmap(
+                                    targetWidth,
+                                    targetHeight,
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                image.setImageBitmap(bmp)
+                                overlayView.setBitmap(bmp)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // best effort; leave previous image
+                    }
+                }
+            }
+        }
+
+        private fun dpToPxLocal(dp: Float): Int {
+            val density = resources.displayMetrics.density
+            return (dp * density).toInt()
+        }
+    }
+
+    private class SignOverlay(
+        context: Context,
+        private val image: ImageView,
+        private val onTouchUpdate: (Float, Float) -> Unit
+    ) : View(context) {
+        private var normalizedX: Float? = null
+        private var normalizedY: Float? = null
+        private val paint = Paint().apply {
+            color = Color.RED
+            style = Paint.Style.STROKE
+            strokeWidth = dpToPxInternal(2f).toFloat()
+            isAntiAlias = true
+        }
+
+        fun setNormalized(x: Float, y: Float) {
+            if (x.isFinite() && y.isFinite()) {
+                normalizedX = x
+                normalizedY = y
+            }
+            invalidate()
+        }
+
+        fun setBitmap(@Suppress("UNUSED_PARAMETER") bmp: Bitmap) {
+            invalidate()
+        }
+
+        fun clearMarker() {
+            normalizedX = null
+            normalizedY = null
+            invalidate()
+        }
+
+        fun normalizedX(): Float {
+            return normalizedX ?: Float.NaN
+        }
+
+        fun normalizedY(): Float {
+            return normalizedY ?: Float.NaN
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean {
+            when (event.action) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    mapTouch(event.x, event.y)?.let { (nx, ny) ->
+                        normalizedX = nx
+                        normalizedY = ny
+                        onTouchUpdate(nx, ny)
+                        invalidate()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                }
+            }
+            return true
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val nx = normalizedX
+            val ny = normalizedY
+            if (nx != null && ny != null) {
+                mapNormalizedToView(nx, ny)?.let { (vx, vy) ->
+                    canvas.drawCircle(vx, vy, dpToPxInternal(10f).toFloat(), paint)
+                    canvas.drawLine(vx - dpToPxInternal(12f), vy, vx + dpToPxInternal(12f), vy, paint)
+                    canvas.drawLine(vx, vy - dpToPxInternal(12f), vx, vy + dpToPxInternal(12f), paint)
+                }
+            }
+        }
+
+        private fun mapTouch(x: Float, y: Float): Pair<Float, Float>? {
+            val drawable = image.drawable ?: return null
+            val matrix = Matrix()
+            if (!image.imageMatrix.invert(matrix)) return null
+            val pts = floatArrayOf(x, y)
+            matrix.mapPoints(pts)
+            val w = drawable.intrinsicWidth.toFloat()
+            val h = drawable.intrinsicHeight.toFloat()
+            if (w <= 0f || h <= 0f) return null
+            val nx = (pts[0] / w).coerceIn(0f, 1f)
+            val ny = (pts[1] / h).coerceIn(0f, 1f)
+            return nx to ny
+        }
+
+        private fun mapNormalizedToView(nx: Float, ny: Float): Pair<Float, Float>? {
+            val drawable = image.drawable ?: return null
+            val w = drawable.intrinsicWidth.toFloat()
+            val h = drawable.intrinsicHeight.toFloat()
+            if (w <= 0f || h <= 0f) return null
+            val pts = floatArrayOf(nx * w, ny * h)
+            val matrix = image.imageMatrix
+            matrix.mapPoints(pts)
+            return pts[0] to pts[1]
+        }
+
+        private fun dpToPxInternal(dp: Float): Int {
+            val density = resources.displayMetrics.density
+            return (dp * density).toInt()
+        }
+    }
+
     private fun resolveNodeId(data: JSONObject): String? {
         val explicit = data.optString("id", "").takeIf { it.isNotBlank() }
         if (explicit != null) return explicit
         return when (data.optString("type", "")) {
-            "TextInput", "Checkbox", "PdfPagePicker", "SignaturePad" ->
+            "TextInput", "Checkbox", "PdfPagePicker", "SignaturePad", "PdfSignPlacement" ->
                 data.optString("bind_key", "").takeIf { it.isNotBlank() }
             "Button" -> data.optString("action", "").takeIf { it.isNotBlank() }
             "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"

@@ -108,23 +108,21 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             } else {
                 format!("({})", human_bytes(entry.size))
             };
-            rows.push(
-                if is_text_entry(entry) {
-                    let label = format!("{icon} {} {size_str}", entry.name);
-                    let action = format!("archive_open_text:{idx}");
-                    serde_json::to_value(
-                        UiButton::new(&label, &action).content_description("archive_entry_text"),
-                    )
-                    .unwrap()
-                } else {
-                    serde_json::to_value(
-                        UiText::new(&format!("{icon} {} {size_str}", entry.name))
-                            .size(14.0)
-                            .content_description("archive_entry"),
-                    )
-                    .unwrap()
-                },
-            );
+            rows.push(if is_text_entry(entry) {
+                let label = format!("{icon} {} {size_str}", entry.name);
+                let action = format!("archive_open_text:{idx}");
+                serde_json::to_value(
+                    UiButton::new(&label, &action).content_description("archive_entry_text"),
+                )
+                .unwrap()
+            } else {
+                serde_json::to_value(
+                    UiText::new(&format!("{icon} {} {size_str}", entry.name))
+                        .size(14.0)
+                        .content_description("archive_entry"),
+                )
+                .unwrap()
+            });
         }
         children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
         if state.archive.truncated {
@@ -178,8 +176,28 @@ fn is_text_entry(entry: &ArchiveEntry) -> bool {
     }
     let name = entry.name.to_ascii_lowercase();
     const TEXT_EXTENSIONS: [&str; 22] = [
-        ".txt", ".csv", ".md", ".log", ".json", ".xml", ".yaml", ".yml", ".ini", ".cfg", ".conf",
-        ".properties", ".toml", ".rs", ".c", ".cpp", ".h", ".py", ".java", ".kt", ".sh", ".go",
+        ".txt",
+        ".csv",
+        ".md",
+        ".log",
+        ".json",
+        ".xml",
+        ".yaml",
+        ".yml",
+        ".ini",
+        ".cfg",
+        ".conf",
+        ".properties",
+        ".toml",
+        ".rs",
+        ".c",
+        ".cpp",
+        ".h",
+        ".py",
+        ".java",
+        ".kt",
+        ".sh",
+        ".go",
     ];
     TEXT_EXTENSIONS.iter().any(|ext| name.ends_with(ext))
 }
@@ -203,10 +221,8 @@ pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String
         return Err("archive_entry_not_text".into());
     }
 
-    let file = File::open(archive_path)
-        .map_err(|e| format!("archive_reopen_failed:{e}"))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
     let mut entry_file = archive
         .by_index(index)
         .map_err(|e| format!("archive_entry_open_failed:{e}"))?;

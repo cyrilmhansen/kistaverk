@@ -1,5 +1,8 @@
 use crate::state::{AppState, Screen};
-use crate::ui::{Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
+use crate::ui::{
+    Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Text as UiText,
+    TextInput as UiTextInput,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -348,7 +351,10 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
     let input = state.text_input.clone().unwrap_or_default();
     let mut children = vec![
         serde_json::to_value(UiText::new("Text tools").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("Enter text, then apply a transform or count.").size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Enter text, then apply a transform or count.").size(14.0),
+        )
+        .unwrap(),
         serde_json::to_value(
             UiTextInput::new("text_input")
                 .text(&input)
@@ -376,11 +382,14 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
                 )
                 .unwrap(),
                 serde_json::to_value(UiButton::new("Word count", "text_tools_word_count")).unwrap(),
-                serde_json::to_value(UiButton::new("Character count", "text_tools_char_count")).unwrap(),
+                serde_json::to_value(UiButton::new("Character count", "text_tools_char_count"))
+                    .unwrap(),
                 serde_json::to_value(UiButton::new("Trim spacing", "text_tools_trim")).unwrap(),
                 serde_json::to_value(UiButton::new("Wrap to 72 cols", "text_tools_wrap")).unwrap(),
-                serde_json::to_value(UiButton::new("Base64 encode", "text_tools_base64_encode")).unwrap(),
-                serde_json::to_value(UiButton::new("Base64 decode", "text_tools_base64_decode")).unwrap(),
+                serde_json::to_value(UiButton::new("Base64 encode", "text_tools_base64_encode"))
+                    .unwrap(),
+                serde_json::to_value(UiButton::new("Base64 decode", "text_tools_base64_decode"))
+                    .unwrap(),
                 serde_json::to_value(UiButton::new("URL encode", "text_tools_url_encode")).unwrap(),
                 serde_json::to_value(UiButton::new("URL decode", "text_tools_url_decode")).unwrap(),
                 serde_json::to_value(UiButton::new("Hex encode", "text_tools_hex_encode")).unwrap(),
@@ -413,8 +422,13 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
             serde_json::to_value(
                 UiColumn::new(vec![
                     serde_json::to_value(UiText::new("Result actions").size(14.0)).unwrap(),
-                    serde_json::to_value(UiButton::new("Copy to input", "text_tools_copy_to_input")).unwrap(),
-                    serde_json::to_value(UiButton::new("Share result", "text_tools_share_result")).unwrap(),
+                    serde_json::to_value(UiButton::new(
+                        "Copy to input",
+                        "text_tools_copy_to_input",
+                    ))
+                    .unwrap(),
+                    serde_json::to_value(UiButton::new("Share result", "text_tools_share_result"))
+                        .unwrap(),
                 ])
                 .padding(8),
             )

@@ -1,13 +1,13 @@
+pub mod archive;
+pub mod color_tools;
 pub mod file_info;
 pub mod hashes;
 pub mod kotlin_image;
-pub mod color_tools;
-pub mod qr;
-pub mod text_tools;
 pub mod pdf;
+pub mod qr;
 pub mod sensor_logger;
+pub mod text_tools;
 pub mod text_viewer;
-pub mod archive;
 
 use crate::state::AppState;
 use serde_json::Value;
@@ -24,12 +24,15 @@ pub struct Feature {
 
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
-    use std::collections::BTreeMap;
     use crate::ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Text as UiText};
+    use std::collections::BTreeMap;
 
     let mut children = vec![
         serde_json::to_value(UiText::new("🧰 Tool menu").size(22.0)).unwrap(),
-        serde_json::to_value(UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0),
+        )
+        .unwrap(),
     ];
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
@@ -50,9 +53,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
                 .unwrap()
             })
             .collect();
-        children.push(
-            serde_json::to_value(UiGrid::new(cards).columns(2).padding(8)).unwrap(),
-        );
+        children.push(serde_json::to_value(UiGrid::new(cards).columns(2).padding(8)).unwrap());
     }
 
     if let Some(hash) = &state.last_hash {

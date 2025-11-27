@@ -1,5 +1,8 @@
 use crate::state::{AppState, Screen};
-use crate::ui::{Button as UiButton, Column as UiColumn, ColorSwatch as UiColorSwatch, Text as UiText, TextInput as UiTextInput};
+use crate::ui::{
+    Button as UiButton, ColorSwatch as UiColorSwatch, Column as UiColumn, Text as UiText,
+    TextInput as UiTextInput,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rgb {
@@ -109,8 +112,10 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
                 .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy HSL", "color_copy_clipboard").copy_text(&hsl_text))
-                .unwrap(),
+            serde_json::to_value(
+                UiButton::new("Copy HSL", "color_copy_clipboard").copy_text(&hsl_text),
+            )
+            .unwrap(),
         );
     }
 
@@ -153,9 +158,18 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
 }
 
 fn color_strings(state: &AppState, fallback: &str) -> (String, String, String) {
-    let hex = state.text_input.clone().unwrap_or_else(|| fallback.to_string());
-    let rgb = state.last_hash_algo.clone().unwrap_or_else(|| fallback.to_string());
-    let hsl = state.text_operation.clone().unwrap_or_else(|| fallback.to_string());
+    let hex = state
+        .text_input
+        .clone()
+        .unwrap_or_else(|| fallback.to_string());
+    let rgb = state
+        .last_hash_algo
+        .clone()
+        .unwrap_or_else(|| fallback.to_string());
+    let hsl = state
+        .text_operation
+        .clone()
+        .unwrap_or_else(|| fallback.to_string());
     (hex, rgb, hsl)
 }
 
@@ -207,5 +221,9 @@ fn rgb_to_hsl(rgb: Rgb) -> Hsl {
         60.0 * (((r - g) / delta) + 4.0)
     };
 
-    Hsl { h: h.rem_euclid(360.0), s, l }
+    Hsl {
+        h: h.rem_euclid(360.0),
+        s,
+        l,
+    }
 }

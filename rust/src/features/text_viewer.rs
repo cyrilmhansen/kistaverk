@@ -13,8 +13,10 @@ pub fn read_text_from_reader<R: Read>(mut reader: R) -> Result<String, String> {
         .read_to_end(&mut buf)
         .map_err(|e| format!("read_failed:{e}"))?;
 
-    Ok(String::from_utf8(buf.clone())
-        .unwrap_or_else(|_| String::from_utf8_lossy(&buf).to_string()))
+    Ok(
+        String::from_utf8(buf.clone())
+            .unwrap_or_else(|_| String::from_utf8_lossy(&buf).to_string()),
+    )
 }
 
 pub fn guess_language_from_path(path: &str) -> Option<String> {

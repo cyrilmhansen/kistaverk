@@ -240,7 +240,6 @@ impl<'a> Progress<'a> {
     }
 }
 
-
 #[derive(Serialize)]
 pub struct TextInput<'a> {
     #[serde(rename = "type")]
@@ -307,7 +306,6 @@ impl<'a> TextInput<'a> {
         self
     }
 }
-
 
 #[derive(Serialize)]
 pub struct ImageBase64<'a> {
@@ -396,7 +394,6 @@ impl<'a> PdfPagePicker<'a> {
         self
     }
 }
-
 
 #[derive(Serialize)]
 pub struct DepsList<'a> {
