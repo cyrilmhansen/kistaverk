@@ -17,6 +17,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Base64
 import android.view.View
 import android.view.MotionEvent
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
@@ -44,6 +45,21 @@ class UiRenderer(
     private val context: Context,
     private val onAction: (String, Boolean, Map<String, String>) -> Unit
 ) {
+    private data class RenderMeta(val type: String, val nodeId: String?)
+    private data class PdfPickerCache(val uri: String, val pageCount: Int)
+    private data class SignatureState(val base64: String, val widthPx: Int, val heightPx: Int, val dpi: Float)
+
+    private val renderMetaTag = View.generateViewId()
+    private val bindKeyTag = View.generateViewId()
+    private val dataTag = View.generateViewId()
+    private val host = FrameLayout(context).apply {
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+    }
+    private var currentRoot: View? = null
+    private var pooledCodeView: WebView? = null
     private val bindings = mutableMapOf<String, String>()
     private val allowedTypes = setOf(
         "Column",
@@ -68,27 +84,16 @@ class UiRenderer(
         val rootJson = try {
             JSONObject(jsonString)
         } catch (e: Exception) {
-            return renderFallback("Render error", "Invalid JSON")
+            return setHostContent(renderFallback("Render error", "Invalid JSON"))
         }
 
         val validationError = validate(rootJson)
         if (validationError != null) {
-            return renderFallback("Render error", validationError)
+            return setHostContent(renderFallback("Render error", validationError))
         }
 
-        val root = createView(rootJson)
-        val scrollable = rootJson.optBoolean("scrollable", true)
-        return if (scrollable && root is LinearLayout) {
-            ScrollView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                addView(root)
-            }
-        } else {
-            root
-        }
+        val root = createRoot(rootJson)
+        return setHostContent(root)
     }
 
     fun renderFallback(title: String, message: String): View {
@@ -121,23 +126,65 @@ class UiRenderer(
         }
     }
 
-    private fun createView(data: JSONObject): View {
+    private fun setHostContent(content: View): View {
+        detachFromParent(content, host)
+        if (host.childCount == 0 || host.getChildAt(0) !== content) {
+            host.removeAllViews()
+            host.addView(content)
+        }
+        currentRoot = content
+        return host
+    }
+
+    private fun createRoot(data: JSONObject): View {
+        val scrollable = data.optBoolean("scrollable", true)
+        val existingRoot = currentRoot
+        val existingContent = when {
+            scrollable -> (existingRoot as? ScrollView)?.getChildAt(0)
+            existingRoot is ScrollView -> null
+            else -> existingRoot
+        }
+        val content = createView(data, existingContent)
+        return if (scrollable) {
+            val scroll = (existingRoot as? ScrollView) ?: ScrollView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            }
+            scroll.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            if (scroll.childCount == 0 || scroll.getChildAt(0) !== content) {
+                scroll.removeAllViews()
+                scroll.addView(content)
+            }
+            scroll
+        } else {
+            content
+        }
+    }
+
+    private fun createView(data: JSONObject, existing: View? = null): View {
         val type = data.optString("type", "")
+        val nodeId = resolveNodeId(data)
+        val matched = if (existing != null && matchesMeta(existing, type, nodeId)) existing else null
         return when (type) {
-            "Column" -> createColumn(data)
-            "Text" -> createText(data)
-            "Button" -> createButton(data)
-            "ShaderToy" -> createShaderToy(data)
-            "TextInput" -> createTextInput(data)
-            "Checkbox" -> createCheckbox(data)
-            "Progress" -> createProgress(data)
-            "Grid" -> createGrid(data)
-            "ImageBase64" -> createImageBase64(data)
-            "ColorSwatch" -> createColorSwatch(data)
-            "PdfPagePicker" -> createPdfPagePicker(data)
-            "SignaturePad" -> createSignaturePad(data)
-            "DepsList" -> createDepsList()
-            "CodeView" -> createCodeView(data)
+            "Column" -> createColumn(data, matched as? LinearLayout)
+            "Text" -> createText(data, matched as? TextView)
+            "Button" -> createButton(data, matched as? Button)
+            "ShaderToy" -> createShaderToy(data, matched as? ShaderToyView)
+            "TextInput" -> createTextInput(data, matched as? EditText)
+            "Checkbox" -> createCheckbox(data, matched as? CheckBox)
+            "Progress" -> createProgress(data, matched as? LinearLayout)
+            "Grid" -> createGrid(data, matched as? LinearLayout)
+            "ImageBase64" -> createImageBase64(data, matched as? LinearLayout)
+            "ColorSwatch" -> createColorSwatch(data, matched)
+            "PdfPagePicker" -> createPdfPagePicker(data, matched as? HorizontalScrollView)
+            "SignaturePad" -> createSignaturePad(data, matched as? SignaturePadView)
+            "DepsList" -> createDepsList(data, matched as? LinearLayout)
+            "CodeView" -> createCodeView(data, matched as? WebView)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -204,68 +251,75 @@ class UiRenderer(
 
     // WARNING: For createColumn, make sure to call createView recursively
     // I'm putting the abbreviated code back for clarity:
-    private fun createColumn(data: JSONObject): View {
-        val layout = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (data.has("padding")) {
-            val p = data.getInt("padding")
-            layout.setPadding(p, p, p, p)
-        }
+    private fun createColumn(data: JSONObject, existing: LinearLayout?): View {
+        val layout = existing ?: LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        layout.orientation = LinearLayout.VERTICAL
+        val padding = data.optInt("padding", 0)
+        layout.setPadding(padding, padding, padding, padding)
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            layout.contentDescription = contentDescription
-        }
+        layout.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
         val children = data.optJSONArray("children")
+        val newChildren = mutableListOf<View>()
         if (children != null) {
             for (i in 0 until children.length()) {
-                layout.addView(createView(children.getJSONObject(i)))
+                val childJson = children.getJSONObject(i)
+                val reuse = existing?.let { findReusableChild(it, childJson) }
+                val childView = createView(childJson, reuse)
+                detachFromParent(childView, layout)
+                newChildren.add(childView)
             }
         } else {
-            layout.addView(createErrorView("Missing children"))
+            newChildren.add(createErrorView("Missing children"))
         }
+        layout.removeAllViews()
+        newChildren.forEach { layout.addView(it) }
+        setMeta(layout, "Column", resolveNodeId(data))
         return layout
     }
 
-    private fun createImageBase64(data: JSONObject): View {
+    private fun createImageBase64(data: JSONObject, existing: LinearLayout?): View {
         val b64 = data.optString("base64", "")
         if (b64.isBlank()) return createErrorView("Missing base64")
-        val bytes = try {
-            android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
-        } catch (_: Exception) {
-            null
-        } ?: return createErrorView("Invalid base64")
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        val iv = android.widget.ImageView(context).apply {
-            setImageBitmap(bmp)
+        val container = existing ?: LinearLayout(context)
+        container.orientation = LinearLayout.VERTICAL
+        val padding = dpToPx(context, 16f)
+        container.setPadding(padding, padding, padding, padding)
+        container.setBackgroundColor(Color.WHITE)
+        container.elevation = dpToPx(context, 2f).toFloat()
+        container.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dpToPx(context, 12f)
+            bottomMargin = dpToPx(context, 12f)
+        }
+        val iv = (container.getChildAt(0) as? android.widget.ImageView) ?: android.widget.ImageView(context).apply {
             scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true // let it scale to available width
         }
-        val cd = data.optString("content_description", "")
-        if (cd.isNotEmpty()) iv.contentDescription = cd
-        val padding = dpToPx(context, 16f) // quiet zone
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(padding, padding, padding, padding)
-            setBackgroundColor(Color.WHITE)
-            val stroke = dpToPx(context, 2f)
-            setPadding(padding, padding, padding, padding)
-            setWillNotDraw(false)
-            // Add a simple border by using background drawable-less: fallback to a view outline via elevation
-            elevation = dpToPx(context, 2f).toFloat()
+        val lastB64 = container.getTag(dataTag) as? String
+        if (lastB64 != b64) {
+            val bytes = try {
+                android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            } catch (_: Exception) {
+                null
+            } ?: return createErrorView("Invalid base64")
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            iv.setImageBitmap(bmp)
+            container.setTag(dataTag, b64)
         }
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        lp.topMargin = dpToPx(context, 12f)
-        lp.bottomMargin = dpToPx(context, 12f)
-        container.layoutParams = lp
-        container.addView(iv)
+        val cd = data.optString("content_description", "")
+        iv.contentDescription = cd.takeIf { it.isNotEmpty() }
+        if (iv.parent == null) {
+            container.addView(iv)
+        }
+        setMeta(container, "ImageBase64", resolveNodeId(data))
         return container
     }
 
-    private fun createColorSwatch(data: JSONObject): View {
+    private fun createColorSwatch(data: JSONObject, existing: View?): View {
         val colorLong = data.optLong("color", 0xFF000000)
-        val view = View(context)
+        val view = existing ?: View(context)
         val size = dpToPx(context, 128f)
         val lp = LinearLayout.LayoutParams(size, size)
         lp.topMargin = dpToPx(context, 8f)
@@ -273,42 +327,30 @@ class UiRenderer(
         view.layoutParams = lp
         view.setBackgroundColor(colorLong.toInt())
         val cd = data.optString("content_description", "")
-        if (cd.isNotEmpty()) view.contentDescription = cd
+        view.contentDescription = cd.takeIf { it.isNotEmpty() }
+        setMeta(view, "ColorSwatch", resolveNodeId(data))
         return view
     }
 
-    private fun createText(data: JSONObject): View {
-        return TextView(context).apply {
-            text = data.optString("text")
-            textSize = data.optDouble("size", 14.0).toFloat()
-            val contentDescription = data.optString("content_description", "")
-            if (contentDescription.isNotEmpty()) {
-                this.contentDescription = contentDescription
-            }
-        }
+    private fun createText(data: JSONObject, existing: TextView?): View {
+        val view = existing ?: TextView(context)
+        view.text = data.optString("text")
+        view.textSize = data.optDouble("size", 14.0).toFloat()
+        val contentDescription = data.optString("content_description", "")
+        view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
+        setMeta(view, "Text", resolveNodeId(data))
+        return view
     }
 
-    private fun createCodeView(data: JSONObject): View {
+    private fun createCodeView(data: JSONObject, existing: WebView?): View {
         val text = data.optString("text", "")
         val language = data.optString("language", "none").ifBlank { "none" }
         val wrap = data.optBoolean("wrap", true)
         val theme = data.optString("theme", "light")
         val contentDescription = data.optString("content_description", "")
 
-        val webView = WebView(context)
-        webView.settings.javaScriptEnabled = true
-        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webView.settings.setSupportZoom(false)
-        webView.settings.displayZoomControls = false
-        webView.settings.builtInZoomControls = false
-        webView.settings.domStorageEnabled = false
-        webView.settings.setSupportMultipleWindows(false)
-        webView.isVerticalScrollBarEnabled = true
-        webView.isHorizontalScrollBarEnabled = !wrap
-        webView.setBackgroundColor(Color.TRANSPARENT)
-        if (contentDescription.isNotEmpty()) {
-            webView.contentDescription = contentDescription
-        }
+        val webView = existing ?: pooledCodeView ?: WebView(context).also { pooledCodeView = it }
+        configureCodeWebView(webView, wrap, contentDescription)
 
         val escaped = escapeHtml(text)
         val background = if (theme == "dark") "#0f111a" else "#fafafa"
@@ -322,8 +364,6 @@ class UiRenderer(
             <head>
               <meta charset="utf-8" />
               <meta name="viewport" content="width=device-width,initial-scale=1" />
-              <link rel="stylesheet" href="prism.min.css" />
-              <link rel="stylesheet" href="prism-line-numbers.min.css" />
               <style>
                 body { margin: 0; padding: 12px; background: $background; color: $foreground; }
                 pre { margin: 0; font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace; font-size: 14px; line-height: 1.4; }
@@ -334,25 +374,23 @@ class UiRenderer(
             </head>
             <body>
               <pre class="$wrapClass $lineClass"><code class="language-$language">$escaped</code></pre>
-              <script src="prism.min.js"></script>
-              <script src="prism-line-numbers.min.js"></script>
-              <script src="prism-json.min.js"></script>
-              <script src="prism-rust.min.js"></script>
-              <script src="prism-yaml.min.js"></script>
-              <script src="prism-toml.min.js"></script>
-              <script src="prism-markdown.min.js"></script>
+              <script src="prism-bundle.min.js"></script>
               <script>if(window.Prism){Prism.manual=false;Prism.highlightAll();}</script>
             </body>
             </html>
         """.trimIndent()
 
-        webView.loadDataWithBaseURL(
-            "file:///android_asset/prism/",
-            html,
-            "text/html",
-            "utf-8",
-            null
-        )
+        val lastHtml = webView.getTag(dataTag) as? String
+        if (lastHtml != html) {
+            webView.setTag(dataTag, html)
+            webView.loadDataWithBaseURL(
+                "file:///android_asset/prism/",
+                html,
+                "text/html",
+                "utf-8",
+                null
+            )
+        }
 
         val lp = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         val margin = dpToPx(context, 8f)
@@ -360,16 +398,16 @@ class UiRenderer(
         lp.bottomMargin = margin
         webView.layoutParams = lp
 
+        setMeta(webView, "CodeView", resolveNodeId(data))
+        pooledCodeView = webView
         return webView
     }
 
-    private fun createButton(data: JSONObject): View {
-        val btn = Button(context)
+    private fun createButton(data: JSONObject, existing: Button?): View {
+        val btn = existing ?: Button(context)
         btn.text = data.optString("text")
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            btn.contentDescription = contentDescription
-        }
+        btn.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
 
         // Retrieve the action defined in the Rust JSON (e.g., "hash_file")
         val actionName = data.optString("action")
@@ -384,6 +422,7 @@ class UiRenderer(
                 onAction(actionName, needsFilePicker, bindings.toMap())
             }
         }
+        setMeta(btn, "Button", resolveNodeId(data))
         return btn
     }
 
@@ -394,31 +433,30 @@ class UiRenderer(
         }
     }
 
-    private fun createTextInput(data: JSONObject): View {
-        val editText = EditText(context)
+    private fun createTextInput(data: JSONObject, existing: EditText?): View {
+        val editText = existing ?: EditText(context)
         val bindKey = data.optString("bind_key", "")
         val initial = data.optString("text", "")
-        editText.setText(initial)
-        if (initial.isNotEmpty() && bindKey.isNotEmpty()) {
-            bindings[bindKey] = initial
+        val hasExplicitText = data.has("text")
+        if (hasExplicitText && editText.text.toString() != initial) {
+            editText.setText(initial)
+        } else if (!hasExplicitText && existing == null) {
+            editText.setText(initial)
+        }
+        if (bindKey.isNotEmpty()) {
+            bindings[bindKey] = editText.text?.toString().orEmpty()
         }
         val hint = data.optString("hint", "")
-        if (hint.isNotEmpty()) {
-            editText.hint = hint
-        }
+        editText.hint = hint.takeIf { it.isNotEmpty() }
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            editText.contentDescription = contentDescription
-        }
+        editText.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
 
         val singleLine = data.optBoolean("single_line", false)
         editText.isSingleLine = singleLine
         val maxLines = data.optInt("max_lines", 0)
-        if (maxLines > 0) {
-            editText.maxLines = maxLines
-        }
+        editText.maxLines = if (maxLines > 0) maxLines else Int.MAX_VALUE
 
-        if (bindKey.isNotEmpty()) {
+        if (bindKey.isNotEmpty() && editText.getTag(bindKeyTag) != bindKey) {
             editText.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
                     bindings[bindKey] = s?.toString().orEmpty()
@@ -427,6 +465,7 @@ class UiRenderer(
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
             })
+            editText.setTag(bindKeyTag, bindKey)
         }
 
         val submitAction = data.optString("action_on_submit", "")
@@ -438,13 +477,21 @@ class UiRenderer(
                 }
                 isDone
             }
+        } else {
+            editText.setOnEditorActionListener(null)
         }
+        setMeta(editText, "TextInput", resolveNodeId(data))
         return editText
     }
 
-    private fun createShaderToy(data: JSONObject): View {
+    private fun createShaderToy(data: JSONObject, existing: ShaderToyView?): View {
         val fragment = data.optString("fragment", DEFAULT_FRAGMENT)
-        val view = ShaderToyView(context, fragment)
+        val existingFragment = existing?.getTag(dataTag) as? String
+        val view = if (existing != null && existingFragment == fragment) {
+            existing
+        } else {
+            ShaderToyView(context, fragment).apply { setTag(dataTag, fragment) }
+        }
         val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             dpToPx(context, 240f)
@@ -454,20 +501,21 @@ class UiRenderer(
         lp.bottomMargin = margin
         view.layoutParams = lp
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            view.contentDescription = contentDescription
-        }
+        view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
+        setMeta(view, "ShaderToy", resolveNodeId(data))
         return view
     }
 
-    private fun createProgress(data: JSONObject): View {
-        val container = LinearLayout(context).apply {
+    private fun createProgress(data: JSONObject, existing: LinearLayout?): View {
+        val container = existing ?: LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.WRAP_CONTENT
-            )
         }
+        container.orientation = LinearLayout.VERTICAL
+        container.layoutParams = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.WRAP_CONTENT
+        )
+        container.removeAllViews()
         val bar = ProgressBar(context).apply {
             isIndeterminate = true
         }
@@ -484,14 +532,13 @@ class UiRenderer(
         }
         container.addView(bar)
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            container.contentDescription = contentDescription
-        }
+        container.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
+        setMeta(container, "Progress", resolveNodeId(data))
         return container
     }
 
-    private fun createCheckbox(data: JSONObject): View {
-        val checkBox = CheckBox(context)
+    private fun createCheckbox(data: JSONObject, existing: CheckBox?): View {
+        val checkBox = existing ?: CheckBox(context)
         val text = data.optString("text", data.optString("label", ""))
         checkBox.text = text
 
@@ -517,43 +564,48 @@ class UiRenderer(
                 }
             }
         }
+        setMeta(checkBox, "Checkbox", resolveNodeId(data))
         return checkBox
     }
 
-    private fun createGrid(data: JSONObject): View {
+    private fun createGrid(data: JSONObject, existing: LinearLayout?): View {
         val columns = computeColumns(data)
         val children = data.optJSONArray("children") ?: return createErrorView("Grid missing children")
-        val wrapper = LinearLayout(context).apply {
+        val wrapper = existing ?: LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
+        wrapper.orientation = LinearLayout.VERTICAL
+        wrapper.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         val padding = data.optInt("padding", 0)
-        if (padding > 0) {
-            wrapper.setPadding(padding, padding, padding, padding)
-        }
+        wrapper.setPadding(padding, padding, padding, padding)
         val contentDescription = data.optString("content_description", "")
-        if (contentDescription.isNotEmpty()) {
-            wrapper.contentDescription = contentDescription
-        }
+        wrapper.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
 
+        val rows = mutableListOf<LinearLayout>()
         var row: LinearLayout? = null
         for (i in 0 until children.length()) {
-            val childView = createView(children.getJSONObject(i))
+            val childJson = children.getJSONObject(i)
             if (i % columns == 0) {
                 row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
                 }
-                wrapper.addView(row)
+                rows.add(row)
             }
+            val reuse = existing?.let { findReusableChild(it, childJson) }
+            val childView = createView(childJson, reuse)
+            detachFromParent(childView, row ?: wrapper)
             val lp = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f)
             childView.layoutParams = lp
             row?.addView(childView)
         }
+        wrapper.removeAllViews()
+        rows.forEach { wrapper.addView(it) }
+        setMeta(wrapper, "Grid", resolveNodeId(data))
         return wrapper
     }
 
-    private fun createPdfPagePicker(data: JSONObject): View {
+    private fun createPdfPagePicker(data: JSONObject, existing: HorizontalScrollView?): View {
         val pageCount = data.optInt("page_count", 0)
         val bindKey = data.optString("bind_key", "")
         val sourceUri = data.optString("source_uri", "")
@@ -575,55 +627,72 @@ class UiRenderer(
             }
         }
 
-        val thumbnails = renderPdfThumbnails(uri, pageCount)
-        val scroller = HorizontalScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-        }
-        val strip = LinearLayout(context).apply {
+        val scroller = existing ?: HorizontalScrollView(context)
+        scroller.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        val strip = (scroller.getChildAt(0) as? LinearLayout) ?: LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            val pad = dpToPx(context, 8f)
-            setPadding(pad, pad, pad, pad)
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
         }
+        val pad = dpToPx(context, 8f)
+        strip.setPadding(pad, pad, pad, pad)
         val cd = data.optString("content_description", "")
-        if (cd.isNotEmpty()) strip.contentDescription = cd
+        strip.contentDescription = cd.takeIf { it.isNotEmpty() }
+
+        val cached = scroller.getTag(dataTag) as? PdfPickerCache
+        val canReuseThumbs = cached?.uri == sourceUri && cached.pageCount == pageCount && strip.childCount == pageCount
+        val thumbnails = if (canReuseThumbs) null else renderPdfThumbnails(uri, pageCount)
+        if (!canReuseThumbs) {
+            strip.removeAllViews()
+        }
 
         for (i in 0 until pageCount) {
             val pageNumber = i + 1
-            val cell = LinearLayout(context).apply {
+            val existingCell = if (canReuseThumbs) strip.getChildAt(i) as? LinearLayout else null
+            val cell = existingCell ?: LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-                lp.marginEnd = dpToPx(context, 10f)
-                layoutParams = lp
-            }
-            val thumb = thumbnails.getOrNull(i)
-            if (thumb != null) {
-                val iv = ImageView(context).apply {
-                    setImageBitmap(thumb)
-                    adjustViewBounds = true
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    val lp = LayoutParams(dpToPx(context, 140f), LayoutParams.WRAP_CONTENT)
-                    lp.bottomMargin = dpToPx(context, 6f)
-                    layoutParams = lp
-                }
-                cell.addView(iv)
-            } else {
-                cell.addView(createErrorView("Preview $pageNumber"))
-            }
-            val check = CheckBox(context).apply {
-                text = "Page $pageNumber"
-                isChecked = selected.contains(pageNumber)
-                setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) selected.add(pageNumber) else selected.remove(pageNumber)
-                    pushSelection()
+                layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = dpToPx(context, 10f)
                 }
             }
-            cell.addView(check)
-            strip.addView(cell)
+            if (!canReuseThumbs) {
+                cell.removeAllViews()
+                val thumb = thumbnails?.getOrNull(i)
+                if (thumb != null) {
+                    val iv = ImageView(context).apply {
+                        setImageBitmap(thumb)
+                        adjustViewBounds = true
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        layoutParams = LayoutParams(dpToPx(context, 140f), LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin = dpToPx(context, 6f)
+                        }
+                    }
+                    cell.addView(iv)
+                } else {
+                    cell.addView(createErrorView("Preview $pageNumber"))
+                }
+            }
+            val check = (cell.findViewWithTag<View>("pdf_check_$pageNumber") as? CheckBox) ?: CheckBox(context).apply {
+                tag = "pdf_check_$pageNumber"
+                cell.addView(this)
+            }
+            check.text = "Page $pageNumber"
+            check.isChecked = selected.contains(pageNumber)
+            check.setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked) selected.add(pageNumber) else selected.remove(pageNumber)
+                pushSelection()
+            }
+            if (cell.parent == null) {
+                strip.addView(cell)
+            }
         }
 
         pushSelection()
-        scroller.addView(strip)
+        if (strip.parent != scroller) {
+            scroller.removeAllViews()
+            scroller.addView(strip)
+        }
+        scroller.setTag(dataTag, PdfPickerCache(sourceUri, pageCount))
+        setMeta(scroller, "PdfPagePicker", resolveNodeId(data))
         return scroller
     }
 
@@ -668,20 +737,22 @@ class UiRenderer(
         }
     }
 
-    private fun createDepsList(): View {
-        val container = LinearLayout(context).apply {
+    private fun createDepsList(data: JSONObject, existing: LinearLayout?): View {
+        val container = existing ?: LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
         }
-        val scroll = ScrollView(context).apply {
+        container.orientation = LinearLayout.VERTICAL
+        container.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        val scroll = (container.getChildAt(0) as? ScrollView) ?: ScrollView(context).apply {
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, 240f))
         }
-        val inner = LinearLayout(context).apply {
+        val inner = (scroll.getChildAt(0) as? LinearLayout) ?: LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-            val pad = dpToPx(context, 8f)
-            setPadding(pad, pad, pad, pad)
         }
+        val pad = dpToPx(context, 8f)
+        inner.setPadding(pad, pad, pad, pad)
+        inner.removeAllViews()
 
         val deps = readDepsFromAssets()
         if (deps.isEmpty()) {
@@ -698,8 +769,13 @@ class UiRenderer(
             }
         }
 
-        scroll.addView(inner)
+        if (inner.parent != scroll) {
+            scroll.removeAllViews()
+            scroll.addView(inner)
+        }
+        container.removeAllViews()
         container.addView(scroll)
+        setMeta(container, "DepsList", resolveNodeId(data))
         return container
     }
 
@@ -726,11 +802,13 @@ class UiRenderer(
         }
     }
 
-    private fun createSignaturePad(data: JSONObject): View {
+    private fun createSignaturePad(data: JSONObject, existing: SignaturePadView?): View {
         val bindKey = data.optString("bind_key", "")
         val heightDp = data.optInt("height_dp", 180)
         val cd = data.optString("content_description", "")
-        val pad = SignaturePadView(context) { b64, widthPx, heightPx, dpi ->
+        var padRef: SignaturePadView? = existing
+        val pad = (existing ?: SignaturePadView(context) { b64, widthPx, heightPx, dpi ->
+            padRef?.setTag(dataTag, SignatureState(b64, widthPx, heightPx, dpi))
             if (bindKey.isNotEmpty()) {
                 bindings[bindKey] = b64
             }
@@ -748,12 +826,22 @@ class UiRenderer(
             if (needsHeight && pxToPt > 0f) {
                 bindings[heightKey] = (heightPx * pxToPt).toString()
             }
-        }
+        }).also { padRef = it }
         val lp = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, heightDp.toFloat()))
         lp.topMargin = dpToPx(context, 8f)
         lp.bottomMargin = dpToPx(context, 8f)
         pad.layoutParams = lp
-        if (cd.isNotEmpty()) pad.contentDescription = cd
+        pad.contentDescription = cd.takeIf { it.isNotEmpty() }
+        val cached = pad.getTag(dataTag) as? SignatureState
+        if (cached != null) {
+            if (bindKey.isNotEmpty()) {
+                bindings[bindKey] = cached.base64
+            }
+            bindings["signature_width_px"] = cached.widthPx.toString()
+            bindings["signature_height_px"] = cached.heightPx.toString()
+            bindings["signature_dpi"] = cached.dpi.toString()
+        }
+        setMeta(pad, "SignaturePad", resolveNodeId(data))
         return pad
     }
 
@@ -815,6 +903,65 @@ class UiRenderer(
             val density = resources.displayMetrics.density
             return (dp * density).toInt()
         }
+    }
+
+    private fun resolveNodeId(data: JSONObject): String? {
+        val explicit = data.optString("id", "").takeIf { it.isNotBlank() }
+        if (explicit != null) return explicit
+        return when (data.optString("type", "")) {
+            "TextInput", "Checkbox", "PdfPagePicker", "SignaturePad" ->
+                data.optString("bind_key", "").takeIf { it.isNotBlank() }
+            "Button" -> data.optString("action", "").takeIf { it.isNotBlank() }
+            "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"
+            else -> null
+        }
+    }
+
+    private fun matchesMeta(view: View, type: String, nodeId: String?): Boolean {
+        val meta = view.getTag(renderMetaTag) as? RenderMeta ?: return false
+        return meta.type == type && meta.nodeId == nodeId
+    }
+
+    private fun setMeta(view: View, type: String, nodeId: String?) {
+        view.setTag(renderMetaTag, RenderMeta(type, nodeId))
+    }
+
+    private fun findReusableChild(parent: ViewGroup, data: JSONObject): View? {
+        val nodeId = resolveNodeId(data) ?: return null
+        val type = data.optString("type", "")
+        for (i in 0 until parent.childCount) {
+            val child = parent.getChildAt(i)
+            val meta = child.getTag(renderMetaTag) as? RenderMeta
+            if (meta != null && meta.nodeId == nodeId && meta.type == type) {
+                return child
+            }
+            if (child is ViewGroup) {
+                val nested = findReusableChild(child, data)
+                if (nested != null) return nested
+            }
+        }
+        return null
+    }
+
+    private fun detachFromParent(view: View, targetParent: ViewGroup) {
+        val parent = view.parent as? ViewGroup
+        if (parent != null && parent !== targetParent) {
+            parent.removeView(view)
+        }
+    }
+
+    private fun configureCodeWebView(webView: WebView, wrap: Boolean, contentDescription: String) {
+        webView.settings.javaScriptEnabled = true
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        webView.settings.setSupportZoom(false)
+        webView.settings.displayZoomControls = false
+        webView.settings.builtInZoomControls = false
+        webView.settings.domStorageEnabled = false
+        webView.settings.setSupportMultipleWindows(false)
+        webView.isVerticalScrollBarEnabled = true
+        webView.isHorizontalScrollBarEnabled = !wrap
+        webView.setBackgroundColor(Color.TRANSPARENT)
+        webView.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
     }
 
     private fun computeColumns(data: JSONObject): Int {

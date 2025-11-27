@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::Read;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
+use memmap2::MmapOptions;
 use lopdf::{dictionary, Document, Object, Stream, StringFormat};
 
 use crate::state::{AppState, Screen};
@@ -315,11 +315,21 @@ fn load_document(fd: RawFd) -> Result<Document, String> {
     if fd < 0 {
         return Err("invalid_fd".into());
     }
-    let mut file = unsafe { File::from_raw_fd(fd) };
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
-        .map_err(|e| format!("pdf_read_failed:{e}"))?;
-    Document::load_mem(&buffer).map_err(|e| format!("pdf_parse_failed:{e}"))
+    let file = unsafe { File::from_raw_fd(fd) };
+    let file_len = file
+        .metadata()
+        .map_err(|e| format!("pdf_read_failed:{e}"))?
+        .len();
+    if file_len == 0 {
+        return Err("pdf_read_failed:empty_file".into());
+    }
+    let mmap = unsafe {
+        MmapOptions::new()
+            .len(file_len as usize)
+            .map(&file)
+            .map_err(|e| format!("pdf_read_failed:{e}"))?
+    };
+    Document::load_mem(&mmap).map_err(|e| format!("pdf_parse_failed:{e}"))
 }
 
 fn keep_pages(mut doc: Document, selection: &[u32]) -> Result<Document, String> {
