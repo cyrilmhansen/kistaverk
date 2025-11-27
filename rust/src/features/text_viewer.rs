@@ -44,6 +44,7 @@ pub fn guess_language_from_path(path: &str) -> Option<String> {
 
 pub fn load_text_from_fd(state: &mut AppState, fd: RawFd, path: Option<&str>) {
     let file = unsafe { File::from_raw_fd(fd) };
+    // TODO: detect binary/huge files (null bytes, size sniff) and offer hex/streamed view instead of full read_to_end.
     state.text_view_language = path.and_then(guess_language_from_path);
     match read_text_from_reader(file) {
         Ok(text) => {
