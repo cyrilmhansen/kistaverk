@@ -42,6 +42,7 @@ use std::{
 };
 
 static STATE: Mutex<AppState> = Mutex::new(AppState::new());
+// TODO: reduce lock hold time or move to a channel/queue; consider parking_lot with timeouts to avoid long UI pauses.
 
 #[derive(Deserialize)]
 struct Command {

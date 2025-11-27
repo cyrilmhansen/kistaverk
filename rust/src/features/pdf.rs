@@ -670,6 +670,7 @@ pub fn handle_pdf_sign(
     log_pdf_debug(&format!(
         "pdf_sign: fd={fd} uri={uri:?} page={page:?} pos=({pos_x},{pos_y}) pct=({page_x_pct:?},{page_y_pct:?}) size=({width}x{height}) img_px=({img_width_px:?}x{img_height_px:?}) dpi={img_dpi:?}"
     ));
+    // TODO: add unit tests for normalized coord mapping (corners/edges) and ensure clamping to page bounds for taps outside the overlay.
     let mut doc = load_document(fd)?;
     let target_page = page
         .or(state.pdf.signature_target_page)

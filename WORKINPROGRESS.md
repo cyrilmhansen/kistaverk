@@ -8,6 +8,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - Text viewer: Prism-backed WebView (MIT assets bundled into `prism-bundle.min.js`), language guessing, wrap toggle, theme toggle, line numbers. Archive text entries open directly in viewer.
 - Tests: `cargo test` green. JNI guarded by `catch_unwind`; renderer validation in Kotlin prevents malformed payload crashes. Rust PDF loader uses `memmap2` to avoid loading whole files into heap.
 - PDFs: Signature overlay uses `PdfSignPlacement` tap targets with normalized coords; signatures append to existing page content (no new pages). Temp outputs now prefer source directory (or Downloads/cache for SAF content) with `_modified_YYMMDDhhmm.pdf` suffix. SignaturePad disables parent scroll during draw.
+- Save As: UI now offers “Save as…” for PDF/image outputs via ACTION_CREATE_DOCUMENT; Android copies the existing file into a user-chosen location.
 
 ## Immediate Focus
 - Harden input UX: avoid spamming Rust on every character; consider focusing updates on submit/blur unless diffing is smarter. Verify keyboard doesn’t dismiss when background actions refresh UI.
@@ -15,6 +16,8 @@ Keep this file short and actionable. Update it at the end of each session.
 - Ensure Back buttons stay wired for all nested flows (QR, archive, text tools, sensors, color, Kotlin image, PDF sign placement); add guardrail for unsafe back pops.
 - Robolectric coverage: add tests for `CodeView`/Prism payloads, PdfSignPlacement tap mapping, and Back button presence in QR screen.
 - PDF UX: refine placement overlay (pinch-zoom? page thumbnails carousel) and consider auto-open viewer after save.
+- Rust core: mitigate long-held STATE mutex (queue/channel, parking_lot + timeout) and migrate FDs to OwnedFd to avoid leaks.
+- Text viewer: add binary/huge file detection and streamed/hex fallback to avoid OOM on logs/binaries.
 
 ## Near-Term
 - Schema hardening: move UI generation fully to typed builders; expand renderer validation coverage.

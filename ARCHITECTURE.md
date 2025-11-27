@@ -33,3 +33,10 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads.
 - On-device QA: text viewer (large files, binary/UTF-8 errors, TalkBack), sensor logger permissions/CSV, size audits via `scripts/size_report.sh`.
 - UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls, DSL grouping widget.
+
+## Known Risks (short)
+- Global Rust `STATE` mutex can block long ops; consider queue/timeout; watch for poison on panic.
+- FD lifetime: detached FDs rely on manual close; migrate to `OwnedFd`/RAII.
+- PDF signing coords: normalized mapping needs tests/clamping; may misplace on DPI mismatch.
+- Text viewer reads 256 KiB into memory; binary/large files need streaming/hex fallback.
+- Schema drift: no versioned JSON schema between Rust/Kotlin; renderer guards cover most cases but not all.
