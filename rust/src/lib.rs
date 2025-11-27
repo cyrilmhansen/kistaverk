@@ -175,6 +175,7 @@ enum Action {
     },
     TextViewerToggleTheme,
     TextViewerToggleLineNumbers,
+    TextViewerLoadAnyway,
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -296,6 +297,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
         "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
         "text_viewer_toggle_line_numbers" => Ok(Action::TextViewerToggleLineNumbers),
+        "text_viewer_load_anyway" => Ok(Action::TextViewerLoadAnyway),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
@@ -809,6 +811,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             if error.is_some() {
                 state.text_view_content = None;
                 state.text_view_language = None;
+                state.text_view_hex_preview = None;
             } else if let Some(raw_fd) = fd_handle.take() {
                 load_text_from_fd(&mut state, raw_fd as RawFd, path.as_deref());
             } else if let Some(p) = path.as_deref() {
@@ -817,6 +820,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.text_view_error = Some("missing_source".into());
                 state.text_view_content = None;
                 state.text_view_language = None;
+                state.text_view_hex_preview = None;
             }
         }
         Action::TextViewerToggleTheme => {
@@ -825,6 +829,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         Action::TextViewerToggleLineNumbers => {
             state.text_view_line_numbers = !state.text_view_line_numbers;
+            state.replace_current(Screen::TextViewer);
+        }
+        Action::TextViewerLoadAnyway => {
+            // Clear hex preview and reload last path as text.
+            state.text_view_hex_preview = None;
+            if let Some(path) = state.text_view_path.clone() {
+                load_text_from_path(&mut state, &path);
+            } else {
+                state.text_view_error = Some("nothing_to_reload".into());
+                state.text_view_content = None;
+            }
             state.replace_current(Screen::TextViewer);
         }
         Action::SensorLoggerScreen => {
@@ -1360,6 +1375,38 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     if let Some(err) = &state.text_view_error {
         children.push(
             serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+        );
+    }
+
+    if let Some(hex) = &state.text_view_hex_preview {
+        children.push(
+            serde_json::to_value(
+                crate::ui::Warning::new(
+                    "Binary or unsupported text detected. Showing hex preview (first 4KB).",
+                )
+                .content_description("text_viewer_hex_warning"),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiCodeView::new(hex)
+                    .wrap(false)
+                    .theme(if state.text_view_dark {
+                        "dark"
+                    } else {
+                        "light"
+                    })
+                    .line_numbers(false),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Load anyway (may be slow)", "text_viewer_load_anyway")
+                    .content_description("text_viewer_load_anyway"),
+            )
+            .unwrap(),
         );
     }
 

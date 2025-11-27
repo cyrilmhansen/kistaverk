@@ -33,6 +33,31 @@ impl<'a> Text<'a> {
 }
 
 #[derive(Serialize)]
+pub struct Warning<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub text: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Warning<'a> {
+    pub fn new(text: &'a str) -> Self {
+        Self {
+            kind: "Warning",
+            text,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
 pub struct Button<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
