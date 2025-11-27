@@ -33,6 +33,11 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0),
         )
         .unwrap(),
+        serde_json::to_value(
+            UiText::new("Legacy notice: MD5 and SHA-1 are not suitable for security; prefer SHA-256 or BLAKE3.")
+                .size(12.0),
+        )
+        .unwrap(),
     ];
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
