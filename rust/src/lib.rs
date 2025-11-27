@@ -587,7 +587,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.reset_navigation();
         }
         Action::Back => {
+            // Guardrail: never allow empty nav stack.
             state.pop_screen();
+            if state.nav_depth() == 0 {
+                state.reset_navigation();
+            }
             state.loading_message = None;
         }
         Action::ArchiveToolsScreen => {
@@ -803,6 +807,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.push_screen(Screen::TextViewer);
             state.text_view_error = None;
             state.text_view_language = None;
+            state.text_view_hex_preview = None;
         }
         Action::TextViewerOpen { fd, path, error } => {
             state.push_screen(Screen::TextViewer);
