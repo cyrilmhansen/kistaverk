@@ -30,8 +30,8 @@ class MainActivityClipboardTest {
               ]
             }
         """.trimIndent()
-        val view = renderer.render(ui)
-        val btn = (view as android.widget.ScrollView).getChildAt(0) as android.widget.LinearLayout
+        val root = TestViews.unwrap(renderer.render(ui)) as android.widget.ScrollView
+        val btn = root.getChildAt(0) as android.widget.LinearLayout
         (btn.getChildAt(0) as Button).performClick()
 
         val cm = ApplicationProvider.getApplicationContext<android.content.Context>()

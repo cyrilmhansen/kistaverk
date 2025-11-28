@@ -32,8 +32,8 @@ class UiRendererGridTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui)
-        val root = (view as ScrollView).getChildAt(0) as LinearLayout
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val root = view.getChildAt(0) as LinearLayout
         val grid = root.getChildAt(0) as LinearLayout
         val firstRow = grid.getChildAt(0) as LinearLayout
         val secondRow = grid.getChildAt(1) as LinearLayout

@@ -16,12 +16,10 @@ class UiRendererDepsListTest {
 
     @Test
     fun depsListRendersEntriesWhenAssetPresent() {
-        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
-        val renderer = UiRenderer(app) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
         val ui = """{ "type": "Column", "children": [ { "type": "DepsList" } ] }""".trimIndent()
 
-        val view = renderer.render(ui)
-        val root = view as? ScrollView ?: error("Expected ScrollView root")
+        val root = TestViews.unwrap(renderer.render(ui)) as? ScrollView ?: error("Expected ScrollView root")
         val column = root.getChildAt(0) as? LinearLayout ?: error("Expected Column child")
         val depsScroll = column.getChildAt(0) as? ScrollView ?: error("Expected ScrollView deps list")
         val inner = depsScroll.getChildAt(0) as? LinearLayout ?: error("Expected deps list inner layout")

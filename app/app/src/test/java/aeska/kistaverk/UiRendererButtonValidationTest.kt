@@ -24,8 +24,7 @@ class UiRendererButtonValidationTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui)
-        val root = (view as ScrollView).getChildAt(0) as LinearLayout
+        val root = (TestViews.unwrap(renderer.render(ui)) as ScrollView).getChildAt(0) as LinearLayout
         val title = root.getChildAt(0) as TextView
         val msg = root.getChildAt(1) as TextView
         assertTrue(title.text.toString().contains("Render error"))

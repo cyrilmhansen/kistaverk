@@ -36,7 +36,7 @@ class UiRendererSensorBindingsTest {
             }
         """.trimIndent()
 
-        val root = renderer.render(ui) as ScrollView
+        val root = TestViews.unwrap(renderer.render(ui)) as ScrollView
         val layout = root.getChildAt(0) as LinearLayout
         val mag = layout.getChildAt(2) as CheckBox
         val gps = layout.getChildAt(3) as CheckBox
@@ -58,4 +58,3 @@ class UiRendererSensorBindingsTest {
         assertEquals("750", bindings["sensor_interval_ms"])
     }
 }
-

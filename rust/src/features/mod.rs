@@ -24,7 +24,7 @@ pub struct Feature {
 
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
-    use crate::ui::{Button as UiButton, Column as UiColumn, Grid as UiGrid, Text as UiText};
+    use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
     use std::collections::BTreeMap;
 
     let mut children = vec![
@@ -40,6 +40,25 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         .unwrap(),
     ];
 
+    // Quick access row (static for now; prefer high-traffic tools).
+    let quick_ids = ["pdf_tools", "text_tools", "text_viewer", "hash_sha256"];
+    let quick_buttons: Vec<Value> = catalog
+        .iter()
+        .filter(|f| quick_ids.contains(&f.id))
+        .map(|f| {
+            serde_json::to_value(
+                UiButton::new(f.name, f.action)
+                    .id(f.id)
+                    .requires_file_picker(f.requires_file_picker),
+            )
+            .unwrap()
+        })
+        .collect();
+    if !quick_buttons.is_empty() {
+        children.push(serde_json::to_value(UiText::new("Quick access").size(16.0)).unwrap());
+        children.push(serde_json::to_value(UiColumn::new(quick_buttons)).unwrap());
+    }
+
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
     for feature in catalog.iter() {
         grouped.entry(feature.category).or_default().push(feature);
@@ -47,7 +66,15 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
 
     for (category, feats) in grouped {
         children.push(serde_json::to_value(UiText::new(category).size(16.0)).unwrap());
-        let cards: Vec<Value> = feats
+        if category.contains("Hash") {
+            children.push(
+                serde_json::to_value(
+                    UiText::new("MD5/SHA-1 are legacy. Prefer SHA-256 or BLAKE3.").size(12.0),
+                )
+                .unwrap(),
+            );
+        }
+        let list: Vec<Value> = feats
             .iter()
             .map(|f| {
                 serde_json::to_value(
@@ -58,7 +85,10 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
                 .unwrap()
             })
             .collect();
-        children.push(serde_json::to_value(UiGrid::new(cards).columns(2).padding(8)).unwrap());
+        children.push(
+            serde_json::to_value(UiColumn::new(list).padding(4).content_description(category))
+                .unwrap(),
+        );
     }
 
     if let Some(hash) = &state.last_hash {
