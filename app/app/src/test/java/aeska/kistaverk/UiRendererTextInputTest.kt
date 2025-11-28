@@ -20,7 +20,7 @@ class UiRendererTextInputTest {
         val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, bindings ->
             actions.add(Triple(action, picker, bindings))
         }
-        return renderer.render(json)
+        return TestViews.unwrap(renderer.render(json))
     }
 
     @Test

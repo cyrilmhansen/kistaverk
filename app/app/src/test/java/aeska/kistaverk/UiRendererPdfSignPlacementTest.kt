@@ -33,9 +33,11 @@ class UiRendererPdfSignPlacementTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui) as FrameLayout
-        val frame = view.getChildAt(1) as FrameLayout
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val column = view.getChildAt(0) as LinearLayout
+        val frame = column.getChildAt(1) as FrameLayout
         val overlay = frame.getChildAt(1)
+        overlay.layout(0, 0, 200, 200)
 
         // Simulate a tap near bottom-right to check clamping to <=1.0
         overlay.dispatchTouchEvent(android.view.MotionEvent.obtain(0, 0, android.view.MotionEvent.ACTION_DOWN, overlay.width * 0.9f, overlay.height * 0.9f, 0))
@@ -68,8 +70,8 @@ class UiRendererPdfSignPlacementTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui) as FrameLayout
-        val controls = (view.getChildAt(0) as LinearLayout)
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val controls = ((view.getChildAt(0) as LinearLayout).getChildAt(0) as LinearLayout)
         val next = controls.getChildAt(4) as Button
         next.performClick()
 

@@ -14,8 +14,8 @@ class UiRendererValidationTest {
 
     private fun render(json: String): Pair<TextView, TextView> {
         val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
-        val view = renderer.render(json)
-        val root = (view as ScrollView).getChildAt(0) as LinearLayout
+        val view = TestViews.unwrap(renderer.render(json)) as ScrollView
+        val root = view.getChildAt(0) as LinearLayout
         val title = root.getChildAt(0) as TextView
         val msg = root.getChildAt(1) as TextView
         return title to msg

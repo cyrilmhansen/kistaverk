@@ -28,17 +28,18 @@ class UiRendererCodeViewTest {
               "theme": "dark"
             }
         """.trimIndent()
-        val view = renderer.render(ui) as ScrollView
-        val webView = view.getChildAt(0) as WebView
-        val url = webView.url ?: ""
-        assertTrue(url.contains("android_asset/prism/"))
+        val view = TestViews.unwrap(renderer.render(ui))
+        val webView = view.findViewById<WebView>(R.id.render_meta_tag) ?: (view as? WebView)
+        requireNotNull(webView)
+        val data = webView.originalUrl ?: webView.url ?: ""
+        assertTrue(data.contains("prism"))
     }
 
     @Test
     fun codeViewMissingTextFailsValidation() {
         val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
         val ui = """{ "type": "CodeView", "language": "rust" }"""
-        val view = renderer.render(ui) as ScrollView
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
         val title = view.getChildAt(0) as TextView
         val msg = view.getChildAt(1) as TextView
         assertTrue(title.text.toString().contains("Render error"))

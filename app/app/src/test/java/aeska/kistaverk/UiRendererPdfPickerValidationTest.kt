@@ -16,8 +16,7 @@ class UiRendererPdfPickerValidationTest {
 
     private fun render(ui: String): Pair<TextView, TextView> {
         val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
-        val view = renderer.render(ui)
-        val root = view as ScrollView
+        val root = TestViews.unwrap(renderer.render(ui)) as ScrollView
         val column = root.getChildAt(0) as LinearLayout
         val title = column.getChildAt(0) as TextView
         val msg = column.getChildAt(1) as TextView

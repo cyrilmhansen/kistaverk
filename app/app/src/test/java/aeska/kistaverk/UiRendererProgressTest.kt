@@ -25,8 +25,8 @@ class UiRendererProgressTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui)
-        val root = (view as ScrollView).getChildAt(0) as LinearLayout
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val root = view.getChildAt(0) as LinearLayout
         val progressContainer = root.getChildAt(0) as LinearLayout
         val progress = progressContainer.getChildAt(1) as ProgressBar
 

@@ -27,8 +27,8 @@ class UiRendererBackButtonTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui) as ScrollView
-        val column = view.getChildAt(0) as LinearLayout
+        val root = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val column = root.getChildAt(0) as LinearLayout
         val hasBack = (0 until column.childCount).any { idx ->
             (column.getChildAt(idx) as? Button)?.text?.toString() == "Back"
         }

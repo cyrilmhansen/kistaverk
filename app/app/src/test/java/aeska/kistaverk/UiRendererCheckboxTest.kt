@@ -28,8 +28,8 @@ class UiRendererCheckboxTest {
             }
         """.trimIndent()
 
-        val view = renderer.render(ui)
-        val rootLayout = (view as ScrollView).getChildAt(0) as LinearLayout
+        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val rootLayout = view.getChildAt(0) as LinearLayout
         val checkbox = rootLayout.getChildAt(0) as CheckBox
 
         // Toggle off
