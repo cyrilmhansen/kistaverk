@@ -1431,6 +1431,12 @@ fn render_hash_verify_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
+            UiButton::new("Copy last hash", "noop")
+                .id("copy_last_hash_btn")
+                .copy_text(state.last_hash.as_deref().unwrap_or("")),
+        )
+        .unwrap(),
+        serde_json::to_value(
             UiButton::new("Paste from clipboard", "hash_verify_paste")
                 .id("hash_verify_paste")
                 .content_description("hash_verify_paste"),
