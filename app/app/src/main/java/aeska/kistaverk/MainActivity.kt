@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
@@ -98,76 +99,11 @@ class MainActivity : ComponentActivity() {
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        var action = pendingActionAfterPicker
+        val action = pendingActionAfterPicker
         val bindings = pendingBindingsAfterPicker
         pendingActionAfterPicker = null
         pendingBindingsAfterPicker = emptyMap()
-
-        if (uri == null || action == null) return@registerForActivityResult
-
-        if (KotlinImageConversion.isConversionAction(action)) {
-            handleKotlinImageConversion(uri, action)
-            return@registerForActivityResult
-        }
-
-        if (action == "pdf_select") {
-            pdfSourceUri = uri
-        }
-
-        if (action == "pdf_signature_load") {
-            val bytes = readBytes(uri)
-            val b64 = bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
-            if (b64 != null) {
-                refreshUi(
-                    "pdf_signature_store",
-                    bindings = mapOf("signature_base64" to b64)
-                )
-            } else {
-                refreshUi(
-                    "pdf_signature_store",
-                    bindings = emptyMap(),
-                    extras = mapOf("error" to "signature_load_failed")
-                )
-            }
-            return@registerForActivityResult
-        }
-
-        val fd = openFdForUri(uri)
-        val extras = mutableMapOf<String, Any?>()
-        if (fd != null) {
-            extras["fd"] = fd
-        } else {
-            extras["fd"] = JSONObject.NULL
-            extras["error"] = "open_fd_failed"
-        }
-        if (action.startsWith("pdf_")) {
-            extras["path"] = uri.toString()
-            if (action == "pdf_merge") {
-                val primaryUri = pdfSourceUri
-                if (primaryUri != null) {
-                    extras["primary_path"] = primaryUri.toString()
-                    val pfd = openFdForUri(primaryUri)
-                    if (pfd != null) {
-                        extras["primary_fd"] = pfd
-                    }
-                } else {
-                    extras["error"] = "select_pdf_first"
-                }
-            }
-        } else {
-            extras["path"] = uri.toString()
-        }
-
-        if (action == "text_viewer_screen") {
-            // File picker from menu should directly open the file in the viewer.
-            action = "text_viewer_open"
-        }
-
-        dispatchWithOptionalLoading(
-            action = action,
-            bindings = bindings,
-            extras = extras
-        )
+        handlePickerResult(action, uri, bindings)
     }
 
     private fun cacheLastResult(json: String) {
@@ -236,6 +172,13 @@ class MainActivity : ComponentActivity() {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         cm.setPrimaryClip(ClipData.newPlainText("text_tools_result", text))
     }
+
+    @VisibleForTesting
+    internal fun handlePickerResultForTest(
+        action: String?,
+        uri: Uri?,
+        bindings: Map<String, String>
+    ): Boolean = handlePickerResult(action, uri, bindings)
 
     private fun readClipboardText(maxLen: Int = 256): String? {
         val cm = getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
@@ -872,6 +815,80 @@ class MainActivity : ComponentActivity() {
         val componentName = intent.component?.className.orEmpty()
         if (componentName.endsWith("PdfSignLauncher")) return "pdf_signature"
         return null
+    }
+
+    private fun handlePickerResult(
+        actionInput: String?,
+        uri: Uri?,
+        bindings: Map<String, String>
+    ): Boolean {
+        var action = actionInput ?: return false
+        if (uri == null) return false
+
+        if (KotlinImageConversion.isConversionAction(action)) {
+            handleKotlinImageConversion(uri, action)
+            return true
+        }
+
+        if (action == "pdf_select") {
+            pdfSourceUri = uri
+        }
+
+        if (action == "pdf_signature_load") {
+            val bytes = readBytes(uri)
+            val b64 = bytes?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+            if (b64 != null) {
+                refreshUi(
+                    "pdf_signature_store",
+                    bindings = mapOf("signature_base64" to b64)
+                )
+            } else {
+                refreshUi(
+                    "pdf_signature_store",
+                    bindings = emptyMap(),
+                    extras = mapOf("error" to "signature_load_failed")
+                )
+            }
+            return true
+        }
+
+        val fd = openFdForUri(uri)
+        val extras = mutableMapOf<String, Any?>()
+        if (fd != null) {
+            extras["fd"] = fd
+        } else {
+            extras["fd"] = JSONObject.NULL
+            extras["error"] = "open_fd_failed"
+        }
+        if (action.startsWith("pdf_")) {
+            extras["path"] = uri.toString()
+            if (action == "pdf_merge") {
+                val primaryUri = pdfSourceUri
+                if (primaryUri != null) {
+                    extras["primary_path"] = primaryUri.toString()
+                    val pfd = openFdForUri(primaryUri)
+                    if (pfd != null) {
+                        extras["primary_fd"] = pfd
+                    }
+                } else {
+                    extras["error"] = "select_pdf_first"
+                }
+            }
+        } else {
+            extras["path"] = uri.toString()
+        }
+
+        if (action == "text_viewer_screen") {
+            // File picker from menu should directly open the file in the viewer.
+            action = "text_viewer_open"
+        }
+
+        dispatchWithOptionalLoading(
+            action = action,
+            bindings = bindings,
+            extras = extras
+        )
+        return true
     }
 
     private fun handleViewIntent(intent: Intent?): Boolean {

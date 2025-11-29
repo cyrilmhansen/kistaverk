@@ -50,6 +50,7 @@ pub struct AppState {
     pub sensor_selection: Option<SensorSelection>,
     pub text_view_content: Option<String>,
     pub text_view_path: Option<String>,
+    pub text_view_cached_path: Option<String>,
     pub text_view_error: Option<String>,
     pub text_view_hex_preview: Option<String>,
     pub text_view_language: Option<String>,
@@ -98,6 +99,7 @@ impl AppState {
             sensor_selection: None,
             text_view_content: None,
             text_view_path: None,
+            text_view_cached_path: None,
             text_view_error: None,
             text_view_hex_preview: None,
             text_view_language: None,
@@ -188,6 +190,7 @@ impl AppState {
         self.sensor_selection = None;
         self.text_view_content = None;
         self.text_view_path = None;
+        self.text_view_cached_path = None;
         self.text_view_error = None;
         self.text_view_hex_preview = None;
         self.text_view_language = None;
