@@ -716,16 +716,14 @@ class MainActivity : ComponentActivity() {
         bindings: Map<String, String> = emptyMap(),
         loadingOnly: Boolean = false
     ) {
-        val task = {
+        if (skipNativeLoad) {
             val mergedBindings = bindings.toMutableMap()
             readClipboardText()?.let { clip ->
                 mergedBindings.putIfAbsent("clipboard", clip)
             }
             val command = JSONObject().apply {
                 put("action", action)
-                extras.forEach { (k, v) ->
-                    put(k, v)
-                }
+                extras.forEach { (k, v) -> put(k, v) }
                 if (mergedBindings.isNotEmpty()) {
                     val bindingsObj = JSONObject()
                     mergedBindings.forEach { (k, v) -> bindingsObj.put(k, v) }
@@ -735,34 +733,60 @@ class MainActivity : ComponentActivity() {
                     put("loading_only", true)
                 }
             }
-
             val newUiJson = dispatch(command.toString())
-
             if (loadingOnly) {
                 showOverlay(command.optString("action", "Working..."))
-                return@task
+            } else {
+                val rootView = runCatching { renderer.render(newUiJson) }
+                    .getOrElse { throwable ->
+                        renderer.renderFallback(
+                            title = "Render error",
+                            message = throwable.message ?: "unknown_render_error"
+                        )
+                    }
+                attachContent(rootView)
+                hideOverlay()
+                cacheLastResult(newUiJson)
+                updateSensorSubscriptions(newUiJson)
             }
-
-            val rootView = runCatching { renderer.render(newUiJson) }
-                .getOrElse { throwable ->
-                    renderer.renderFallback(
-                        title = "Render error",
-                        message = throwable.message ?: "unknown_render_error"
-                    )
-                }
-            attachContent(rootView)
-            hideOverlay()
-
-            cacheLastResult(newUiJson)
-            updateSensorSubscriptions(newUiJson)
-        }
-
-        if (skipNativeLoad) {
-            task()
         } else {
             lifecycleScope.launch {
-                withContext(Dispatchers.IO) {
-                    task()
+                val mergedBindings = bindings.toMutableMap()
+                readClipboardText()?.let { clip ->
+                    mergedBindings.putIfAbsent("clipboard", clip)
+                }
+                val command = JSONObject().apply {
+                    put("action", action)
+                    extras.forEach { (k, v) -> put(k, v) }
+                    if (mergedBindings.isNotEmpty()) {
+                        val bindingsObj = JSONObject()
+                        mergedBindings.forEach { (k, v) -> bindingsObj.put(k, v) }
+                        put("bindings", bindingsObj)
+                    }
+                    if (loadingOnly) {
+                        put("loading_only", true)
+                    }
+                }
+
+                val newUiJson = withContext(Dispatchers.IO) { dispatch(command.toString()) }
+                if (loadingOnly) {
+                    withContext(Dispatchers.Main) {
+                        showOverlay(command.optString("action", "Working..."))
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        val rootView = runCatching { renderer.render(newUiJson) }
+                            .getOrElse { throwable ->
+                                renderer.renderFallback(
+                                    title = "Render error",
+                                    message = throwable.message ?: "unknown_render_error"
+                                )
+                            }
+                        attachContent(rootView)
+                        hideOverlay()
+                        cacheLastResult(newUiJson)
+                        updateSensorSubscriptions(newUiJson)
+                    }
                 }
             }
         }
@@ -844,7 +868,7 @@ class MainActivity : ComponentActivity() {
         if (uri == null) return false
 
         if (KotlinImageConversion.isConversionAction(action)) {
-            handleKotlinImageConversion(uri, action)
+            handleKotlinImageConversion(uri, action, bindings)
             return true
         }
 
@@ -1178,29 +1202,51 @@ class MainActivity : ComponentActivity() {
         dispatchWithOptionalLoading(action, bindings = bindings, extras = extras)
     }
 
-    private fun handleKotlinImageConversion(uri: Uri, action: String) {
+    private fun handleKotlinImageConversion(uri: Uri, action: String, bindings: Map<String, String>) {
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                KotlinImageConversion.convert(
-                    context = this@MainActivity,
-                    cacheDir = cacheDir,
-                    picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES),
-                    outputDirUri = selectedOutputDir,
-                    uri = uri,
-                    action = action
-                )
+                if (action == "kotlin_image_resize") {
+                    KotlinImageConversion.resize(
+                        context = this@MainActivity,
+                        cacheDir = cacheDir,
+                        picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+                        outputDirUri = selectedOutputDir,
+                        uri = uri,
+                        bindings = bindings
+                    )
+                } else {
+                    KotlinImageConversion.convert(
+                        context = this@MainActivity,
+                        cacheDir = cacheDir,
+                        picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES),
+                        outputDirUri = selectedOutputDir,
+                        uri = uri,
+                        action = action,
+                        bindings = bindings
+                    )
+                }
             }
 
+            val echoedBindings = bindings.toMutableMap()
+
             when (result) {
-                is ConversionResult.Success -> refreshUi(
-                    "kotlin_image_result",
-                    mapOf(
-                        "target" to result.target.key,
-                        "result_path" to result.destination,
-                        "result_size" to result.size,
-                        "result_format" to result.format
+                is ConversionResult.Success -> {
+                    result.scalePercent?.let { echoedBindings["resize_scale_pct"] = it.toString() }
+                    result.quality?.let { echoedBindings["resize_quality"] = it.toString() }
+                    result.targetBytes?.let { echoedBindings["resize_target_kb"] = (it / 1024).toString() }
+                    echoedBindings["resize_use_webp"] = (result.target.key == "webp").toString()
+
+                    refreshUi(
+                        "kotlin_image_result",
+                        mapOf(
+                            "target" to result.target.key,
+                            "result_path" to result.destination,
+                            "result_size" to result.size,
+                            "result_format" to result.format
+                        ),
+                        bindings = echoedBindings
                     )
-                )
+                }
                 is ConversionResult.Failure -> {
                     val reason = result.reason ?: "conversion_failed"
                     refreshUi(
@@ -1208,7 +1254,8 @@ class MainActivity : ComponentActivity() {
                         mapOf(
                             "target" to (result.target?.key ?: JSONObject.NULL),
                             "error" to reason
-                        )
+                        ),
+                        bindings = echoedBindings
                     )
                 }
             }

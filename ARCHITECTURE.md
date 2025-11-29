@@ -4,7 +4,7 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 
 ## Stack & Responsibilities
 - **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). Typed DSL now includes grouping containers (Section/Card) for better readability. JNI entry catches panics.
-- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues.
+- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues. Image conversions/resizing run on the Kotlin side while Rust still owns navigation/state/results.
 - **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls.
 
 ## Navigation

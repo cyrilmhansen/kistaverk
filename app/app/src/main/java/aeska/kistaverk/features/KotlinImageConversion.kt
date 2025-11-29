@@ -8,13 +8,29 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.documentfile.provider.DocumentFile
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
+import java.util.Locale
 
 object KotlinImageConversion {
+    data class ResizeOptions(
+        val scalePercent: Int,
+        val quality: Int,
+        val targetBytes: Long?,
+        val target: ImageTarget
+    )
+
+    private data class Compressed(
+        val bytes: ByteArray,
+        val quality: Int
+    )
+
     fun isConversionAction(action: String): Boolean {
-        return action == "kotlin_image_convert_webp" || action == "kotlin_image_convert_png"
+        return action == "kotlin_image_convert_webp" ||
+            action == "kotlin_image_convert_png" ||
+            action == "kotlin_image_resize"
     }
 
     fun convert(
@@ -23,7 +39,8 @@ object KotlinImageConversion {
         picturesDir: File?,
         outputDirUri: Uri?,
         uri: Uri,
-        action: String
+        action: String,
+        bindings: Map<String, String> = emptyMap()
     ): ConversionResult {
         val target = targetForAction(action)
             ?: return ConversionResult.Failure(target = null, reason = "unsupported_action")
@@ -35,25 +52,18 @@ object KotlinImageConversion {
                 BitmapFactory.decodeStream(input)
             } ?: error("decode_failed")
 
-            val result = if (outputDirUri != null) {
-                val tree = DocumentFile.fromTreeUri(context, outputDirUri) ?: error("open_dir_failed")
-                val outDoc = tree.createFile(target.mimeType, outputName(target)) ?: error("create_failed")
-                resolver.openOutputStream(outDoc.uri)?.use { out ->
-                    if (!bitmap.compress(target.format, target.quality, out)) {
-                        error("compress_failed")
-                    }
-                } ?: error("open_output_failed")
-                val size = outDoc.length().takeIf { it > 0 } ?: resolver.openAssetFileDescriptor(outDoc.uri, "r")?.use { it.length } ?: 0L
-                ConversionResult.Success(
-                    destination = outDoc.uri.toString(),
-                    format = target.extension.uppercase(),
-                    size = readableBytes(size),
-                    target = target
-                )
-            } else {
-                mediaStoreSave(context, bitmap, target)
-                    ?: fileSave(cacheDir, picturesDir, bitmap, target)
-            }
+            val compressed = compressToBytes(bitmap, target, target.quality)
+            val result = saveBytes(
+                context = context,
+                cacheDir = cacheDir,
+                picturesDir = picturesDir,
+                outputDirUri = outputDirUri,
+                compressed = compressed,
+                target = target,
+                prefix = "converted",
+                scalePercent = null,
+                targetBytes = null
+            )
             bitmap.recycle()
             result
         }.getOrElse { throwable ->
@@ -64,14 +74,112 @@ object KotlinImageConversion {
         }
     }
 
-    private fun mediaStoreSave(
+    fun resize(
         context: Context,
-        bitmap: Bitmap,
-        target: ImageTarget
-    ): ConversionResult.Success? {
+        cacheDir: File,
+        picturesDir: File?,
+        outputDirUri: Uri?,
+        uri: Uri,
+        bindings: Map<String, String>
+    ): ConversionResult {
+        val opts = buildResizeOptions(bindings)
         val resolver = context.contentResolver
+        return runCatching {
+            val bitmap = resolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input)
+            } ?: error("decode_failed")
+
+            val resized = scaleBitmap(bitmap, opts.scalePercent)
+            val compressed = compressWithBudget(resized, opts.target, opts.quality, opts.targetBytes)
+            val result = saveBytes(
+                context = context,
+                cacheDir = cacheDir,
+                picturesDir = picturesDir,
+                outputDirUri = outputDirUri,
+                compressed = compressed,
+                target = opts.target.copy(quality = compressed.quality),
+                prefix = "resized",
+                scalePercent = opts.scalePercent,
+                targetBytes = opts.targetBytes
+            )
+            if (resized !== bitmap) {
+                bitmap.recycle()
+            }
+            resized.recycle()
+            result
+        }.getOrElse { throwable ->
+            ConversionResult.Failure(
+                target = opts.target,
+                reason = throwable.message ?: "resize_failed"
+            )
+        }
+    }
+
+    private fun compressWithBudget(
+        bitmap: Bitmap,
+        target: ImageTarget,
+        quality: Int,
+        targetBytes: Long?
+    ): Compressed {
+        var q = quality.coerceIn(40, 100)
+        var compressed = compressToBytes(bitmap, target, q)
+        if (targetBytes != null && target.format != Bitmap.CompressFormat.PNG) {
+            var attempts = 0
+            while (compressed.bytes.size.toLong() > targetBytes && attempts < 5 && q > 40) {
+                q = (q - 10).coerceAtLeast(40)
+                compressed = compressToBytes(bitmap, target, q)
+                attempts += 1
+            }
+        }
+        return compressed
+    }
+
+    private fun compressToBytes(bitmap: Bitmap, target: ImageTarget, quality: Int): Compressed {
+        val stream = ByteArrayOutputStream()
+        if (!bitmap.compress(target.format, quality, stream)) {
+            error("compress_failed")
+        }
+        return Compressed(stream.toByteArray(), quality)
+    }
+
+    private fun saveBytes(
+        context: Context,
+        cacheDir: File,
+        picturesDir: File?,
+        outputDirUri: Uri?,
+        compressed: Compressed,
+        target: ImageTarget,
+        prefix: String,
+        scalePercent: Int?,
+        targetBytes: Long?
+    ): ConversionResult.Success {
+        val resolver = context.contentResolver
+        val displayName = ensureExtension(outputName(target, prefix), target.extension)
+
+        if (outputDirUri != null) {
+            val tree = DocumentFile.fromTreeUri(context, outputDirUri)
+            if (tree != null) {
+                val outDoc = tree.createFile(target.mimeType, displayName)
+                if (outDoc != null) {
+                    resolver.openOutputStream(outDoc.uri)?.use { out ->
+                        out.write(compressed.bytes)
+                    } ?: error("open_output_failed")
+                    val size = compressed.bytes.size.toLong()
+                    return ConversionResult.Success(
+                        destination = outDoc.uri.toString(),
+                        format = target.extension.uppercase(),
+                        size = readableBytes(size),
+                        target = target,
+                        quality = compressed.quality,
+                        scalePercent = scalePercent,
+                        targetBytes = targetBytes
+                    )
+                }
+            }
+        }
+
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, outputName(target))
+            put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Images.Media.MIME_TYPE, target.mimeType)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/kistaverk")
@@ -79,51 +187,68 @@ object KotlinImageConversion {
             }
         }
 
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        return runCatching {
-            resolver.openOutputStream(uri)?.use { out ->
-                if (!bitmap.compress(target.format, target.quality, out)) {
-                    error("compress_failed")
-                }
-            } ?: error("open_output_failed")
+        val insertedUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        if (insertedUri != null) {
+            val success = runCatching {
+                resolver.openOutputStream(insertedUri)?.use { out ->
+                    out.write(compressed.bytes)
+                } ?: error("open_output_failed")
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val done = ContentValues().apply {
-                    put(MediaStore.Images.Media.IS_PENDING, 0)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val done = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+                    resolver.update(insertedUri, done, null, null)
                 }
-                resolver.update(uri, done, null, null)
+                ConversionResult.Success(
+                    destination = insertedUri.toString(),
+                    format = target.extension.uppercase(),
+                    size = readableBytes(compressed.bytes.size.toLong()),
+                    target = target,
+                    quality = compressed.quality,
+                    scalePercent = scalePercent,
+                    targetBytes = targetBytes
+                )
+            }.getOrNull()
+            if (success != null) {
+                return success
+            } else {
+                resolver.delete(insertedUri, null, null)
             }
-
-            val size = resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L
-            ConversionResult.Success(
-                destination = uri.toString(),
-                format = target.extension.uppercase(),
-                size = readableBytes(size),
-                target = target
-            )
-        }.getOrElse {
-            resolver.delete(uri, null, null)
-            null
         }
-    }
 
-    private fun fileSave(
-        cacheDir: File,
-        picturesDir: File?,
-        bitmap: Bitmap,
-        target: ImageTarget
-    ): ConversionResult.Success {
         val baseDir = ensureOutputDir(cacheDir, picturesDir)
-        val outFile = File(baseDir, outputName(target))
-        FileOutputStream(outFile).use { out ->
-            if (!bitmap.compress(target.format, target.quality, out)) {
-                error("compress_failed")
-            }
-        }
+        val outFile = File(baseDir, displayName)
+        FileOutputStream(outFile).use { out -> out.write(compressed.bytes) }
         return ConversionResult.Success(
             destination = outFile.absolutePath,
             format = target.extension.uppercase(),
             size = readableBytes(outFile.length()),
+            target = target,
+            quality = compressed.quality,
+            scalePercent = scalePercent,
+            targetBytes = targetBytes
+        )
+    }
+
+    private fun scaleBitmap(source: Bitmap, scalePercent: Int): Bitmap {
+        val pct = scalePercent.coerceIn(5, 100)
+        if (pct >= 100) return source
+        val width = (source.width * pct / 100f).toInt().coerceAtLeast(1)
+        val height = (source.height * pct / 100f).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(source, width, height, true)
+    }
+
+    private fun buildResizeOptions(bindings: Map<String, String>): ResizeOptions {
+        val scale = bindings["resize_scale_pct"]?.toIntOrNull()?.coerceIn(5, 100) ?: 70
+        val quality = bindings["resize_quality"]?.toIntOrNull()?.coerceIn(40, 100) ?: 85
+        val targetBytes = bindings["resize_target_kb"]?.toLongOrNull()?.takeIf { it > 0 }
+            ?.coerceAtMost(10_000)
+            ?.times(1024)
+        val useWebp = bindings["resize_use_webp"]?.toBooleanStrictOrNull() ?: false
+        val target = if (useWebp) webpTarget(quality) else jpegTarget(quality)
+        return ResizeOptions(
+            scalePercent = scale,
+            quality = quality,
+            targetBytes = targetBytes,
             target = target
         )
     }
@@ -141,16 +266,42 @@ object KotlinImageConversion {
         return fallback
     }
 
-    private fun outputName(target: ImageTarget): String {
-        return "converted_${System.currentTimeMillis()}.${target.extension}"
+    private fun outputName(target: ImageTarget, prefix: String): String {
+        return "${prefix}_${System.currentTimeMillis()}.${target.extension}"
+    }
+
+    private fun ensureExtension(name: String, extension: String): String {
+        val lower = name.lowercase(Locale.US)
+        val suffix = ".${extension.lowercase(Locale.US)}"
+        return if (lower.endsWith(suffix)) name else "$name$suffix"
     }
 
     private fun targetForAction(action: String): ImageTarget? {
         return when (action) {
-            "kotlin_image_convert_webp" -> ImageTarget("webp", Bitmap.CompressFormat.WEBP_LOSSLESS, "webp", 100, "image/webp")
-            "kotlin_image_convert_png" -> ImageTarget("png", Bitmap.CompressFormat.PNG, "png", 100, "image/png")
+            "kotlin_image_convert_webp" -> webpTarget(100)
+            "kotlin_image_convert_png" -> pngTarget()
             else -> null
         }
+    }
+
+    private fun webpTarget(quality: Int): ImageTarget {
+        return ImageTarget("webp", webpFormat(), "webp", quality, "image/webp")
+    }
+
+    private fun webpFormat(): Bitmap.CompressFormat {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+    }
+
+    private fun jpegTarget(quality: Int): ImageTarget {
+        return ImageTarget("jpeg", Bitmap.CompressFormat.JPEG, "jpg", quality, "image/jpeg")
+    }
+
+    private fun pngTarget(): ImageTarget {
+        return ImageTarget("png", Bitmap.CompressFormat.PNG, "png", 100, "image/png")
     }
 
     private fun readableBytes(bytes: Long): String {
@@ -176,7 +327,10 @@ sealed class ConversionResult {
         val destination: String,
         val format: String,
         val size: String,
-        val target: ImageTarget
+        val target: ImageTarget,
+        val quality: Int? = null,
+        val scalePercent: Int? = null,
+        val targetBytes: Long? = null
     ) : ConversionResult()
 
     data class Failure(

@@ -7,6 +7,8 @@ use features::file_info::{file_info_from_fd, file_info_from_path};
 use features::hashes::{handle_hash_action, HashAlgo};
 use features::kotlin_image::{
     handle_output_dir as handle_kotlin_image_output_dir,
+    handle_resize_screen as handle_kotlin_image_resize_screen,
+    handle_resize_sync as handle_kotlin_image_resize_sync,
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
 };
@@ -21,14 +23,13 @@ use features::sensor_logger::{
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::text_viewer::{
     guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
-    load_text_from_path,
-    load_text_from_path_at_offset,
+    load_text_from_path, load_text_from_path_at_offset,
 };
 use features::{render_menu, Feature};
 use ui::{
-    Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Compass as UiCompass,
-    DepsList as UiDepsList, Progress as UiProgress, Text as UiText, Barometer as UiBarometer,
-    Magnetometer as UiMagnetometer, Warning as UiWarning,
+    Barometer as UiBarometer, Button as UiButton, CodeView as UiCodeView, Column as UiColumn,
+    Compass as UiCompass, DepsList as UiDepsList, Magnetometer as UiMagnetometer,
+    Progress as UiProgress, Text as UiText, Warning as UiWarning,
 };
 
 use jni::objects::{JClass, JString};
@@ -83,6 +84,11 @@ enum Action {
     KotlinImageResult {
         target: Option<ImageTarget>,
         result: ImageConversionResult,
+        bindings: HashMap<String, String>,
+    },
+    KotlinImageResizeScreen,
+    KotlinImageResizeSync {
+        bindings: HashMap<String, String>,
     },
     KotlinImageOutputDir {
         target: Option<ImageTarget>,
@@ -363,6 +369,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
         "kotlin_image_screen_png" => Ok(Action::KotlinImageScreen(ImageTarget::Png)),
+        "kotlin_image_resize_screen" => Ok(Action::KotlinImageResizeScreen),
+        "kotlin_image_resize_sync" => Ok(Action::KotlinImageResizeSync { bindings }),
         "kotlin_image_result" => Ok(Action::KotlinImageResult {
             target: target.as_deref().and_then(parse_image_target),
             result: if let Some(err) = error {
@@ -380,6 +388,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
                     error: None,
                 }
             },
+            bindings,
         }),
         "kotlin_image_output_dir" => Ok(Action::KotlinImageOutputDir {
             target: target.as_deref().and_then(parse_image_target),
@@ -584,15 +593,15 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             target: None,
             result_path: None,
             result_size: None,
-        result_format: None,
-        output_dir: None,
-        bindings: None,
-        loading_only: None,
-        snapshot: None,
-        primary_fd: None,
-        primary_path: None,
-        angle_radians: None,
-    });
+            result_format: None,
+            output_dir: None,
+            bindings: None,
+            loading_only: None,
+            snapshot: None,
+            primary_fd: None,
+            primary_path: None,
+            angle_radians: None,
+        });
 
         handle_command(command)
     }));
@@ -718,7 +727,10 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::CompassDemo => {
             state.push_screen(Screen::Compass);
         }
-        Action::CompassSet { angle_radians, error } => {
+        Action::CompassSet {
+            angle_radians,
+            error,
+        } => {
             let mut angle = angle_radians % std::f64::consts::TAU;
             if angle < 0.0 {
                 angle += std::f64::consts::TAU;
@@ -967,10 +979,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             // Clear hex preview and reload last path as text.
             state.text_view_hex_preview = None;
             if let Some(path) = state.text_view_path.clone() {
-                let effective = state
-                    .text_view_cached_path
-                    .clone()
-                    .unwrap_or(path.clone());
+                let effective = state.text_view_cached_path.clone().unwrap_or(path.clone());
                 load_text_from_path_at_offset(&mut state, &effective, 0, true);
             } else {
                 state.text_view_error = Some("nothing_to_reload".into());
@@ -989,10 +998,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::TextViewerJump { offset } => {
             let target = offset.unwrap_or(0);
             if let Some(path) = state.text_view_path.clone() {
-                let effective = state
-                    .text_view_cached_path
-                    .clone()
-                    .unwrap_or(path.clone());
+                let effective = state.text_view_cached_path.clone().unwrap_or(path.clone());
                 let clamped = state
                     .text_view_total_bytes
                     .map(|total| {
@@ -1096,9 +1102,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
             }
         }
         Action::KotlinImageScreen(target) => handle_kotlin_image_screen(&mut state, target),
-        Action::KotlinImageResult { target, result } => {
-            handle_kotlin_image_result(&mut state, target, result)
+        Action::KotlinImageResizeScreen => handle_kotlin_image_resize_screen(&mut state),
+        Action::KotlinImageResizeSync { bindings } => {
+            handle_kotlin_image_resize_sync(&mut state, &bindings);
         }
+        Action::KotlinImageResult {
+            target,
+            result,
+            bindings,
+        } => handle_kotlin_image_result(&mut state, target, result, Some(&bindings)),
         Action::KotlinImageOutputDir { target, output_dir } => {
             handle_kotlin_image_output_dir(&mut state, target, output_dir);
         }
@@ -1416,12 +1428,7 @@ fn render_barometer_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
-            UiText::new(
-                reading
-                    .as_deref()
-                    .unwrap_or("Waiting for sensor..."),
-            )
-            .size(14.0),
+            UiText::new(reading.as_deref().unwrap_or("Waiting for sensor...")).size(14.0),
         )
         .unwrap(),
         serde_json::to_value(UiBarometer::new(state.barometer_hpa.unwrap_or(0.0))).unwrap(),
@@ -1664,9 +1671,7 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
                 format_bytes(window_size)
             )
         };
-        children.push(
-            serde_json::to_value(UiText::new(&status).size(12.0)).unwrap(),
-        );
+        children.push(serde_json::to_value(UiText::new(&status).size(12.0)).unwrap());
     }
 
     if state.text_view_has_previous || state.text_view_has_more {
@@ -1687,29 +1692,27 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
     }
 
     children.push(
-        serde_json::to_value(
-            json!({
-                "type": "Grid",
-                "columns": 2,
-                "padding": 4,
-                "children": [
-                    {
-                        "type": "TextInput",
-                        "bind_key": "offset_bytes",
-                        "hint": "Byte offset (0 = start)",
-                        "text": state.text_view_window_offset.to_string(),
-                        "single_line": true,
-                        "action_on_submit": "text_viewer_jump"
-                    },
-                    {
-                        "type": "Button",
-                        "text": "Jump",
-                        "action": "text_viewer_jump",
-                        "content_description": "text_viewer_jump"
-                    }
-                ]
-            })
-        )
+        serde_json::to_value(json!({
+            "type": "Grid",
+            "columns": 2,
+            "padding": 4,
+            "children": [
+                {
+                    "type": "TextInput",
+                    "bind_key": "offset_bytes",
+                    "hint": "Byte offset (0 = start)",
+                    "text": state.text_view_window_offset.to_string(),
+                    "single_line": true,
+                    "action_on_submit": "text_viewer_jump"
+                },
+                {
+                    "type": "Button",
+                    "text": "Jump",
+                    "action": "text_viewer_jump",
+                    "content_description": "text_viewer_jump"
+                }
+            ]
+        }))
         .unwrap(),
     );
 
@@ -1940,6 +1943,14 @@ fn feature_catalog() -> Vec<Feature> {
             description: "extract/delete pages",
         },
         Feature {
+            id: "image_resize_kotlin",
+            name: "📉 Image resize (Kotlin)",
+            category: "📸 Media",
+            action: "kotlin_image_resize_screen",
+            requires_file_picker: false,
+            description: "shrink for sharing",
+        },
+        Feature {
             id: "image_to_webp_kotlin",
             name: "🖼️ Image → WebP (Kotlin)",
             category: "📸 Media",
@@ -2133,19 +2144,29 @@ mod tests {
             .subtitle("2 tools")
             .icon("📁")
             .padding(8);
-        let card = UiCard::new(body)
-            .title("⚡ Quick access")
-            .padding(6);
+        let card = UiCard::new(body).title("⚡ Quick access").padding(6);
 
         let section_val = serde_json::to_value(section).expect("section should serialize");
-        assert_eq!(section_val.get("type"), Some(&Value::String("Section".into())));
-        assert_eq!(section_val.get("title"), Some(&Value::String("📁 Files".into())));
+        assert_eq!(
+            section_val.get("type"),
+            Some(&Value::String("Section".into()))
+        );
+        assert_eq!(
+            section_val.get("title"),
+            Some(&Value::String("📁 Files".into()))
+        );
         assert_eq!(section_val.get("icon"), Some(&Value::String("📁".into())));
-        assert!(section_val.get("children").and_then(|c| c.as_array()).is_some());
+        assert!(section_val
+            .get("children")
+            .and_then(|c| c.as_array())
+            .is_some());
 
         let card_val = serde_json::to_value(card).expect("card should serialize");
         assert_eq!(card_val.get("type"), Some(&Value::String("Card".into())));
-        assert!(card_val.get("children").and_then(|c| c.as_array()).is_some());
+        assert!(card_val
+            .get("children")
+            .and_then(|c| c.as_array())
+            .is_some());
     }
 
     #[test]
@@ -2541,14 +2562,22 @@ mod tests {
         let initial_offset = state.text_view_window_offset;
         let total = state.text_view_total_bytes.unwrap();
         assert_eq!(initial_offset, 0);
-        let _initial_len = state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
+        let _initial_len = state
+            .text_view_content
+            .as_ref()
+            .map(|c| c.len())
+            .unwrap_or(0);
         assert!(state.text_view_has_more);
         assert!(initial_loaded_end < total);
         drop(state);
 
         handle_command(make_command("text_viewer_load_more")).expect("load more should succeed");
         let state = STATE.lock().unwrap();
-        let after_len = state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
+        let after_len = state
+            .text_view_content
+            .as_ref()
+            .map(|c| c.len())
+            .unwrap_or(0);
         assert!(after_len > 0);
         assert!(after_len <= 150_000);
         assert_eq!(state.text_view_total_bytes, Some(total));
@@ -2556,7 +2585,10 @@ mod tests {
         assert!(state.text_view_loaded_bytes > initial_loaded_end);
         assert!(state.text_view_has_previous);
         assert!(state.text_view_loaded_bytes - state.text_view_window_offset > 0);
-        assert_eq!(state.text_view_content.as_ref().unwrap().chars().next(), Some('a'));
+        assert_eq!(
+            state.text_view_content.as_ref().unwrap().chars().next(),
+            Some('a')
+        );
     }
 
     #[test]
@@ -2582,12 +2614,10 @@ mod tests {
             let state = STATE.lock().unwrap();
             // If the file is smaller than a window, jump clamps to 0.
             assert!(state.text_view_window_offset <= 64_000);
-            assert!(state.text_view_content.as_ref().unwrap().starts_with('b')
-                || state
-                    .text_view_content
-                    .as_ref()
-                    .unwrap()
-                    .contains('b'));
+            assert!(
+                state.text_view_content.as_ref().unwrap().starts_with('b')
+                    || state.text_view_content.as_ref().unwrap().contains('b')
+            );
             assert!(state.text_view_has_previous || state.text_view_window_offset == 0);
         }
 

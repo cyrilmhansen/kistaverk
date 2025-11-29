@@ -143,7 +143,14 @@ pub fn load_text_from_fd(state: &mut AppState, fd: RawFd, path: Option<&str>) {
         match copy_fd_to_temp(&mut file) {
             Ok(temp_path) => {
                 state.text_view_cached_path = Some(temp_path.clone());
-                handle_text_from_path(state, &temp_path, path.or(Some(temp_path.as_str())), 0, false, true);
+                handle_text_from_path(
+                    state,
+                    &temp_path,
+                    path.or(Some(temp_path.as_str())),
+                    0,
+                    false,
+                    true,
+                );
             }
             Err(e) => {
                 state.text_view_error = Some(e);
@@ -168,9 +175,7 @@ pub fn load_text_from_path_at_offset(
 ) {
     // Window reads re-open the file each time to keep memory bounded.
     if offset > 0 {
-        match File::open(path)
-            .and_then(|mut f| f.seek(SeekFrom::Start(offset)).map(|_| ()))
-        {
+        match File::open(path).and_then(|mut f| f.seek(SeekFrom::Start(offset)).map(|_| ())) {
             Ok(_) => {}
             Err(e) => {
                 state.text_view_error = Some(format!("seek_failed:{e}"));

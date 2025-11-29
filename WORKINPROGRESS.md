@@ -34,7 +34,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - Text viewer roadmap: WebView search bar via `findAllAsync` instead of Rust re-render; polish chunked pagination UX (progress, keyboard focus).
 - PDF UX: add 3x3 placement grid and thumbnail overlay preview for signature positioning.
 - Outputs: offer ACTION_CREATE_DOCUMENT “Save As” for PDF/image results; keep power-user directory control.
-- Image tools: add resize/quality controls (scale %, WebP/JPEG quality) to fit VISION’s mail-use case.
+- Image tools: Kotlin-side resize/quality controls landed (scale %, quality, optional target KB, WebP/JPEG toggle); validate file suffixes and on-device UX.
 - DSL polish: keep Section/Card grouping widget readable; keep emoji iconography.
 
 ## Notes
