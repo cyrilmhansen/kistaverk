@@ -169,6 +169,11 @@ enum Action {
         img_height_px: Option<f64>,
         img_dpi: Option<f64>,
     },
+    PdfSignGrid {
+        page: u32,
+        x_pct: f64,
+        y_pct: f64,
+    },
     PdfSetTitle {
         fd: Option<i32>,
         uri: Option<String>,
@@ -324,6 +329,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
             img_width_px: parse_f64_binding(&bindings, "signature_width_px"),
             img_height_px: parse_f64_binding(&bindings, "signature_height_px"),
             img_dpi: parse_f64_binding(&bindings, "signature_dpi"),
+        }),
+        "pdf_sign_grid" => Ok(Action::PdfSignGrid {
+            page: parse_u32_binding(&bindings, "pdf_signature_page").unwrap_or(1),
+            x_pct: parse_f64_binding(&bindings, "pdf_signature_x_pct").unwrap_or(0.5),
+            y_pct: parse_f64_binding(&bindings, "pdf_signature_y_pct").unwrap_or(0.5),
         }),
         "pdf_signature_store" => Ok(Action::PdfSignatureStore {
             data: bindings.get("signature_base64").cloned(),
@@ -910,6 +920,13 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 state.pdf.last_error = Some("missing_signature".into());
             }
+        }
+        Action::PdfSignGrid { page, x_pct, y_pct } => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.signature_target_page = Some(page);
+            state.pdf.signature_x_pct = Some(x_pct);
+            state.pdf.signature_y_pct = Some(y_pct);
+            state.pdf.signature_grid_selection = Some((page, x_pct, y_pct));
         }
         Action::PdfSignatureStore { data } => {
             state.pdf.signature_base64 = data;
@@ -1754,6 +1771,7 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
                             .as_deref()
                             .unwrap_or("Type a query and tap next/prev."),
                     )
+                    .id("find_status")
                     .size(12.0),
                 )
                 .unwrap(),

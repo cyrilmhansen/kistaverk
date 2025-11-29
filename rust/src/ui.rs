@@ -6,6 +6,8 @@ pub struct Text<'a> {
     pub kind: &'static str,
     pub text: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
@@ -16,9 +18,15 @@ impl<'a> Text<'a> {
         Self {
             kind: "Text",
             text,
+            id: None,
             size: None,
             content_description: None,
         }
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
+        self
     }
 
     pub fn size(mut self, size: f64) -> Self {

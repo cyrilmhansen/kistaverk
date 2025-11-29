@@ -70,6 +70,7 @@ class UiRenderer(
     private var currentRoot: View? = null
     private var pooledCodeView: WebView? = null
     private var lastFindQuery: String = ""
+    private var findStatusView: TextView? = null
     private val bindings = mutableMapOf<String, String>()
     private val pendingBindingUpdates = mutableMapOf<String, Runnable>()
     private val allowedTypes = setOf(
@@ -88,6 +89,7 @@ class UiRenderer(
         "PdfPagePicker",
         "SignaturePad",
         "PdfSignPlacement",
+        "PdfSignPreview",
         "DepsList"
         ,
         "CodeView",
@@ -98,6 +100,7 @@ class UiRenderer(
 
     fun render(jsonString: String): View {
         bindings.clear()
+        findStatusView = null
         val rootJson = try {
             JSONObject(jsonString)
         } catch (e: Exception) {
@@ -168,7 +171,12 @@ class UiRenderer(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
+                isFillViewport = true
             }
+            content.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
             scroll.layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -179,6 +187,10 @@ class UiRenderer(
             }
             scroll
         } else {
+            content.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
             content
         }
     }
@@ -203,6 +215,7 @@ class UiRenderer(
             "PdfPagePicker" -> createPdfPagePicker(data, matched as? HorizontalScrollView)
             "SignaturePad" -> createSignaturePad(data, matched as? SignaturePadView)
             "PdfSignPlacement" -> createPdfSignPlacement(data, matched as? SignPlacementView)
+            "PdfSignPreview" -> createPdfSignPreview(data, matched as? PdfSignPreview)
             "DepsList" -> createDepsList(data, matched as? LinearLayout)
             "CodeView" -> createCodeView(data, matched as? WebView)
             "Compass" -> createCompass(data, matched)
@@ -252,6 +265,13 @@ class UiRenderer(
         if (type == "PdfSignPlacement") {
             if (!node.has("source_uri")) return "PdfSignPlacement missing source_uri"
             if (!node.has("page_count")) return "PdfSignPlacement missing page_count"
+        }
+        if (type == "PdfSignPreview") {
+            if (!node.has("page_count")) return "PdfSignPreview missing page_count"
+            if (!node.has("bind_key_page")) return "PdfSignPreview missing bind_key_page"
+            if (!node.has("bind_key_x_pct")) return "PdfSignPreview missing bind_key_x_pct"
+            if (!node.has("bind_key_y_pct")) return "PdfSignPreview missing bind_key_y_pct"
+            if (!node.has("source_uri")) return "PdfSignPreview missing source_uri"
         }
         if (type == "DepsList") {
             // no required fields
@@ -528,7 +548,11 @@ class UiRenderer(
         view.textSize = data.optDouble("size", 14.0).toFloat()
         val contentDescription = data.optString("content_description", "")
         view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
-        setMeta(view, "Text", resolveNodeId(data))
+        val nodeId = resolveNodeId(data)
+        if (nodeId == "find_status") {
+            findStatusView = view
+        }
+        setMeta(view, "Text", nodeId)
         return view
     }
 
@@ -581,6 +605,15 @@ class UiRenderer(
                 null
             )
         }
+        webView.setFindListener { active, total, done ->
+            if (done) {
+                if (total <= 0) {
+                    updateFindStatus("No matches")
+                } else {
+                    updateFindStatus("${active + 1} / $total")
+                }
+            }
+        }
 
         val lp = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         val margin = dpToPx(context, 8f)
@@ -599,7 +632,9 @@ class UiRenderer(
         if (trimmed != lastFindQuery) {
             if (trimmed.isEmpty()) {
                 webView.clearMatches()
+                updateFindStatus("Cleared search")
             } else {
+                updateFindStatus("Searching…")
                 webView.findAllAsync(trimmed)
             }
             lastFindQuery = trimmed
@@ -607,6 +642,15 @@ class UiRenderer(
         when (direction) {
             "next" -> webView.findNext(true)
             "prev" -> webView.findNext(false)
+        }
+    }
+
+    private fun updateFindStatus(text: String) {
+        val target = findStatusView ?: return
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            target.text = text
+        } else {
+            mainHandler.post { target.text = text }
         }
     }
 
@@ -620,6 +664,7 @@ class UiRenderer(
         val actionName = data.optString("action")
         val needsFilePicker = data.optBoolean("requires_file_picker", false)
         val copyText = data.optString("copy_text", "")
+        val payload = data.optJSONObject("payload")
 
         btn.setOnClickListener {
             flushPendingBindings()
@@ -627,7 +672,16 @@ class UiRenderer(
                 copyToClipboard(copyText)
             }
             if (actionName.isNotEmpty()) {
-                onAction(actionName, needsFilePicker, bindings.toMap())
+                val merged = bindings.toMutableMap()
+                if (payload != null) {
+                    val keys = payload.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        val v = payload.optString(k, "")
+                        merged[k] = v
+                    }
+                }
+                onAction(actionName, needsFilePicker, merged.toMap())
             }
         }
         setMeta(btn, "Button", resolveNodeId(data))
@@ -1088,6 +1142,27 @@ class UiRenderer(
         return view
     }
 
+    private fun createPdfSignPreview(data: JSONObject, existing: PdfSignPreview?): View {
+        val pageCount = data.optInt("page_count", 0)
+        val bindPage = data.optString("bind_key_page", "pdf_signature_page")
+        val bindX = data.optString("bind_key_x_pct", "pdf_signature_x_pct")
+        val bindY = data.optString("bind_key_y_pct", "pdf_signature_y_pct")
+        val sourceUri = data.optString("source_uri", "")
+        val selectedPage = data.optInt("selected_page", 1).coerceAtLeast(1)
+        val selectedX = data.optDouble("selected_x_pct", 0.5).toFloat()
+        val selectedY = data.optDouble("selected_y_pct", 0.5).toFloat()
+        if (pageCount <= 0 || sourceUri.isBlank()) return createErrorView("SignPreview missing data")
+        val uri = runCatching { Uri.parse(sourceUri) }.getOrNull() ?: return createErrorView("Invalid PDF URI")
+        val view = existing ?: PdfSignPreview(context)
+        view.bind(uri, pageCount, selectedPage, selectedX, selectedY) { page, nx, ny ->
+            bindings[bindPage] = page.toString()
+            bindings[bindX] = nx.toString()
+            bindings[bindY] = ny.toString()
+        }
+        setMeta(view, "PdfSignPreview", resolveNodeId(data))
+        return view
+    }
+
     private class SignaturePadView(
         context: Context,
         private val onUpdate: (String, Int, Int, Float) -> Unit
@@ -1271,6 +1346,93 @@ class UiRenderer(
                                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                                 image.setImageBitmap(bmp)
                                 overlayView.setBitmap(bmp)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // best effort; leave previous image
+                    }
+                }
+            }
+        }
+
+        private fun dpToPxLocal(dp: Float): Int {
+            val density = resources.displayMetrics.density
+            return (dp * density).toInt()
+        }
+    }
+
+    private class PdfSignPreview(
+        context: Context
+    ) : FrameLayout(context) {
+        private var pageCount: Int = 0
+        private var currentPage: Int = 1
+        private var sourceUri: Uri? = null
+        private var normalizedX: Float = 0.5f
+        private var normalizedY: Float = 0.5f
+        private var onChange: ((Int, Float, Float) -> Unit)? = null
+        private val image = ImageView(context).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPxLocal(180f))
+            setBackgroundColor(Color.WHITE)
+        }
+        private val overlay = SignOverlay(context, image) { nx, ny ->
+            normalizedX = nx
+            normalizedY = ny
+            onChange?.invoke(currentPage, nx, ny)
+        }
+
+        init {
+            setPadding(dpToPxLocal(4f), dpToPxLocal(4f), dpToPxLocal(4f), dpToPxLocal(4f))
+            addView(image)
+            addView(overlay)
+        }
+
+        fun bind(
+            uri: Uri,
+            pageCount: Int,
+            selectedPage: Int,
+            x: Float,
+            y: Float,
+            onChange: (Int, Float, Float) -> Unit
+        ) {
+            this.sourceUri = uri
+            this.pageCount = pageCount
+            this.currentPage = selectedPage.coerceIn(1, pageCount)
+            this.normalizedX = x
+            this.normalizedY = y
+            this.onChange = onChange
+            overlay.setNormalized(x, y)
+            render()
+        }
+
+        private fun render() {
+            val uri = sourceUri ?: return
+            post {
+                val pfd = try {
+                    context.contentResolver.openFileDescriptor(uri, "r")
+                } catch (_: Exception) {
+                    null
+                } ?: return@post
+                pfd.use { descriptor ->
+                    try {
+                        PdfRenderer(descriptor).use { renderer ->
+                            if (renderer.pageCount <= 0) return@use
+                            val pageIndex = (currentPage - 1).coerceIn(0, renderer.pageCount - 1)
+                            renderer.openPage(pageIndex).use { page ->
+                                val targetWidth = width.takeIf { it > 0 } ?: dpToPxLocal(220f)
+                                val targetHeight = (targetWidth.toFloat() / page.width * page.height)
+                                    .toInt()
+                                    .coerceAtLeast(dpToPxLocal(120f))
+                                val bmp = Bitmap.createBitmap(
+                                    targetWidth,
+                                    targetHeight,
+                                    Bitmap.Config.ARGB_8888
+                                )
+                                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                image.setImageBitmap(bmp)
+                                overlay.setBitmap(bmp)
+                                overlay.setNormalized(normalizedX, normalizedY)
                             }
                         }
                     } catch (_: Exception) {
