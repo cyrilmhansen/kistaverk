@@ -125,6 +125,14 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             )
             .unwrap(),
         );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Copy last hash", "noop")
+                    .copy_text(hash)
+                    .id("copy_last_hash_home"),
+            )
+            .unwrap(),
+        );
     }
 
     if let Some(err) = &state.last_error {
