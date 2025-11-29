@@ -90,7 +90,9 @@ class UiRenderer(
         "DepsList"
         ,
         "CodeView",
-        "Compass"
+        "Compass",
+        "Barometer",
+        "Magnetometer"
     )
 
     fun render(jsonString: String): View {
@@ -203,6 +205,8 @@ class UiRenderer(
             "DepsList" -> createDepsList(data, matched as? LinearLayout)
             "CodeView" -> createCodeView(data, matched as? WebView)
             "Compass" -> createCompass(data, matched)
+            "Barometer" -> createBarometer(data, matched as? SensorShaderView)
+            "Magnetometer" -> createMagnetometer(data, matched as? SensorShaderView)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -256,6 +260,12 @@ class UiRenderer(
         }
         if (type == "Compass" && !node.has("angle_radians")) {
             return "Compass missing angle_radians"
+        }
+        if (type == "Barometer" && !node.has("hpa")) {
+            return "Barometer missing hpa"
+        }
+        if (type == "Magnetometer" && !node.has("magnitude_ut")) {
+            return "Magnetometer missing magnitude_ut"
         }
         if (type == "Grid" || type == "Column" || type == "Section" || type == "Card") {
             val children = node.optJSONArray("children") ?: return "$type missing children"
@@ -486,6 +496,28 @@ class UiRenderer(
         glView.setAngle(angle)
         val view: View = glView
         setMeta(view, "Compass", resolveNodeId(data))
+        return view
+    }
+
+    private fun createBarometer(data: JSONObject, existing: SensorShaderView?): View {
+        val hpa = data.optDouble("hpa", 0.0).toFloat()
+        val view = existing ?: SensorShaderView(context, BAROMETER_FRAGMENT, "u_value")
+        val size = dpToPx(context, 220f)
+        view.layoutParams = LayoutParams(size, size)
+        view.setValue(hpa)
+        view.contentDescription = data.optString("content_description", "").takeIf { it.isNotBlank() }
+        setMeta(view, "Barometer", resolveNodeId(data))
+        return view
+    }
+
+    private fun createMagnetometer(data: JSONObject, existing: SensorShaderView?): View {
+        val mag = data.optDouble("magnitude_ut", 0.0).toFloat()
+        val view = existing ?: SensorShaderView(context, MAGNETOMETER_FRAGMENT, "u_value")
+        val size = dpToPx(context, 220f)
+        view.layoutParams = LayoutParams(size, size)
+        view.setValue(mag)
+        view.contentDescription = data.optString("content_description", "").takeIf { it.isNotBlank() }
+        setMeta(view, "Magnetometer", resolveNodeId(data))
         return view
     }
 
@@ -1349,6 +1381,7 @@ class UiRenderer(
                 data.optString("title", "").takeIf { it.isNotBlank() }
                     ?: data.optString("content_description", "").takeIf { it.isNotBlank() }
             "Compass" -> data.optString("content_description", "").takeIf { it.isNotBlank() }
+            "Barometer", "Magnetometer" -> data.optString("content_description", "").takeIf { it.isNotBlank() }
             "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"
             else -> null
         }
@@ -1477,6 +1510,97 @@ class UiRenderer(
 
             fun setAngle(value: Float) {
                 angle = value
+            }
+
+            private fun createProgram(vs: String, fs: String): Int {
+                val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vs)
+                val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fs)
+                val program = GLES20.glCreateProgram()
+                GLES20.glAttachShader(program, vertexShader)
+                GLES20.glAttachShader(program, fragmentShader)
+                val positionHandle = 0
+                GLES20.glBindAttribLocation(program, positionHandle, "a_position")
+                GLES20.glLinkProgram(program)
+                GLES20.glUseProgram(program)
+                val verts = floatArrayOf(
+                    -1f, -1f,
+                    1f, -1f,
+                    -1f, 1f,
+                    1f, 1f
+                )
+                val buffer = java.nio.ByteBuffer.allocateDirect(verts.size * 4)
+                    .order(java.nio.ByteOrder.nativeOrder())
+                    .asFloatBuffer()
+                buffer.put(verts).position(0)
+                GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, buffer)
+                GLES20.glEnableVertexAttribArray(positionHandle)
+                return program
+            }
+
+            private fun loadShader(type: Int, code: String): Int {
+                val shader = GLES20.glCreateShader(type)
+                GLES20.glShaderSource(shader, code)
+                GLES20.glCompileShader(shader)
+                return shader
+            }
+        }
+    }
+
+    private class SensorShaderView(
+        context: Context,
+        private val fragmentSrc: String,
+        private val uniformName: String
+    ) : GLSurfaceView(context) {
+        private val renderer = SimpleValueRenderer(fragmentSrc, uniformName)
+
+        init {
+            setEGLContextClientVersion(2)
+            setRenderer(renderer)
+            renderMode = RENDERMODE_WHEN_DIRTY
+        }
+
+        fun setValue(v: Float) {
+            renderer.setValue(v)
+            requestRender()
+        }
+
+        private class SimpleValueRenderer(
+            private val fragmentSrc: String,
+            private val uniformName: String
+        ) : Renderer {
+            private var program = 0
+            private var resolutionHandle = 0
+            private var valueHandle = 0
+            private var width = 1
+            private var height = 1
+            private var value = 0f
+
+            override fun onSurfaceCreated(unused: GL10?, config: EGLConfig?) {
+                val vertex = """
+                    attribute vec4 a_position;
+                    void main() { gl_Position = a_position; }
+                """.trimIndent()
+                program = createProgram(vertex, fragmentSrc)
+                GLES20.glUseProgram(program)
+                valueHandle = GLES20.glGetUniformLocation(program, uniformName)
+                resolutionHandle = GLES20.glGetUniformLocation(program, "u_resolution")
+            }
+
+            override fun onSurfaceChanged(unused: GL10?, width: Int, height: Int) {
+                this.width = width
+                this.height = height
+                GLES20.glViewport(0, 0, width, height)
+                GLES20.glUniform2f(resolutionHandle, width.toFloat(), height.toFloat())
+            }
+
+            override fun onDrawFrame(unused: GL10?) {
+                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+                GLES20.glUniform1f(valueHandle, value)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            }
+
+            fun setValue(v: Float) {
+                value = v
             }
 
             private fun createProgram(vs: String, fs: String): Int {
@@ -1664,6 +1788,38 @@ class UiRenderer(
                 color = mix(color, vec3(1.0, 0.7, 0.0), pointerFill);
                 float glass = smoothstep(0.35, 0.0, rotLen) * 0.2;
                 color += vec3(glass);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
+        private const val BAROMETER_FRAGMENT = """
+            precision mediump float;
+            uniform vec2 u_resolution;
+            uniform float u_value;
+            void main() {
+                vec2 uv = gl_FragCoord.xy / u_resolution;
+                float t = clamp(u_value / 1100.0, 0.0, 1.0);
+                vec3 base = mix(vec3(0.1,0.12,0.15), vec3(0.2,0.5,1.0), t);
+                float ring = smoothstep(0.4, 0.38, length(uv - 0.5));
+                float dot = smoothstep(0.03, 0.02, length(uv - vec2(0.5, 0.2 + 0.2 * t)));
+                vec3 color = base;
+                color = mix(color, vec3(0.8,0.9,1.0), ring);
+                color = mix(color, vec3(1.0,0.7,0.2), dot);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
+        private const val MAGNETOMETER_FRAGMENT = """
+            precision mediump float;
+            uniform vec2 u_resolution;
+            uniform float u_value;
+            void main() {
+                vec2 uv = gl_FragCoord.xy / u_resolution;
+                float m = clamp(u_value / 120.0, 0.0, 1.0);
+                vec3 base = mix(vec3(0.08,0.1,0.14), vec3(1.0,0.2,0.2), m);
+                float ring = smoothstep(0.35, 0.33, length(uv - 0.5));
+                float glow = smoothstep(0.2, 0.0, abs(length(uv - 0.5) - 0.25));
+                vec3 color = base;
+                color += ring * vec3(0.6,0.6,0.9);
+                color += glow * vec3(0.2,0.6,1.0);
                 gl_FragColor = vec4(color, 1.0);
             }
         """

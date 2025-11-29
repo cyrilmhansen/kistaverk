@@ -83,6 +83,16 @@ class MainActivity : ComponentActivity() {
     private var lastCompassDispatchTs: Long = 0L
     private var compassActive = false
     private var compassUnavailable = false
+    private var barometerThread: HandlerThread? = null
+    private var barometerHandler: Handler? = null
+    private var barometerListener: SensorEventListener? = null
+    private var barometerSensor: Sensor? = null
+    private var lastBarometerDispatch: Long = 0L
+    private var magnetometerThread: HandlerThread? = null
+    private var magnetometerHandler: Handler? = null
+    private var magnetometerListener: SensorEventListener? = null
+    private var magnetometerSensor: Sensor? = null
+    private var lastMagnetometerDispatch: Long = 0L
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -195,9 +205,15 @@ class MainActivity : ComponentActivity() {
         findOutputPath(obj)
     }
 
-    private fun updateCompassSubscription(json: String) {
-        val wantsCompass = jsonHasCompass(json)
+    private fun updateSensorSubscriptions(json: String) {
+        val wantsCompass = jsonHasWidget(json, "Compass")
         if (wantsCompass) startCompass() else stopCompass()
+
+        val wantsBaro = jsonHasWidget(json, "Barometer")
+        if (wantsBaro) startBarometer() else stopBarometer()
+
+        val wantsMag = jsonHasWidget(json, "Magnetometer")
+        if (wantsMag) startMagnetometer() else stopMagnetometer()
     }
 
     private fun guessMimeFromPath(path: String): String? {
@@ -397,10 +413,92 @@ class MainActivity : ComponentActivity() {
         compassThread = null
     }
 
-    private fun jsonHasCompass(json: String): Boolean {
+    private fun startBarometer() {
+        if (barometerListener != null) return
+        if (barometerSensor == null) {
+            barometerSensor = (getSystemService(SENSOR_SERVICE) as? SensorManager)
+                ?.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        }
+        val sensor = barometerSensor ?: run {
+            refreshUi("barometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Barometer unavailable"))
+            return
+        }
+        val thread = HandlerThread("BarometerListener")
+        thread.start()
+        barometerThread = thread
+        barometerHandler = Handler(thread.looper)
+        barometerListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val hpa = event.values.firstOrNull()?.toDouble() ?: return
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastBarometerDispatch < 300) return
+                lastBarometerDispatch = now
+                refreshUi("barometer_set", extras = mapOf("angle_radians" to hpa, "error" to JSONObject.NULL))
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        barometerListener?.let { listener ->
+            (getSystemService(SENSOR_SERVICE) as? SensorManager)
+                ?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, barometerHandler)
+        }
+    }
+
+    private fun stopBarometer() {
+        val mgr = getSystemService(SENSOR_SERVICE) as? SensorManager
+        barometerListener?.let { mgr?.unregisterListener(it) }
+        barometerListener = null
+        barometerHandler = null
+        barometerThread?.quitSafely()
+        barometerThread = null
+    }
+
+    private fun startMagnetometer() {
+        if (magnetometerListener != null) return
+        if (magnetometerSensor == null) {
+            magnetometerSensor = (getSystemService(SENSOR_SERVICE) as? SensorManager)
+                ?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        }
+        val sensor = magnetometerSensor ?: run {
+            refreshUi("magnetometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Magnetometer unavailable"))
+            return
+        }
+        val thread = HandlerThread("MagnetometerListener")
+        thread.start()
+        magnetometerThread = thread
+        magnetometerHandler = Handler(thread.looper)
+        magnetometerListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val vals = event.values
+                if (vals.size < 3) return
+                val mag = kotlin.math.sqrt((vals[0] * vals[0] + vals[1] * vals[1] + vals[2] * vals[2]).toDouble())
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastMagnetometerDispatch < 300) return
+                lastMagnetometerDispatch = now
+                refreshUi("magnetometer_set", extras = mapOf("angle_radians" to mag, "error" to JSONObject.NULL))
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        magnetometerListener?.let { listener ->
+            (getSystemService(SENSOR_SERVICE) as? SensorManager)
+                ?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, magnetometerHandler)
+        }
+    }
+
+    private fun stopMagnetometer() {
+        val mgr = getSystemService(SENSOR_SERVICE) as? SensorManager
+        magnetometerListener?.let { mgr?.unregisterListener(it) }
+        magnetometerListener = null
+        magnetometerHandler = null
+        magnetometerThread?.quitSafely()
+        magnetometerThread = null
+    }
+
+    private fun jsonHasWidget(json: String, widgetType: String): Boolean {
         val root = runCatching { JSONObject(json) }.getOrNull() ?: return false
         fun walk(obj: JSONObject): Boolean {
-            if (obj.optString("type") == "Compass") return true
+            if (obj.optString("type") == widgetType) return true
             val children = obj.optJSONArray("children") ?: return false
             for (i in 0 until children.length()) {
                 val child = children.optJSONObject(i) ?: continue
@@ -507,6 +605,12 @@ class MainActivity : ComponentActivity() {
                 stopSensorLogging()
                 return@UiRenderer
             }
+            if (action == "barometer_screen") {
+                startBarometer()
+            }
+            if (action == "magnetometer_screen") {
+                startMagnetometer()
+            }
             if (action == "sensor_logger_share") {
                 shareLastLog()
                 return@UiRenderer
@@ -575,6 +679,8 @@ class MainActivity : ComponentActivity() {
         pendingSensorBindings = null
         stopSensorLogging()
         stopCompass()
+        stopBarometer()
+        stopMagnetometer()
     }
 
     @Deprecated("Android is migrating to ActivityResult APIs; kept for legacy permission callback")
@@ -661,7 +767,7 @@ class MainActivity : ComponentActivity() {
             hideOverlay()
 
             cacheLastResult(newUiJson)
-            updateCompassSubscription(newUiJson)
+            updateSensorSubscriptions(newUiJson)
         }
     }
 
