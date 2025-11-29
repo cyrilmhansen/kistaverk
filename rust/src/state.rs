@@ -20,6 +20,7 @@ pub enum Screen {
     SensorLogger,
     TextViewer,
     ArchiveTools,
+    Compass,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,8 @@ pub struct AppState {
     pub text_view_dark: bool,
     pub text_view_line_numbers: bool,
     pub archive: ArchiveState,
+    pub compass_angle_radians: f64,
+    pub compass_error: Option<String>,
 }
 
 impl AppState {
@@ -88,6 +91,8 @@ impl AppState {
             text_view_dark: false,
             text_view_line_numbers: false,
             archive: ArchiveState::new(),
+            compass_angle_radians: 0.0,
+            compass_error: None,
         }
     }
 
@@ -165,5 +170,7 @@ impl AppState {
         self.text_view_dark = false;
         self.text_view_line_numbers = false;
         self.archive.reset();
+        self.compass_angle_radians = 0.0;
+        self.compass_error = None;
     }
 }

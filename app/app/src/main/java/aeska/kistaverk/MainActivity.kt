@@ -72,6 +72,17 @@ class MainActivity : ComponentActivity() {
     private var lastFileOutputMime: String? = null
     private var lastSensorLogPath: String? = null
     private var lastSensorUiTs: Long = 0L
+    private var compassThread: HandlerThread? = null
+    private var compassHandler: Handler? = null
+    private var compassListener: SensorEventListener? = null
+    private var compassSensorManager: SensorManager? = null
+    private var compassRotationSensor: Sensor? = null
+    private var compassAccel: FloatArray? = null
+    private var compassMag: FloatArray? = null
+    private var lastCompassRadians: Float? = null
+    private var lastCompassDispatchTs: Long = 0L
+    private var compassActive = false
+    private var compassUnavailable = false
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -184,6 +195,11 @@ class MainActivity : ComponentActivity() {
         findOutputPath(obj)
     }
 
+    private fun updateCompassSubscription(json: String) {
+        val wantsCompass = jsonHasCompass(json)
+        if (wantsCompass) startCompass() else stopCompass()
+    }
+
     private fun guessMimeFromPath(path: String): String? {
         return when {
             path.lowercase(Locale.US).endsWith(".pdf") -> "application/pdf"
@@ -271,6 +287,128 @@ class MainActivity : ComponentActivity() {
                 // best effort
             }
         }
+    }
+
+    private fun startCompass() {
+        if (compassActive) return
+        compassUnavailable = false
+        if (compassSensorManager == null) {
+            compassSensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
+        }
+        val mgr = compassSensorManager ?: return
+        val rotationSensor = mgr.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        val accelSensor = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val magSensor = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        if (rotationSensor == null && (accelSensor == null || magSensor == null)) {
+            if (!compassUnavailable) {
+                compassUnavailable = true
+                refreshUi("compass_set", extras = mapOf("angle_radians" to 0.0, "error" to "Compass sensors unavailable"))
+            }
+            return
+        }
+        val thread = HandlerThread("CompassListener")
+        thread.start()
+        compassThread = thread
+        compassHandler = Handler(thread.looper)
+        compassRotationSensor = rotationSensor
+        compassListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                when (event.sensor.type) {
+                    Sensor.TYPE_ROTATION_VECTOR -> {
+                        val rotMatrix = FloatArray(9)
+                        SensorManager.getRotationMatrixFromVector(rotMatrix, event.values)
+                        val orientation = FloatArray(3)
+                        SensorManager.getOrientation(rotMatrix, orientation)
+                        notifyCompassAngle(orientation[0])
+                    }
+                    Sensor.TYPE_ACCELEROMETER -> {
+                        compassAccel = event.values.clone()
+                        maybeComputeAccelMag()
+                    }
+                    Sensor.TYPE_MAGNETIC_FIELD -> {
+                        compassMag = event.values.clone()
+                        maybeComputeAccelMag()
+                    }
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+            private fun maybeComputeAccelMag() {
+                val accel = compassAccel
+                val mag = compassMag
+                if (accel != null && mag != null) {
+                    val r = FloatArray(9)
+                    val i = FloatArray(9)
+                    if (SensorManager.getRotationMatrix(r, i, accel, mag)) {
+                        val orientation = FloatArray(3)
+                        SensorManager.getOrientation(r, orientation)
+                        notifyCompassAngle(orientation[0])
+                    }
+                }
+            }
+        }
+        compassListener?.let { listener ->
+            if (rotationSensor != null) {
+                mgr.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI, compassHandler)
+            } else {
+                accelSensor?.let { mgr.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI, compassHandler) }
+                magSensor?.let { mgr.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI, compassHandler) }
+            }
+        }
+        compassActive = true
+    }
+
+    private fun notifyCompassAngle(raw: Float) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val tau = (2 * Math.PI).toFloat()
+        val normalized = ((raw % tau) + tau) % tau
+        val prev = lastCompassRadians
+        val minDelta = Math.toRadians(1.0).toFloat()
+        val minIntervalMs = 300L
+        if (prev != null && kotlin.math.abs(prev - normalized) < minDelta && now - lastCompassDispatchTs < minIntervalMs) {
+            return
+        }
+        lastCompassRadians = normalized
+        // Update the on-screen dial immediately by reusing the last rendered JSON (lightweight)
+        refreshUi(
+            "compass_set",
+            extras = mapOf("angle_radians" to normalized.toDouble()),
+            loadingOnly = false
+        )
+        lastCompassDispatchTs = now
+    }
+
+    private fun stopCompass() {
+        if (!compassActive) return
+        compassActive = false
+        compassUnavailable = false
+        val mgr = compassSensorManager
+        val listener = compassListener
+        if (mgr != null && listener != null) {
+            mgr.unregisterListener(listener)
+        }
+        compassListener = null
+        compassAccel = null
+        compassMag = null
+        compassRotationSensor = null
+        compassHandler = null
+        compassThread?.quitSafely()
+        compassThread = null
+    }
+
+    private fun jsonHasCompass(json: String): Boolean {
+        val root = runCatching { JSONObject(json) }.getOrNull() ?: return false
+        fun walk(obj: JSONObject): Boolean {
+            if (obj.optString("type") == "Compass") return true
+            val children = obj.optJSONArray("children") ?: return false
+            for (i in 0 until children.length()) {
+                val child = children.optJSONObject(i) ?: continue
+                if (walk(child)) return true
+            }
+            return false
+        }
+        return walk(root)
     }
 
     private val pickDirLauncher = registerForActivityResult(
@@ -395,6 +533,7 @@ class MainActivity : ComponentActivity() {
                     lastFileOutputPath = null
                     lastFileOutputMime = null
                     stopSensorLogging()
+                    stopCompass()
                 }
                 dispatchWithOptionalLoading(action, bindings = bindings)
             }
@@ -435,6 +574,7 @@ class MainActivity : ComponentActivity() {
         pendingSensorStart = false
         pendingSensorBindings = null
         stopSensorLogging()
+        stopCompass()
     }
 
     @Deprecated("Android is migrating to ActivityResult APIs; kept for legacy permission callback")
@@ -521,6 +661,7 @@ class MainActivity : ComponentActivity() {
             hideOverlay()
 
             cacheLastResult(newUiJson)
+            updateCompassSubscription(newUiJson)
         }
     }
 

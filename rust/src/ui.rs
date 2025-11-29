@@ -540,6 +540,31 @@ impl<'a> PdfPagePicker<'a> {
 }
 
 #[derive(Serialize)]
+pub struct Compass<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub angle_radians: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Compass<'a> {
+    pub fn new(angle_radians: f64) -> Self {
+        Self {
+            kind: "Compass",
+            angle_radians,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
 pub struct DepsList<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,

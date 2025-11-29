@@ -22,8 +22,8 @@ use features::text_tools::{handle_text_action, render_text_tools_screen, TextAct
 use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_text_from_path};
 use features::{render_menu, Feature};
 use ui::{
-    Button as UiButton, CodeView as UiCodeView, Column as UiColumn, DepsList as UiDepsList,
-    Progress as UiProgress, Text as UiText,
+    Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Compass as UiCompass,
+    DepsList as UiDepsList, Progress as UiProgress, Text as UiText,
 };
 
 use jni::objects::{JClass, JString};
@@ -60,6 +60,7 @@ struct Command {
     snapshot: Option<String>,
     primary_fd: Option<i32>,
     primary_path: Option<String>,
+    angle_radians: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -199,6 +200,11 @@ enum Action {
     ArchiveOpenText {
         index: usize,
     },
+    CompassDemo,
+    CompassSet {
+        angle_radians: f64,
+        error: Option<String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -237,6 +243,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         snapshot,
         primary_fd,
         primary_path,
+        angle_radians,
     } = command;
 
     let bindings = bindings.unwrap_or_default();
@@ -408,6 +415,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "color_copy_clipboard" => Ok(Action::ColorCopyClipboard),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
+        "compass_demo" => Ok(Action::CompassDemo),
+        "compass_set" => Ok(Action::CompassSet {
+            angle_radians: angle_radians.unwrap_or(0.0),
+            error,
+        }),
         other => {
             if let Some(idx) = other.strip_prefix("archive_open_text:") {
                 let index = idx
@@ -509,14 +521,15 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
             target: None,
             result_path: None,
             result_size: None,
-            result_format: None,
-            output_dir: None,
-            bindings: None,
-            loading_only: None,
-            snapshot: None,
-            primary_fd: None,
-            primary_path: None,
-        });
+        result_format: None,
+        output_dir: None,
+        bindings: None,
+        loading_only: None,
+        snapshot: None,
+        primary_fd: None,
+        primary_path: None,
+        angle_radians: None,
+    });
 
         handle_command(command)
     }));
@@ -637,6 +650,20 @@ fn handle_command(command: Command) -> Result<Value, String> {
                             .or_else(|| Some(entry.name.clone()));
                     }
                 }
+            }
+        }
+        Action::CompassDemo => {
+            state.push_screen(Screen::Compass);
+        }
+        Action::CompassSet { angle_radians, error } => {
+            let mut angle = angle_radians % std::f64::consts::TAU;
+            if angle < 0.0 {
+                angle += std::f64::consts::TAU;
+            }
+            state.compass_angle_radians = angle;
+            state.compass_error = error;
+            if matches!(state.current_screen(), Screen::Compass) {
+                state.replace_current(Screen::Compass);
             }
         }
         Action::PdfToolsScreen => {
@@ -1081,6 +1108,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::SensorLogger => render_sensor_logger_screen(state),
         Screen::TextViewer => render_text_viewer_screen(state),
         Screen::ArchiveTools => render_archive_screen(state),
+        Screen::Compass => render_compass_screen(state),
     }
 }
 
@@ -1187,6 +1215,32 @@ fn render_shader_screen(state: &AppState) -> Value {
     maybe_push_back(&mut children, state);
 
     serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
+}
+
+fn render_compass_screen(state: &AppState) -> Value {
+    let degrees = state.compass_angle_radians.to_degrees();
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Compass (AGSL)").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Compass dial driven by device sensors. Heading auto-updates when sensors are available.")
+                .size(12.0),
+        )
+        .unwrap(),
+        serde_json::to_value(UiText::new(&format!("Heading: {:.1}°", degrees)).size(14.0)).unwrap(),
+        serde_json::to_value(UiCompass::new(state.compass_angle_radians)).unwrap(),
+        serde_json::to_value(
+            UiText::new(
+                state
+                    .compass_error
+                    .as_deref()
+                    .unwrap_or("Sensor updates will appear automatically.")
+            )
+            .size(12.0),
+        )
+        .unwrap(),
+    ];
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
 fn render_progress_demo_screen(state: &AppState) -> Value {
@@ -1569,6 +1623,14 @@ fn feature_catalog() -> Vec<Feature> {
             description: "10s simulated work",
         },
         Feature {
+            id: "compass_demo",
+            name: "🧭 Compass",
+            category: "🧪 Experiments",
+            action: "compass_demo",
+            requires_file_picker: false,
+            description: "Sensor-driven dial",
+        },
+        Feature {
             id: "text_tools",
             name: "✍️ Text tools",
             category: "📝 Text",
@@ -1649,6 +1711,7 @@ mod tests {
             snapshot: None,
             primary_fd: None,
             primary_path: None,
+            angle_radians: None,
         }
     }
 
