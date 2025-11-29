@@ -35,6 +35,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - PDF UX: add 3x3 placement grid and thumbnail overlay preview for signature positioning.
 - Outputs: offer ACTION_CREATE_DOCUMENT “Save As” for PDF/image results; keep power-user directory control.
 - Image tools: Kotlin-side resize/quality controls landed (scale %, quality, optional target KB, WebP/JPEG toggle); validate file suffixes and on-device UX.
+- Hash verify: SHA-256 verify screen added with clipboard-friendly paste/copy helpers; on-device QA still needed.
 - DSL polish: keep Section/Card grouping widget readable; keep emoji iconography.
 
 ## Notes
