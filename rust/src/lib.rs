@@ -19,7 +19,11 @@ use features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
 };
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
-use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_text_from_path};
+use features::text_viewer::{
+    guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
+    load_text_from_path,
+    load_text_from_path_at_offset,
+};
 use features::{render_menu, Feature};
 use ui::{
     Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Compass as UiCompass,
@@ -178,6 +182,11 @@ enum Action {
     TextViewerToggleTheme,
     TextViewerToggleLineNumbers,
     TextViewerLoadAnyway,
+    TextViewerLoadMore,
+    TextViewerLoadPrev,
+    TextViewerJump {
+        offset: Option<u64>,
+    },
     TextViewerFind {
         query: Option<String>,
         direction: Option<String>,
@@ -320,6 +329,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
         "text_viewer_toggle_line_numbers" => Ok(Action::TextViewerToggleLineNumbers),
         "text_viewer_load_anyway" => Ok(Action::TextViewerLoadAnyway),
+        "text_viewer_load_more" => Ok(Action::TextViewerLoadMore),
+        "text_viewer_load_prev" => Ok(Action::TextViewerLoadPrev),
+        "text_viewer_jump" => Ok(Action::TextViewerJump {
+            offset: parse_u64_binding(&bindings, "offset_bytes"),
+        }),
         "text_viewer_find" => Ok(Action::TextViewerFind {
             query: bindings.get("find_query").cloned(),
             direction: bindings.get("find_direction").cloned(),
@@ -518,6 +532,10 @@ fn parse_pdf_selection(bindings: &HashMap<String, String>) -> Vec<u32> {
 
 fn parse_u32_binding(bindings: &HashMap<String, String>, key: &str) -> Option<u32> {
     bindings.get(key).and_then(|v| v.trim().parse::<u32>().ok())
+}
+
+fn parse_u64_binding(bindings: &HashMap<String, String>, key: &str) -> Option<u64> {
+    bindings.get(key).and_then(|v| v.trim().parse::<u64>().ok())
 }
 
 fn parse_f64_binding(bindings: &HashMap<String, String>, key: &str) -> Option<f64> {
@@ -903,10 +921,22 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.text_view_error = None;
             state.text_view_language = None;
             state.text_view_hex_preview = None;
+            state.text_view_loaded_bytes = 0;
+            state.text_view_total_bytes = None;
+            state.text_view_has_more = false;
+            state.text_view_window_offset = 0;
+            state.text_view_has_previous = false;
         }
         Action::TextViewerOpen { fd, path, error } => {
             state.push_screen(Screen::TextViewer);
             state.text_view_error = error.clone();
+            state.text_view_find_query = None;
+            state.text_view_find_match = None;
+            state.text_view_loaded_bytes = 0;
+            state.text_view_total_bytes = None;
+            state.text_view_has_more = false;
+            state.text_view_window_offset = 0;
+            state.text_view_has_previous = false;
             let mut fd_handle = FdHandle::new(fd);
             if error.is_some() {
                 state.text_view_content = None;
@@ -935,34 +965,61 @@ fn handle_command(command: Command) -> Result<Value, String> {
             // Clear hex preview and reload last path as text.
             state.text_view_hex_preview = None;
             if let Some(path) = state.text_view_path.clone() {
-                load_text_from_path(&mut state, &path);
+                load_text_from_path_at_offset(&mut state, &path, 0, true);
             } else {
                 state.text_view_error = Some("nothing_to_reload".into());
                 state.text_view_content = None;
             }
             state.replace_current(Screen::TextViewer);
         }
-    Action::TextViewerFind { query, direction } => {
-        if let Some(q) = query {
-            let trimmed = q.trim();
-            if trimmed.is_empty() {
-                state.text_view_find_query = None;
-                state.text_view_find_match = Some("Cleared search".into());
+        Action::TextViewerLoadMore => {
+            load_more_text(&mut state);
+            state.replace_current(Screen::TextViewer);
+        }
+        Action::TextViewerLoadPrev => {
+            load_prev_text(&mut state);
+            state.replace_current(Screen::TextViewer);
+        }
+        Action::TextViewerJump { offset } => {
+            let target = offset.unwrap_or(0);
+            if let Some(path) = state.text_view_path.clone() {
+                let clamped = state
+                    .text_view_total_bytes
+                    .map(|total| {
+                        let window = features::text_viewer::CHUNK_BYTES as u64;
+                        let max_offset = total.saturating_sub(window.min(total));
+                        target.min(max_offset)
+                    })
+                    .unwrap_or(target);
+                load_text_from_path_at_offset(&mut state, &path, clamped, true);
             } else {
-                state.text_view_find_query = Some(trimmed.to_string());
-                state.text_view_find_match = None;
+                state.text_view_error = Some("missing_path".into());
             }
+            state.replace_current(Screen::TextViewer);
         }
-        if let Some(dir) = direction {
-            state.text_view_find_match = Some(match dir.as_str() {
-                "next" => "Searching next match",
-                "prev" => "Searching previous match",
-                _ => "Searching",
+        Action::TextViewerFind { query, direction } => {
+            if let Some(q) = query {
+                let trimmed = q.trim();
+                if trimmed.is_empty() {
+                    state.text_view_find_query = None;
+                    state.text_view_find_match = Some("Cleared search".into());
+                } else {
+                    state.text_view_find_query = Some(trimmed.to_string());
+                    state.text_view_find_match = None;
+                }
             }
-            .into());
+            if let Some(dir) = direction {
+                state.text_view_find_match = Some(
+                    match dir.as_str() {
+                        "next" => "Searching next match",
+                        "prev" => "Searching previous match",
+                        _ => "Searching",
+                    }
+                    .into(),
+                );
+            }
+            state.replace_current(Screen::TextViewer);
         }
-        state.replace_current(Screen::TextViewer);
-    }
         Action::SensorLoggerScreen => {
             state.push_screen(Screen::SensorLogger);
         }
@@ -1525,12 +1582,24 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
+fn format_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    if bytes as f64 >= MB {
+        format!("{:.1} MB", bytes as f64 / MB)
+    } else if bytes as f64 >= KB {
+        format!("{:.1} KB", bytes as f64 / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 fn render_text_viewer_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
         serde_json::to_value(
             UiText::new(
-                "Open a text or CSV file to preview up to 256 KB with syntax highlighting.",
+                "Open a text/CSV/log file and preview it in 128 KB chunks with syntax highlighting.",
             )
             .size(14.0),
         )
@@ -1549,6 +1618,76 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
             serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
         );
     }
+
+    if state.text_view_loaded_bytes > 0 || state.text_view_total_bytes.is_some() {
+        let start = state.text_view_window_offset;
+        let end = state.text_view_loaded_bytes;
+        let window_size = end.saturating_sub(start);
+        let status = if let Some(total) = state.text_view_total_bytes {
+            let pct = if total > 0 {
+                (end as f64 / total as f64 * 100.0).min(100.0)
+            } else {
+                100.0
+            };
+            format!(
+                "Showing {}–{} of {} ({} window, {:.1}%)",
+                format_bytes(start),
+                format_bytes(end),
+                format_bytes(total),
+                format_bytes(window_size),
+                pct
+            )
+        } else {
+            format!(
+                "Showing {}–{} ({} window, chunked preview)",
+                format_bytes(start),
+                format_bytes(end),
+                format_bytes(window_size)
+            )
+        };
+        children.push(
+            serde_json::to_value(UiText::new(&status).size(12.0)).unwrap(),
+        );
+    }
+
+    if state.text_view_has_previous || state.text_view_has_more {
+        children.push(
+            serde_json::to_value(
+                json!({
+                    "type": "Grid",
+                    "columns": 2,
+                    "children": [
+                        { "type": "Button", "text": "Load previous", "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
+                        { "type": "Button", "text": "Load next", "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
+                    ]
+                })
+            )
+            .unwrap(),
+        );
+    }
+
+    children.push(
+        serde_json::to_value(
+            UiColumn::new(vec![
+                json!({
+                    "type": "TextInput",
+                    "bind_key": "offset_bytes",
+                    "hint": "Byte offset (0 = start)",
+                    "text": state.text_view_window_offset.to_string(),
+                    "single_line": true,
+                    "action_on_submit": "text_viewer_jump"
+                }),
+                json!({
+                    "type": "Button",
+                    "text": "Jump to offset",
+                    "action": "text_viewer_jump",
+                    "content_description": "text_viewer_jump"
+                })
+            ])
+            .padding(4),
+        )
+        .unwrap(),
+    );
 
     // Find bar
     children.push(
@@ -1680,6 +1819,17 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
             code = code.language(lang_str);
         }
         children.push(serde_json::to_value(code).unwrap());
+    }
+
+    if state.text_view_has_more {
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Load more", "text_viewer_load_more")
+                    .id("text_viewer_load_more")
+                    .content_description("text_viewer_load_more"),
+            )
+            .unwrap(),
+        );
     }
 
     maybe_push_back(&mut children, state);
@@ -2327,6 +2477,85 @@ mod tests {
             Some(file.path().to_string_lossy().as_ref())
         );
         assert!(state.text_view_error.is_none());
+    }
+
+    #[test]
+    fn text_viewer_supports_chunked_loading() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        let block = vec![b'a'; 140_000];
+        file.write_all(&block).unwrap();
+        file.write_all(&block).unwrap(); // ~280 KB
+        file.flush().unwrap();
+        let fd = File::open(file.path()).unwrap().into_raw_fd();
+
+        let mut cmd = make_command("text_viewer_open");
+        cmd.fd = Some(fd);
+        cmd.path = Some(file.path().to_string_lossy().into_owned());
+
+        handle_command(cmd).expect("text viewer should succeed");
+        let state = STATE.lock().unwrap();
+        let initial_loaded_end = state.text_view_loaded_bytes;
+        let initial_offset = state.text_view_window_offset;
+        let total = state.text_view_total_bytes.unwrap();
+        assert_eq!(initial_offset, 0);
+        let _initial_len = state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
+        assert!(state.text_view_has_more);
+        assert!(initial_loaded_end < total);
+        drop(state);
+
+        handle_command(make_command("text_viewer_load_more")).expect("load more should succeed");
+        let state = STATE.lock().unwrap();
+        let after_len = state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
+        assert!(after_len > 0);
+        assert!(after_len <= 150_000);
+        assert_eq!(state.text_view_total_bytes, Some(total));
+        assert!(state.text_view_window_offset > initial_offset);
+        assert!(state.text_view_loaded_bytes > initial_loaded_end);
+        assert!(state.text_view_has_previous);
+        assert!(state.text_view_loaded_bytes - state.text_view_window_offset > 0);
+        assert_eq!(state.text_view_content.as_ref().unwrap().chars().next(), Some('a'));
+    }
+
+    #[test]
+    fn text_viewer_jump_and_prev_work() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        let mut file = NamedTempFile::new().unwrap();
+        let mut block = vec![b'a'; 64_000];
+        block.extend(vec![b'b'; 64_000]);
+        file.write_all(&block).unwrap();
+        file.flush().unwrap();
+
+        let mut cmd = make_command("text_viewer_open");
+        cmd.path = Some(file.path().to_string_lossy().into_owned());
+        handle_command(cmd).expect("text viewer should succeed");
+
+        // Jump to second half
+        let mut jump = make_command("text_viewer_jump");
+        jump.bindings = Some(HashMap::from([("offset_bytes".into(), "64000".into())]));
+        handle_command(jump).expect("jump should succeed");
+        {
+            let state = STATE.lock().unwrap();
+            // If the file is smaller than a window, jump clamps to 0.
+            assert!(state.text_view_window_offset <= 64_000);
+            assert!(state.text_view_content.as_ref().unwrap().starts_with('b')
+                || state
+                    .text_view_content
+                    .as_ref()
+                    .unwrap()
+                    .contains('b'));
+            assert!(state.text_view_has_previous || state.text_view_window_offset == 0);
+        }
+
+        // Load previous should move window back toward start
+        handle_command(make_command("text_viewer_load_prev")).expect("prev should succeed");
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.text_view_window_offset, 0);
+        assert!(state.text_view_content.as_ref().unwrap().starts_with('a'));
     }
 
     #[test]
