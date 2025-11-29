@@ -1002,7 +1002,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::HashPasteReference { reference } => {
             state.push_screen(Screen::Home);
             if let Some(text) = reference {
-                state.hash_reference = Some(text);
+                state.hash_reference = Some(text.clone()); 
                 state.hash_match = None;
                 state.last_error = None;
                 if let Some(hash) = state.last_hash.clone() {
