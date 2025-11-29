@@ -59,7 +59,17 @@ pub fn handle_hash_action(
         Ok(hash) => {
             state.last_hash = Some(hash);
             state.last_error = None;
-            state.hash_match = None;
+            if let Some(reference) = &state.hash_reference {
+                let cleaned_ref = reference.trim().to_ascii_lowercase();
+                let cleaned_hash = state
+                    .last_hash
+                    .as_ref()
+                    .map(|h| h.trim().to_ascii_lowercase())
+                    .unwrap_or_default();
+                state.hash_match = Some(cleaned_ref == cleaned_hash);
+            } else {
+                state.hash_match = None;
+            }
         }
         Err(e) => {
             state.last_error = Some(e);

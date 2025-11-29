@@ -103,6 +103,9 @@ enum Action {
     HashVerifyPaste {
         reference: Option<String>,
     },
+    HashPasteReference {
+        reference: Option<String>,
+    },
     QrGenerate {
         input: Option<String>,
     },
@@ -427,6 +430,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
             reference: bindings.get("hash_reference").cloned(),
         }),
         "hash_verify_paste" => Ok(Action::HashVerifyPaste {
+            reference: bindings
+                .get("clipboard")
+                .cloned()
+                .or_else(|| bindings.get("hash_reference").cloned()),
+        }),
+        "hash_paste_reference" => Ok(Action::HashPasteReference {
             reference: bindings
                 .get("clipboard")
                 .cloned()
@@ -984,6 +993,21 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.hash_match = None;
                 state.last_hash = None;
                 state.last_error = None;
+            } else {
+                state.last_error = Some("clipboard_empty".into());
+            }
+        }
+        Action::HashPasteReference { reference } => {
+            state.push_screen(Screen::Home);
+            if let Some(text) = reference {
+                state.hash_reference = Some(text);
+                state.hash_match = None;
+                state.last_error = None;
+                if let Some(hash) = state.last_hash.clone() {
+                    let cleaned_ref = text.trim().to_ascii_lowercase();
+                    let cleaned_hash = hash.trim().to_ascii_lowercase();
+                    state.hash_match = Some(cleaned_ref == cleaned_hash);
+                }
             } else {
                 state.last_error = Some("clipboard_empty".into());
             }
