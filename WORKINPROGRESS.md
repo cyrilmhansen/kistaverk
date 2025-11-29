@@ -30,7 +30,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - Schema hardening: move UI generation fully to typed builders; expand renderer validation coverage.
 - Snapshot/restore: wire into CI; keep native load mocked in tests.
 - Packaging: verify arm64-only output, clean stale ABIs, track size (`scripts/size_report.sh`).
-- Sensor logger: on-device QA for permissions, GPS intervals, CSV accuracy, TalkBack; plan Foreground Service with status indicator.
+- Sensor logger: on-device QA for permissions, GPS intervals, CSV accuracy, TalkBack; Foreground Service with status indicator now in place.
 - Text viewer roadmap: WebView search bar via `findAllAsync` instead of Rust re-render; polish chunked pagination UX (progress, keyboard focus).
 - PDF UX: add 3x3 placement grid and thumbnail overlay preview for signature positioning.
 - Outputs: offer ACTION_CREATE_DOCUMENT “Save As” for PDF/image results; keep power-user directory control.

@@ -28,7 +28,7 @@ use features::{render_menu, Feature};
 use ui::{
     Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Compass as UiCompass,
     DepsList as UiDepsList, Progress as UiProgress, Text as UiText, Barometer as UiBarometer,
-    Magnetometer as UiMagnetometer,
+    Magnetometer as UiMagnetometer, Warning as UiWarning,
 };
 
 use jni::objects::{JClass, JString};
@@ -1574,6 +1574,15 @@ fn render_sensor_logger_screen(state: &AppState) -> Value {
             serde_json::to_value(UiText::new(&format!("Status: {}", status)).size(12.0)).unwrap(),
         );
     }
+    if state.sensor_status.as_deref() == Some("logging") {
+        children.push(
+            serde_json::to_value(
+                UiWarning::new("Logging continues in a foreground service.")
+                    .content_description("sensor_logger_foreground_status"),
+            )
+            .unwrap(),
+        );
+    }
     if let Some(err) = &state.last_error {
         children.push(
             serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
@@ -2468,6 +2477,22 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.last_sensor_log.as_deref(), Some("/tmp/sensors.csv"));
         assert_eq!(state.sensor_status.as_deref(), Some("logging"));
+    }
+
+    #[test]
+    fn sensor_logger_foreground_indicator_shown_when_logging() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        handle_command(make_command("sensor_logger_screen")).unwrap();
+        let mut status = make_command("sensor_logger_status");
+        status.bindings = Some(HashMap::from([
+            ("sensor_status".into(), "logging".into()),
+            ("sensor_path".into(), "/tmp/sensors.csv".into()),
+        ]));
+
+        let ui = handle_command(status).expect("status command should succeed");
+        assert_contains_text(&ui, "foreground service");
     }
 
     #[test]

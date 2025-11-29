@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
+import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -174,7 +175,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @VisibleForTesting
-    internal fun handlePickerResultForTest(
+    fun handlePickerResultForTest(
         action: String?,
         uri: Uri?,
         bindings: Map<String, String>
@@ -707,13 +708,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val skipNativeLoad = System.getProperty("kistaverk.skipNativeLoad") == "true"
+
     private fun refreshUi(
         action: String,
         extras: Map<String, Any?> = emptyMap(),
         bindings: Map<String, String> = emptyMap(),
         loadingOnly: Boolean = false
     ) {
-        lifecycleScope.launch {
+        val task = {
             val mergedBindings = bindings.toMutableMap()
             readClipboardText()?.let { clip ->
                 mergedBindings.putIfAbsent("clipboard", clip)
@@ -721,7 +724,6 @@ class MainActivity : ComponentActivity() {
             val command = JSONObject().apply {
                 put("action", action)
                 extras.forEach { (k, v) ->
-                    // JSONObject handles proper escaping; null maps to JSON null
                     put(k, v)
                 }
                 if (mergedBindings.isNotEmpty()) {
@@ -734,13 +736,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val newUiJson = withContext(Dispatchers.IO) {
-                dispatch(command.toString())
-            }
+            val newUiJson = dispatch(command.toString())
 
             if (loadingOnly) {
                 showOverlay(command.optString("action", "Working..."))
-                return@launch
+                return@task
             }
 
             val rootView = runCatching { renderer.render(newUiJson) }
@@ -755,6 +755,16 @@ class MainActivity : ComponentActivity() {
 
             cacheLastResult(newUiJson)
             updateSensorSubscriptions(newUiJson)
+        }
+
+        if (skipNativeLoad) {
+            task()
+        } else {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    task()
+                }
+            }
         }
     }
 
@@ -792,7 +802,15 @@ class MainActivity : ComponentActivity() {
     private fun openFdForUri(uri: Uri): Int? {
         return try {
             contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                pfd.detachFd().takeIf { it >= 0 }
+                val detached: Int? = runCatching { pfd.detachFd() }.getOrNull()?.takeIf { it >= 0 }
+                val fallback: Int? = pfd.fileDescriptor?.let { fd ->
+                    runCatching {
+                        val descriptor = FileDescriptor::class.java.getDeclaredField("descriptor")
+                        descriptor.isAccessible = true
+                        descriptor.getInt(fd)
+                    }.getOrNull()?.takeIf { it >= 0 }
+                }
+                detached ?: fallback
             }
         } catch (_: Exception) {
             null
@@ -1043,6 +1061,7 @@ class MainActivity : ComponentActivity() {
         logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
         refreshUi("sensor_logger_start", bindings = bindings)
         refreshUi("sensor_logger_status", bindings = statusBindings)
+        SensorLoggerService.start(this, logFile?.name)
     }
 
     private fun stopSensorLogging() {
@@ -1064,6 +1083,7 @@ class MainActivity : ComponentActivity() {
         bindings["sensor_status"] = "stopped"
         logFile?.absolutePath?.let { bindings["sensor_path"] = it }
         refreshUi("sensor_logger_status", bindings = bindings)
+        SensorLoggerService.stop(this)
     }
 
     private fun shareLastLog() {
