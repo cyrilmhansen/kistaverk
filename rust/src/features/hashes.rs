@@ -19,6 +19,25 @@ pub enum HashAlgo {
     Blake3,
 }
 
+pub fn hash_label(algo: HashAlgo) -> &'static str {
+    match algo {
+        HashAlgo::Sha256 => "SHA-256",
+        HashAlgo::Sha1 => "SHA-1",
+        HashAlgo::Md5 => "MD5",
+        HashAlgo::Md4 => "MD4",
+        HashAlgo::Crc32 => "CRC32",
+        HashAlgo::Blake3 => "BLAKE3",
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HashVerifyResult {
+    pub reference: String,
+    pub computed: String,
+    pub matches: bool,
+    pub algo: HashAlgo,
+}
+
 pub fn handle_hash_action(
     state: &mut AppState,
     fd: Option<i32>,
@@ -40,10 +59,50 @@ pub fn handle_hash_action(
         Ok(hash) => {
             state.last_hash = Some(hash);
             state.last_error = None;
+            state.hash_match = None;
         }
         Err(e) => {
             state.last_error = Some(e);
             state.last_hash = None;
+            state.hash_match = None;
+        }
+    }
+}
+
+pub fn handle_hash_verify(
+    state: &mut AppState,
+    fd: Option<i32>,
+    path: Option<&str>,
+    reference: &str,
+    algo: HashAlgo,
+) {
+    let source = match fd {
+        Some(raw) if raw >= 0 => Some(HashSource::RawFd(raw as RawFd)),
+        _ => path.map(HashSource::Path),
+    };
+
+    let Some(source) = source else {
+        state.last_error = Some("missing_path".into());
+        state.last_hash = None;
+        state.hash_match = None;
+        return;
+    };
+
+    match compute_hash(source, algo) {
+        Ok(hash) => {
+            let cleaned_ref = reference.trim().to_ascii_lowercase();
+            let cleaned_hash = hash.trim().to_ascii_lowercase();
+            let matches = cleaned_ref == cleaned_hash;
+            state.hash_reference = Some(reference.to_string());
+            state.last_hash = Some(hash.clone());
+            state.last_hash_algo = Some(hash_label(algo).into());
+            state.hash_match = Some(matches);
+            state.last_error = None;
+        }
+        Err(e) => {
+            state.last_error = Some(e);
+            state.last_hash = None;
+            state.hash_match = None;
         }
     }
 }

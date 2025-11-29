@@ -9,6 +9,7 @@ pub enum Screen {
     Home,
     ShaderDemo,
     KotlinImage,
+    HashVerify,
     FileInfo,
     TextTools,
     Loading,
@@ -33,6 +34,8 @@ pub struct AppState {
     pub last_error: Option<String>,
     pub last_shader: Option<String>,
     pub last_hash_algo: Option<String>,
+    pub hash_reference: Option<String>,
+    pub hash_match: Option<bool>,
     pub image: KotlinImageState,
     pub last_file_info: Option<String>,
     pub text_input: Option<String>,
@@ -82,6 +85,8 @@ impl AppState {
             last_error: None,
             last_shader: None,
             last_hash_algo: None,
+            hash_reference: None,
+            hash_match: None,
             image: KotlinImageState::new(),
             last_file_info: None,
             text_input: None,
@@ -173,6 +178,8 @@ impl AppState {
         self.last_error = None;
         self.last_shader = None;
         self.last_hash_algo = None;
+        self.hash_reference = None;
+        self.hash_match = None;
         self.image.reset();
         self.last_file_info = None;
         self.text_input = None;
