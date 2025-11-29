@@ -10,8 +10,8 @@ Keep this file short and actionable. Update it at the end of each session.
 - PDFs: Signature overlay uses `PdfSignPlacement` tap targets with normalized coords; signatures append to existing page content (no new pages). Temp outputs now prefer source directory (or Downloads/cache for SAF content) with `_modified_YYMMDDhhmm.pdf` suffix. SignaturePad disables parent scroll during draw.
 - Save As: UI now offers “Save as…” for PDF/image outputs via ACTION_CREATE_DOCUMENT; Android copies the existing file into a user-chosen location.
 - Text viewer binary guardrails: sniff first 4KB for binary/unsupported content; show hex preview and “Load anyway” instead of loading full file. Text loads still capped at 256KB.
-- Compass: new AGSL RuntimeShader widget + demo screen (heading buttons) wired through DSL/renderer; falls back to simple dial pre-API33. Tests cover renderer validation.
  - Compass: single GLSL/GLSurfaceView implementation; driven by Kotlin sensors with throttled sync back to Rust; Rust state stores last angle/error for snapshots.
+ - Barometer/Magnetometer: GLSL widgets fed by sensors with throttled Rust sync; error surfaced when sensors unavailable.
 - DSL: Section/Card grouping widgets added to the DSL and renderer; menu now uses them for quick access and category grouping.
 
 ## Immediate Focus
@@ -24,7 +24,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - Text viewer: add binary/huge file detection and streamed/hex fallback to avoid OOM on logs/binaries.
 - DSL grouping: add renderer tests for Section/Card and apply to more screens as we refactor layouts.
   - Robolectric coverage added for Section/Card validation and rendering.
- - Compass: consider smoothing/filtering of sensor data and exposing calibration/error hints in UI; evaluate batching updates instead of per-angle sync if needed.
+ - Compass/Barometer/Magnetometer: consider smoothing/filtering and exposing calibration/error hints in UI; current sync is throttled to reduce redraw pulses.
 
 ## Near-Term
 - Schema hardening: move UI generation fully to typed builders; expand renderer validation coverage.
