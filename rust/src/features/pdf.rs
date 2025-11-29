@@ -195,6 +195,7 @@ pub struct PdfState {
     pub signature_base64: Option<String>,
     pub signature_width_pt: Option<f64>,
     pub signature_height_pt: Option<f64>,
+    pub signature_grid_selection: Option<(u32, f64, f64)>,
 }
 
 impl PdfState {
@@ -212,6 +213,7 @@ impl PdfState {
             signature_base64: None,
             signature_width_pt: None,
             signature_height_pt: None,
+            signature_grid_selection: None,
         }
     }
 
@@ -228,6 +230,7 @@ impl PdfState {
         self.signature_base64 = None;
         self.signature_width_pt = None;
         self.signature_height_pt = None;
+        self.signature_grid_selection = None;
     }
 }
 
@@ -393,6 +396,67 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             "selected_y_pct": state.pdf.signature_y_pct,
             "content_description": "Signature placement picker"
         }));
+
+        // Compact thumbnail preview with overlay marker; mirrors placement state
+        children.push(json!({
+            "type": "PdfSignPreview",
+            "source_uri": uri,
+            "page_count": count,
+            "selected_page": state.pdf.signature_target_page.unwrap_or(1),
+            "bind_key_page": "pdf_signature_page",
+            "bind_key_x_pct": "pdf_signature_x_pct",
+            "bind_key_y_pct": "pdf_signature_y_pct",
+            "selected_x_pct": state.pdf.signature_x_pct,
+            "selected_y_pct": state.pdf.signature_y_pct,
+            "content_description": "Signature preview thumbnail"
+        }));
+
+        // Quick placement grid (3x3 preset normalized coords)
+        let grid_positions: [(&str, f64, f64); 9] = [
+            ("↖ Top-left", 0.1, 0.1),
+            ("↑ Top", 0.5, 0.1),
+            ("↗ Top-right", 0.9, 0.1),
+            ("← Left", 0.1, 0.5),
+            ("· Center", 0.5, 0.5),
+            ("→ Right", 0.9, 0.5),
+            ("↙ Bottom-left", 0.1, 0.9),
+            ("↓ Bottom", 0.5, 0.9),
+            ("↘ Bottom-right", 0.9, 0.9),
+        ];
+        let mut grid_children: Vec<Value> = Vec::new();
+        for (label, x, y) in grid_positions {
+            grid_children.push(json!({
+                "type": "Button",
+                "text": label,
+                "action": "pdf_sign_grid",
+                "id": format!("pdf_sign_grid_{}_{}", (x*100.0) as u32, (y*100.0) as u32),
+                "content_description": "pdf_sign_grid_button",
+                "requires_file_picker": false,
+                "payload": {
+                    "pdf_signature_page": state.pdf.signature_target_page.unwrap_or(1),
+                    "pdf_signature_x_pct": x,
+                    "pdf_signature_y_pct": y
+                }
+            }));
+        }
+        children.push(
+            serde_json::to_value(
+                UiColumn::new(vec![
+                    serde_json::to_value(
+                        UiText::new("Quick placement").size(13.0).content_description("pdf_sign_grid_label"),
+                    )
+                    .unwrap(),
+                    json!({
+                        "type": "Grid",
+                        "columns": 3,
+                        "padding": 4,
+                        "children": grid_children
+                    })
+                ])
+                .padding(8),
+            )
+            .unwrap(),
+        );
     }
 
     if let Some(out) = &state.pdf.last_output {
