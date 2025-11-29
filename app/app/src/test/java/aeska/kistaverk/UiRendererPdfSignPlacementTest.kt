@@ -67,7 +67,7 @@ class UiRendererPdfSignPlacementTest {
         val next = controls.getChildAt(4) as Button
         next.performClick()
 
-        // At least one callback should have been captured (initial bind or click)
-        assertTrue(recorded.isNotEmpty())
+        val label = controls.getChildAt(2) as android.widget.TextView
+        assertTrue(label.text.toString().contains("Page 2"))
     }
 }

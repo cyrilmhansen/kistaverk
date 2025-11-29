@@ -1,6 +1,8 @@
 package aeska.kistaverk
 
+import android.view.ViewGroup
 import android.webkit.WebView
+import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -37,9 +39,10 @@ class UiRendererCodeViewTest {
     fun codeViewMissingTextFailsValidation() {
         val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
         val ui = """{ "type": "CodeView", "language": "rust" }"""
-        val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
-        val title = view.getChildAt(0) as TextView
-        val msg = view.getChildAt(1) as TextView
+        val scroll = TestViews.unwrap(renderer.render(ui)) as ScrollView
+        val root = scroll.getChildAt(0) as LinearLayout
+        val title = root.getChildAt(0) as TextView
+        val msg = root.getChildAt(1) as TextView
         assertTrue(title.text.toString().contains("Render error"))
         assertTrue(msg.text.toString().contains("CodeView missing text"))
     }
