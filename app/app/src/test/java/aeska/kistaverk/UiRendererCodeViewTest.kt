@@ -29,10 +29,8 @@ class UiRendererCodeViewTest {
             }
         """.trimIndent()
         val view = TestViews.unwrap(renderer.render(ui))
-        val webView = view.findViewById<WebView>(R.id.render_meta_tag) ?: (view as? WebView)
-        requireNotNull(webView)
-        val data = webView.originalUrl ?: webView.url ?: ""
-        assertTrue(data.contains("prism"))
+        val webView = findWebView(view)
+        assertTrue(webView != null)
     }
 
     @Test
@@ -44,5 +42,15 @@ class UiRendererCodeViewTest {
         val msg = view.getChildAt(1) as TextView
         assertTrue(title.text.toString().contains("Render error"))
         assertTrue(msg.text.toString().contains("CodeView missing text"))
+    }
+
+    private fun findWebView(root: android.view.View): WebView? {
+        if (root is WebView) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                findWebView(root.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
     }
 }

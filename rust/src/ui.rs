@@ -149,6 +149,7 @@ impl<'a> Column<'a> {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 pub struct Grid<'a> {
     #[serde(rename = "type")]
@@ -162,6 +163,7 @@ pub struct Grid<'a> {
     pub content_description: Option<&'a str>,
 }
 
+#[allow(dead_code)]
 impl<'a> Grid<'a> {
     pub fn new(children: Vec<serde_json::Value>) -> Self {
         Self {
