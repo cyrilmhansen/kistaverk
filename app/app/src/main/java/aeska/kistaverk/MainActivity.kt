@@ -520,6 +520,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleTextFind(action: String, bindings: Map<String, String>) {
+        val direction = when (action) {
+            "text_viewer_find_next" -> "next"
+            "text_viewer_find_prev" -> "prev"
+            else -> null
+        }
+        val query = when (action) {
+            "text_viewer_find_clear" -> ""
+            else -> bindings["find_query"].orEmpty()
+        }
+        renderer.performTextFind(query, direction)
+        // Sync to Rust without forcing a re-render
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cmd = JSONObject().apply {
+                put("action", "text_viewer_find")
+                val b = JSONObject()
+                b.put("find_query", query)
+                direction?.let { b.put("find_direction", it) }
+                put("bindings", b)
+            }
+            dispatch(cmd.toString())
+        }
+    }
+
     private val pickDirLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -614,6 +638,10 @@ class MainActivity : ComponentActivity() {
             }
             if (action == "sensor_logger_stop") {
                 stopSensorLogging()
+                return@UiRenderer
+            }
+            if (action == "text_viewer_find_submit" || action == "text_viewer_find_next" || action == "text_viewer_find_prev" || action == "text_viewer_find_clear") {
+                handleTextFind(action, bindings)
                 return@UiRenderer
             }
             if (action == "barometer_screen") {

@@ -178,6 +178,10 @@ enum Action {
     TextViewerToggleTheme,
     TextViewerToggleLineNumbers,
     TextViewerLoadAnyway,
+    TextViewerFind {
+        query: Option<String>,
+        direction: Option<String>,
+    },
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -316,6 +320,26 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
         "text_viewer_toggle_line_numbers" => Ok(Action::TextViewerToggleLineNumbers),
         "text_viewer_load_anyway" => Ok(Action::TextViewerLoadAnyway),
+        "text_viewer_find" => Ok(Action::TextViewerFind {
+            query: bindings.get("find_query").cloned(),
+            direction: bindings.get("find_direction").cloned(),
+        }),
+        "text_viewer_find_submit" => Ok(Action::TextViewerFind {
+            query: bindings.get("find_query").cloned(),
+            direction: None,
+        }),
+        "text_viewer_find_next" => Ok(Action::TextViewerFind {
+            query: bindings.get("find_query").cloned(),
+            direction: Some("next".into()),
+        }),
+        "text_viewer_find_prev" => Ok(Action::TextViewerFind {
+            query: bindings.get("find_query").cloned(),
+            direction: Some("prev".into()),
+        }),
+        "text_viewer_find_clear" => Ok(Action::TextViewerFind {
+            query: Some(String::new()),
+            direction: None,
+        }),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
@@ -918,6 +942,27 @@ fn handle_command(command: Command) -> Result<Value, String> {
             }
             state.replace_current(Screen::TextViewer);
         }
+    Action::TextViewerFind { query, direction } => {
+        if let Some(q) = query {
+            let trimmed = q.trim();
+            if trimmed.is_empty() {
+                state.text_view_find_query = None;
+                state.text_view_find_match = Some("Cleared search".into());
+            } else {
+                state.text_view_find_query = Some(trimmed.to_string());
+                state.text_view_find_match = None;
+            }
+        }
+        if let Some(dir) = direction {
+            state.text_view_find_match = Some(match dir.as_str() {
+                "next" => "Searching next match",
+                "prev" => "Searching previous match",
+                _ => "Searching",
+            }
+            .into());
+        }
+        state.replace_current(Screen::TextViewer);
+    }
         Action::SensorLoggerScreen => {
             state.push_screen(Screen::SensorLogger);
         }
@@ -1504,6 +1549,53 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
             serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
         );
     }
+
+    // Find bar
+    children.push(
+        serde_json::to_value(
+            UiColumn::new(vec![
+                serde_json::to_value(UiText::new("Find in text").size(14.0)).unwrap(),
+                serde_json::to_value(
+                    UiColumn::new(vec![
+                        json!({
+                            "type": "TextInput",
+                            "bind_key": "find_query",
+                            "text": state
+                                .text_view_find_query
+                                .as_deref()
+                                .unwrap_or(""),
+                            "hint": "Enter search term",
+                            "action_on_submit": "text_viewer_find_submit",
+                            "single_line": true
+                        }),
+                        json!({
+                            "type": "Grid",
+                            "columns": 3,
+                            "children": [
+                                { "type": "Button", "text": "Prev", "action": "text_viewer_find_prev", "id": "find_prev", "content_description": "find_prev" },
+                                { "type": "Button", "text": "Next", "action": "text_viewer_find_next", "id": "find_next", "content_description": "find_next" },
+                                { "type": "Button", "text": "Clear", "action": "text_viewer_find_clear", "id": "find_clear", "content_description": "find_clear" }
+                            ]
+                        }),
+                    ])
+                    .padding(4),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    UiText::new(
+                        state
+                            .text_view_find_match
+                            .as_deref()
+                            .unwrap_or("Type a query and tap next/prev."),
+                    )
+                    .size(12.0),
+                )
+                .unwrap(),
+            ])
+            .padding(8),
+        )
+        .unwrap(),
+    );
 
     let theme_label = if state.text_view_dark {
         "Switch to light"

@@ -55,6 +55,8 @@ pub struct AppState {
     pub text_view_language: Option<String>,
     pub text_view_dark: bool,
     pub text_view_line_numbers: bool,
+    pub text_view_find_query: Option<String>,
+    pub text_view_find_match: Option<String>,
     pub archive: ArchiveState,
     pub compass_angle_radians: f64,
     pub compass_error: Option<String>,
@@ -96,6 +98,8 @@ impl AppState {
             text_view_language: None,
             text_view_dark: false,
             text_view_line_numbers: false,
+            text_view_find_query: None,
+            text_view_find_match: None,
             archive: ArchiveState::new(),
             compass_angle_radians: 0.0,
             compass_error: None,
@@ -179,6 +183,8 @@ impl AppState {
         self.text_view_language = None;
         self.text_view_dark = false;
         self.text_view_line_numbers = false;
+        self.text_view_find_query = None;
+        self.text_view_find_match = None;
         self.archive.reset();
         self.compass_angle_radians = 0.0;
         self.compass_error = None;
