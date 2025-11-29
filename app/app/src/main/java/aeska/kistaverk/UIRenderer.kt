@@ -69,6 +69,7 @@ class UiRenderer(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentRoot: View? = null
     private var pooledCodeView: WebView? = null
+    private var lastFindQuery: String = ""
     private val bindings = mutableMapOf<String, String>()
     private val pendingBindingUpdates = mutableMapOf<String, Runnable>()
     private val allowedTypes = setOf(
@@ -590,6 +591,23 @@ class UiRenderer(
         setMeta(webView, "CodeView", resolveNodeId(data))
         pooledCodeView = webView
         return webView
+    }
+
+    fun performTextFind(query: String, direction: String?) {
+        val webView = pooledCodeView ?: return
+        val trimmed = query.trim()
+        if (trimmed != lastFindQuery) {
+            if (trimmed.isEmpty()) {
+                webView.clearMatches()
+            } else {
+                webView.findAllAsync(trimmed)
+            }
+            lastFindQuery = trimmed
+        }
+        when (direction) {
+            "next" -> webView.findNext(true)
+            "prev" -> webView.findNext(false)
+        }
     }
 
     private fun createButton(data: JSONObject, existing: Button?): View {
