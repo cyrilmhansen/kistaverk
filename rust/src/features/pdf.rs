@@ -373,6 +373,16 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     }
 
     // Title editing
+    if let Some(title) = &state.pdf.current_title {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Current title: {}", title))
+                    .size(12.0)
+                    .content_description("pdf_current_title"),
+            )
+            .unwrap(),
+        );
+    }
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_title")
