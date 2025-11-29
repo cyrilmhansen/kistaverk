@@ -21,7 +21,8 @@ class UiRendererDepsListTest {
 
         val root = TestViews.unwrap(renderer.render(ui)) as? ScrollView ?: error("Expected ScrollView root")
         val column = root.getChildAt(0) as? LinearLayout ?: error("Expected Column child")
-        val depsScroll = column.getChildAt(0) as? ScrollView ?: error("Expected ScrollView deps list")
+        val depsContainer = column.getChildAt(0) as? LinearLayout ?: error("Expected deps container")
+        val depsScroll = depsContainer.getChildAt(0) as? ScrollView ?: error("Expected ScrollView deps list")
         val inner = depsScroll.getChildAt(0) as? LinearLayout ?: error("Expected deps list inner layout")
         // Expect at least one entry rendered from generated deps.json; allow empty if asset missing.
         assertTrue(inner.childCount >= 0)

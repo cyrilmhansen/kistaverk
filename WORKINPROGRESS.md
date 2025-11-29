@@ -21,6 +21,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - Rust core: mitigate long-held STATE mutex (queue/channel, parking_lot + timeout) and migrate FDs to OwnedFd to avoid leaks.
 - Text viewer: add binary/huge file detection and streamed/hex fallback to avoid OOM on logs/binaries.
 - DSL grouping: add renderer tests for Section/Card and apply to more screens as we refactor layouts.
+  - Robolectric coverage added for Section/Card validation and rendering.
 
 ## Near-Term
 - Schema hardening: move UI generation fully to typed builders; expand renderer validation coverage.

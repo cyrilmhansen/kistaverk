@@ -23,12 +23,13 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - **Archive viewer**: ZIP listing (capped, truncated flag); text entries are buttons that load into the text viewer.
 - **Color/Text tools/QR/Sensor logger**: Pure-Rust logic with native UI; QR encoded via `qrcode` and shown as base64 image.
 - **Accessibility**: `content_description` propagated on widgets; Back buttons consistent; renderer guardrails prevent crashes on malformed payloads.
+- **Tests**: Rust unit tests cover business logic and JSON builders; Robolectric exercises renderer validation (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card) and navigation/back wiring. Snapshot/restore tested in Kotlin.
 
 ## Assets & Licensing
 - Prism assets (core + minimal languages + line numbers) are bundled into a single `prism-bundle.min.js`; MIT license lives in `app/src/main/assets/prism/PRISM_LICENSE.txt`. Keep asset set small to honor APK budget (<5 MB target).
 
 ## Build & Testing
-- Rust: `cargo test` (panic-catching JNI, typed UI builders). Android: Gradle builds arm64-only, shrink/obfuscate enabled; deps metadata generated to assets for About screen. Robolectric tests validate renderer JSON schema (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList) and should be extended for `CodeView`.
+- Rust: `cargo test` (panic-catching JNI, typed UI builders). Android: Gradle builds arm64-only, shrink/obfuscate enabled; deps metadata generated to assets for About screen. Robolectric tests validate renderer JSON schema (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card).
 
 ## Pending
 - Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads and the new Section/Card nodes.
