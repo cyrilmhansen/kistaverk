@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
-        val action = pendingActionAfterPicker
+        var action = pendingActionAfterPicker
         val bindings = pendingBindingsAfterPicker
         pendingActionAfterPicker = null
         pendingBindingsAfterPicker = emptyMap()
@@ -156,6 +156,11 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             extras["path"] = uri.toString()
+        }
+
+        if (action == "text_viewer_screen") {
+            // File picker from menu should directly open the file in the viewer.
+            action = "text_viewer_open"
         }
 
         dispatchWithOptionalLoading(

@@ -57,6 +57,11 @@ pub struct AppState {
     pub text_view_line_numbers: bool,
     pub text_view_find_query: Option<String>,
     pub text_view_find_match: Option<String>,
+    pub text_view_total_bytes: Option<u64>,
+    pub text_view_loaded_bytes: u64,
+    pub text_view_has_more: bool,
+    pub text_view_window_offset: u64,
+    pub text_view_has_previous: bool,
     pub archive: ArchiveState,
     pub compass_angle_radians: f64,
     pub compass_error: Option<String>,
@@ -100,6 +105,11 @@ impl AppState {
             text_view_line_numbers: false,
             text_view_find_query: None,
             text_view_find_match: None,
+            text_view_total_bytes: None,
+            text_view_loaded_bytes: 0,
+            text_view_has_more: false,
+            text_view_window_offset: 0,
+            text_view_has_previous: false,
             archive: ArchiveState::new(),
             compass_angle_radians: 0.0,
             compass_error: None,
@@ -185,6 +195,11 @@ impl AppState {
         self.text_view_line_numbers = false;
         self.text_view_find_query = None;
         self.text_view_find_match = None;
+        self.text_view_total_bytes = None;
+        self.text_view_loaded_bytes = 0;
+        self.text_view_has_more = false;
+        self.text_view_window_offset = 0;
+        self.text_view_has_previous = false;
         self.archive.reset();
         self.compass_angle_radians = 0.0;
         self.compass_error = None;
