@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
+use tempfile::NamedTempFile;
 
 const MAX_BYTES: usize = 256 * 1024; // 256 KiB cap to avoid memory bloat for generic reads
 pub const CHUNK_BYTES: usize = 128 * 1024; // chunk size for incremental loads
@@ -132,10 +133,26 @@ pub fn guess_language_from_path(path: &str) -> Option<String> {
 }
 
 pub fn load_text_from_fd(state: &mut AppState, fd: RawFd, path: Option<&str>) {
-    let file = unsafe { File::from_raw_fd(fd) };
+    let mut file = unsafe { File::from_raw_fd(fd) };
     let total_bytes = file.metadata().ok().map(|m| m.len());
     state.text_view_language = path.and_then(guess_language_from_path);
-    handle_text_chunk(state, file, path, total_bytes, 0, false, path.is_some());
+
+    let use_temp = path.is_none() || path.map(|p| p.starts_with("content://")).unwrap_or(false);
+    if use_temp {
+        match copy_fd_to_temp(&mut file) {
+            Ok(temp_path) => {
+                state.text_view_cached_path = Some(temp_path.clone());
+                handle_text_from_path(state, &temp_path, path.or(Some(temp_path.as_str())), 0, false, true);
+            }
+            Err(e) => {
+                state.text_view_error = Some(e);
+                state.text_view_content = None;
+            }
+        }
+    } else {
+        state.text_view_cached_path = None;
+        handle_text_chunk(state, file, path, total_bytes, 0, false, path.is_some());
+    }
 }
 
 pub fn load_text_from_path(state: &mut AppState, path: &str) {
@@ -149,36 +166,20 @@ pub fn load_text_from_path_at_offset(
     force_text: bool,
 ) {
     // Window reads re-open the file each time to keep memory bounded.
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(e) => {
-            state.text_view_error = Some(format!("open_failed:{e}"));
-            state.text_view_content = None;
-            state.text_view_path = Some(path.to_string());
-            state.text_view_has_more = false;
-            state.text_view_has_previous = false;
-            return;
-        }
-    };
-
-    let total_bytes = file.metadata().ok().map(|m| m.len());
     if offset > 0 {
-        if let Err(e) = file.seek(SeekFrom::Start(offset)) {
-            state.text_view_error = Some(format!("seek_failed:{e}"));
-            state.text_view_has_more = false;
-            return;
+        match File::open(path)
+            .and_then(|mut f| f.seek(SeekFrom::Start(offset)).map(|_| ()))
+        {
+            Ok(_) => {}
+            Err(e) => {
+                state.text_view_error = Some(format!("seek_failed:{e}"));
+                state.text_view_has_more = false;
+                return;
+            }
         }
     }
 
-    handle_text_chunk(
-        state,
-        file,
-        Some(path),
-        total_bytes,
-        offset,
-        force_text,
-        true,
-    );
+    handle_text_from_path(state, path, Some(path), offset, force_text, true);
 }
 
 pub fn load_more_text(state: &mut AppState) {
@@ -196,7 +197,8 @@ pub fn load_more_text(state: &mut AppState) {
     let offset = state
         .text_view_window_offset
         .saturating_add(CHUNK_BYTES as u64);
-    load_text_from_path_at_offset(state, &path, offset, true);
+    let effective = effective_path(state, &path);
+    load_text_from_path_at_offset(state, &effective, offset, true);
 }
 
 pub fn load_prev_text(state: &mut AppState) {
@@ -210,7 +212,37 @@ pub fn load_prev_text(state: &mut AppState) {
     let offset = state
         .text_view_window_offset
         .saturating_sub(CHUNK_BYTES as u64);
-    load_text_from_path_at_offset(state, &path, offset, true);
+    let effective = effective_path(state, &path);
+    load_text_from_path_at_offset(state, &effective, offset, true);
+}
+
+fn handle_text_from_path(
+    state: &mut AppState,
+    path_for_read: &str,
+    display_path: Option<&str>,
+    offset: u64,
+    force_text: bool,
+    can_page: bool,
+) {
+    let file = match File::open(path_for_read) {
+        Ok(f) => f,
+        Err(e) => {
+            state.text_view_error = Some(format!("open_failed:{e}"));
+            state.text_view_has_more = false;
+            state.text_view_has_previous = offset > 0;
+            return;
+        }
+    };
+    let total_bytes = file.metadata().ok().map(|m| m.len());
+    handle_text_chunk(
+        state,
+        file,
+        display_path,
+        total_bytes,
+        offset,
+        force_text,
+        can_page,
+    );
 }
 
 fn handle_text_chunk<R: Read>(
@@ -270,4 +302,25 @@ fn handle_text_chunk<R: Read>(
         state.text_view_path = Some(p.to_string());
         state.text_view_language = guess_language_from_path(p);
     }
+}
+
+fn effective_path(state: &AppState, primary: &str) -> String {
+    state
+        .text_view_cached_path
+        .clone()
+        .unwrap_or_else(|| primary.to_string())
+}
+
+fn copy_fd_to_temp(file: &mut File) -> Result<String, String> {
+    let mut tmp = NamedTempFile::new().map_err(|e| format!("open_failed:{e}"))?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("seek_failed:{e}"))?;
+    std::io::copy(file, &mut tmp).map_err(|e| format!("copy_failed:{e}"))?;
+    let path = tmp
+        .into_temp_path()
+        .keep()
+        .map_err(|e| format!("temp_keep_failed:{e}"))?;
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "temp_path_invalid_utf8".to_string())
 }

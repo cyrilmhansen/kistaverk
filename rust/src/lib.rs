@@ -926,6 +926,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.text_view_has_more = false;
             state.text_view_window_offset = 0;
             state.text_view_has_previous = false;
+            state.text_view_cached_path = None;
         }
         Action::TextViewerOpen { fd, path, error } => {
             state.push_screen(Screen::TextViewer);
@@ -937,6 +938,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.text_view_has_more = false;
             state.text_view_window_offset = 0;
             state.text_view_has_previous = false;
+            state.text_view_cached_path = None;
             let mut fd_handle = FdHandle::new(fd);
             if error.is_some() {
                 state.text_view_content = None;
@@ -965,7 +967,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
             // Clear hex preview and reload last path as text.
             state.text_view_hex_preview = None;
             if let Some(path) = state.text_view_path.clone() {
-                load_text_from_path_at_offset(&mut state, &path, 0, true);
+                let effective = state
+                    .text_view_cached_path
+                    .clone()
+                    .unwrap_or(path.clone());
+                load_text_from_path_at_offset(&mut state, &effective, 0, true);
             } else {
                 state.text_view_error = Some("nothing_to_reload".into());
                 state.text_view_content = None;
@@ -983,6 +989,10 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::TextViewerJump { offset } => {
             let target = offset.unwrap_or(0);
             if let Some(path) = state.text_view_path.clone() {
+                let effective = state
+                    .text_view_cached_path
+                    .clone()
+                    .unwrap_or(path.clone());
                 let clamped = state
                     .text_view_total_bytes
                     .map(|total| {
@@ -991,7 +1001,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                         target.min(max_offset)
                     })
                     .unwrap_or(target);
-                load_text_from_path_at_offset(&mut state, &path, clamped, true);
+                load_text_from_path_at_offset(&mut state, &effective, clamped, true);
             } else {
                 state.text_view_error = Some("missing_path".into());
             }
