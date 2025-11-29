@@ -58,9 +58,11 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         })
         .collect();
     if !quick_buttons.is_empty() {
-        let quick = UiCard::new(vec![serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()])
-            .title("⚡ Quick access")
-            .padding(12);
+        let quick = UiCard::new(vec![
+            serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()
+        ])
+        .title("⚡ Quick access")
+        .padding(12);
         children.push(serde_json::to_value(quick).unwrap());
     }
 
@@ -91,12 +93,8 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             })
             .collect();
         section_children.push(
-            serde_json::to_value(
-                UiColumn::new(list)
-                    .padding(4)
-                    .content_description(category),
-            )
-            .unwrap(),
+            serde_json::to_value(UiColumn::new(list).padding(4).content_description(category))
+                .unwrap(),
         );
 
         let subtitle = format!("{} tools", feats.len());
