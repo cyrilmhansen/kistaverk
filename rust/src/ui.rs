@@ -149,6 +149,123 @@ impl<'a> Column<'a> {
     }
 }
 
+#[derive(Serialize)]
+pub struct Section<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub children: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub padding: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Section<'a> {
+    pub fn new(children: Vec<serde_json::Value>) -> Self {
+        Self {
+            kind: "Section",
+            children,
+            title: None,
+            subtitle: None,
+            icon: None,
+            padding: None,
+            content_description: None,
+        }
+    }
+
+    pub fn title(mut self, title: &'a str) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn subtitle(mut self, subtitle: &'a str) -> Self {
+        self.subtitle = Some(subtitle);
+        self
+    }
+
+    pub fn icon(mut self, icon: &'a str) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn padding(mut self, padding: u32) -> Self {
+        self.padding = Some(padding);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
+pub struct Card<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub children: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub padding: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Card<'a> {
+    pub fn new(children: Vec<serde_json::Value>) -> Self {
+        Self {
+            kind: "Card",
+            children,
+            title: None,
+            subtitle: None,
+            icon: None,
+            padding: None,
+            content_description: None,
+        }
+    }
+
+    pub fn title(mut self, title: &'a str) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn subtitle(mut self, subtitle: &'a str) -> Self {
+        self.subtitle = Some(subtitle);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn icon(mut self, icon: &'a str) -> Self {
+        self.icon = Some(icon);
+        self
+    }
+
+    pub fn padding(mut self, padding: u32) -> Self {
+        self.padding = Some(padding);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Serialize)]
 pub struct Grid<'a> {

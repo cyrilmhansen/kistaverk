@@ -3,8 +3,8 @@
 This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over JSON.
 
 ## Stack & Responsibilities
-- **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). JNI entry catches panics.
-- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView. Renderer validates required fields and falls back to an inline error screen on schema issues.
+- **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). Typed DSL now includes grouping containers (Section/Card) for better readability. JNI entry catches panics.
+- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView. Renderer validates required fields and falls back to an inline error screen on schema issues.
 - **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls.
 
 ## Navigation
@@ -31,9 +31,9 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - Rust: `cargo test` (panic-catching JNI, typed UI builders). Android: Gradle builds arm64-only, shrink/obfuscate enabled; deps metadata generated to assets for About screen. Robolectric tests validate renderer JSON schema (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList) and should be extended for `CodeView`.
 
 ## Pending
-- Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads.
+- Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads and the new Section/Card nodes.
 - On-device QA: text viewer (large files, binary/UTF-8 errors, TalkBack), sensor logger permissions/CSV, size audits via `scripts/size_report.sh`.
-- UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls, DSL grouping widget.
+- UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls.
 
 ## Known Risks (short)
 - Global Rust `STATE` mutex can block long ops; consider queue/timeout; watch for poison on panic.
