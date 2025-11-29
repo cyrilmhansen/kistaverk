@@ -4,7 +4,7 @@ mod ui;
 use features::archive::{handle_archive_open, render_archive_screen};
 use features::color_tools::{handle_color_action, render_color_screen};
 use features::file_info::{file_info_from_fd, file_info_from_path};
-use features::hashes::{handle_hash_action, HashAlgo};
+use features::hashes::{handle_hash_action, handle_hash_verify, HashAlgo};
 use features::kotlin_image::{
     handle_output_dir as handle_kotlin_image_output_dir,
     handle_resize_screen as handle_kotlin_image_resize_screen,
@@ -93,6 +93,12 @@ enum Action {
     KotlinImageOutputDir {
         target: Option<ImageTarget>,
         output_dir: Option<String>,
+    },
+    HashVerifyScreen,
+    HashVerify {
+        path: Option<String>,
+        fd: Option<i32>,
+        reference: Option<String>,
     },
     QrGenerate {
         input: Option<String>,
@@ -410,6 +416,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
             fd,
             error,
             loading_only,
+        }),
+        "hash_verify_screen" => Ok(Action::HashVerifyScreen),
+        "hash_verify" => Ok(Action::HashVerify {
+            path,
+            fd,
+            reference: bindings.get("hash_reference").cloned(),
         }),
         "hash_file_sha1" => Ok(Action::Hash {
             algo: HashAlgo::Sha1,
@@ -928,6 +940,34 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.pdf.signature_y_pct = Some(y_pct);
             state.pdf.signature_grid_selection = Some((page, x_pct, y_pct));
         }
+        Action::HashVerifyScreen => {
+            state.push_screen(Screen::HashVerify);
+            state.hash_reference = None;
+            state.hash_match = None;
+            state.last_hash = None;
+            state.last_hash_algo = Some("SHA-256".into());
+        }
+        Action::HashVerify { path, fd, reference } => {
+            let mut fd_handle = FdHandle::new(fd);
+            state.push_screen(Screen::HashVerify);
+            if let Some(err) = reference.as_ref().filter(|s| s.trim().is_empty()).map(|_| "reference_empty".to_string()) {
+                state.last_error = Some(err);
+                state.hash_match = None;
+            } else {
+                let algo = HashAlgo::Sha256;
+                if let Some(err) = reference.clone().is_none().then(|| "missing_reference".to_string()) {
+                    state.last_error = Some(err);
+                } else {
+                    handle_hash_verify(
+                        &mut state,
+                        fd_handle.take(),
+                        path.as_deref(),
+                        reference.as_deref().unwrap(),
+                        algo,
+                    );
+                }
+            }
+        }
         Action::PdfSignatureStore { data } => {
             state.pdf.signature_base64 = data;
             state.pdf.signature_width_pt = None;
@@ -1282,6 +1322,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Home => render_menu(state, &feature_catalog()),
         Screen::ShaderDemo => render_shader_screen(state),
         Screen::KotlinImage => render_kotlin_image_screen(state),
+        Screen::HashVerify => render_hash_verify_screen(state),
         Screen::FileInfo => render_file_info_screen(state),
         Screen::TextTools => render_text_tools_screen(state),
         Screen::Loading => render_loading_screen(state),
@@ -1351,6 +1392,66 @@ fn render_file_info_screen(state: &AppState) -> Value {
                 }
             }
         }
+    }
+
+    maybe_push_back(&mut children, state);
+
+    json!({
+        "type": "Column",
+        "padding": 24,
+        "children": children
+    })
+}
+
+fn render_hash_verify_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Hash verify (SHA-256)").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Paste a reference hash, then pick a file to verify.").size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            crate::ui::TextInput::new("hash_reference")
+                .hint("Reference hash")
+                .text(state.hash_reference.as_deref().unwrap_or_default())
+                .single_line(true),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiButton::new("Pick file and verify", "hash_verify")
+                .requires_file_picker(true)
+                .id("hash_verify_btn"),
+        )
+        .unwrap(),
+    ];
+
+    if let Some(matches) = state.hash_match {
+        let status = if matches { "Match ✅" } else { "Mismatch ❌" };
+        children.push(
+            serde_json::to_value(UiText::new(status).size(14.0).content_description("hash_verify_status"))
+                .unwrap(),
+        );
+    }
+    if let Some(hash) = &state.last_hash {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!(
+                    "{}: {}",
+                    state
+                        .last_hash_algo
+                        .clone()
+                        .unwrap_or_else(|| "SHA-256".into()),
+                    hash
+                ))
+                .size(12.0),
+            )
+            .unwrap(),
+        );
+    }
+    if let Some(err) = &state.last_error {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+        );
     }
 
     maybe_push_back(&mut children, state);
@@ -1903,6 +2004,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_file_sha256",
             requires_file_picker: true,
             description: "secure hash",
+        },
+        Feature {
+            id: "hash_verify",
+            name: "✅ Verify hash",
+            category: "🔐 Hashes",
+            action: "hash_verify_screen",
+            requires_file_picker: false,
+            description: "compare to reference",
         },
         Feature {
             id: "hash_sha1",
