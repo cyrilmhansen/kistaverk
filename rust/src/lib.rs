@@ -103,6 +103,7 @@ enum Action {
     HashVerifyPaste {
         reference: Option<String>,
     },
+    HashQrFromLast,
     HashPasteReference {
         reference: Option<String>,
     },
@@ -441,6 +442,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
                 .cloned()
                 .or_else(|| bindings.get("hash_reference").cloned()),
         }),
+        "hash_qr_last" => Ok(Action::HashQrFromLast),
         "hash_file_sha1" => Ok(Action::Hash {
             algo: HashAlgo::Sha1,
             path,
@@ -1010,6 +1012,16 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 }
             } else {
                 state.last_error = Some("clipboard_empty".into());
+            }
+        }
+        Action::HashQrFromLast => {
+            if let Some(hash) = state.last_hash.clone() {
+                state.push_screen(Screen::Qr);
+                if let Err(e) = handle_qr_action(&mut state, &hash) {
+                    state.last_error = Some(e);
+                }
+            } else {
+                state.last_error = Some("no_hash_available".into());
             }
         }
         Action::PdfSignatureStore { data } => {

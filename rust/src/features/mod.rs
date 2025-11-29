@@ -140,6 +140,13 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             )
             .unwrap(),
         );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Show QR for last hash", "hash_qr_last")
+                    .id("hash_qr_last_btn"),
+            )
+            .unwrap(),
+        );
         if let Some(matches) = state.hash_match {
             let status = if matches {
                 "Reference match ✅"
