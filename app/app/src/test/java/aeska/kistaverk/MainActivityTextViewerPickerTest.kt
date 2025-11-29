@@ -10,7 +10,9 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.Shadows.shadowOf
 import java.io.File
+import android.os.Looper
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], shadows = [ShadowSystemLoadLibrary::class, ShadowMainActivity::class])
@@ -39,6 +41,7 @@ class MainActivityTextViewerPickerTest {
         val activity = controller.get()
 
         val handled = activity.handlePickerResultForTest("text_viewer_screen", uri, emptyMap())
+        shadowOf(Looper.getMainLooper()).idle()
         assertTrue("Picker result should be handled", handled)
         assertTrue(
             "Picker should dispatch text_viewer_open after selection",

@@ -23,6 +23,7 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - **Archive viewer**: ZIP listing (capped, truncated flag); text entries are buttons that load into the text viewer.
 - **Color/Text tools/QR/Sensor logger**: Pure-Rust logic with native UI; QR encoded via `qrcode` and shown as base64 image.
 - **Accessibility**: `content_description` propagated on widgets; Back buttons consistent; renderer guardrails prevent crashes on malformed payloads.
+- **Sensor logger**: Foreground Service now keeps logging alive with a persistent notification, and the UI surface warns/status indicator while logging so TalkBack users know it’s running.
 - **Tests**: Rust unit tests cover business logic and JSON builders; Robolectric exercises renderer validation (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card/Compass/Barometer/Magnetometer) and navigation/back wiring. Snapshot/restore tested in Kotlin. Sensor widgets use GLSurfaceView GLSL; RuntimeShader avoided for broader device support.
 
 ## Assets & Licensing
