@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
+use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
 const MAX_BYTES: usize = 256 * 1024; // 256 KiB cap to avoid memory bloat for generic reads
@@ -312,15 +313,58 @@ fn effective_path(state: &AppState, primary: &str) -> String {
 }
 
 fn copy_fd_to_temp(file: &mut File) -> Result<String, String> {
-    let mut tmp = NamedTempFile::new().map_err(|e| format!("open_failed:{e}"))?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("seek_failed:{e}"))?;
-    std::io::copy(file, &mut tmp).map_err(|e| format!("copy_failed:{e}"))?;
-    let path = tmp
-        .into_temp_path()
-        .keep()
-        .map_err(|e| format!("temp_keep_failed:{e}"))?;
-    path.to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "temp_path_invalid_utf8".to_string())
+    // Try app-writable temp locations before falling back to std temp.
+    let candidates = temp_dirs();
+    let mut last_err = None;
+
+    for dir in candidates {
+        match std::fs::create_dir_all(&dir) {
+            Ok(_) => {}
+            Err(e) => {
+                last_err = Some(format!("temp_dir_create_failed:{e}"));
+                continue;
+            }
+        }
+        match NamedTempFile::new_in(&dir) {
+            Ok(mut tmp) => {
+                if let Err(e) = file.seek(SeekFrom::Start(0)) {
+                    last_err = Some(format!("seek_failed:{e}"));
+                    continue;
+                }
+                if let Err(e) = std::io::copy(file, &mut tmp) {
+                    last_err = Some(format!("copy_failed:{e}"));
+                    continue;
+                }
+                match tmp.into_temp_path().keep() {
+                    Ok(path) => {
+                        if let Some(p) = path.to_str() {
+                            return Ok(p.to_string());
+                        } else {
+                            last_err = Some("temp_path_invalid_utf8".into());
+                        }
+                    }
+                    Err(e) => {
+                        last_err = Some(format!("temp_keep_failed:{e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                last_err = Some(format!("open_failed:{e}"));
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| "temp_unavailable".into()))
+}
+
+fn temp_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![std::env::temp_dir()];
+    let pkg_dirs = [
+        "/data/data/aeska.kistaverk/cache",
+        "/data/user/0/aeska.kistaverk/cache",
+    ];
+    for d in pkg_dirs {
+        dirs.push(Path::new(d).to_path_buf());
+    }
+    dirs
 }

@@ -1666,6 +1666,7 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
                 json!({
                     "type": "Grid",
                     "columns": 2,
+                    "padding": 4,
                     "children": [
                         { "type": "Button", "text": "Load previous", "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
                         { "type": "Button", "text": "Load next", "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
@@ -1678,23 +1679,27 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
 
     children.push(
         serde_json::to_value(
-            UiColumn::new(vec![
-                json!({
-                    "type": "TextInput",
-                    "bind_key": "offset_bytes",
-                    "hint": "Byte offset (0 = start)",
-                    "text": state.text_view_window_offset.to_string(),
-                    "single_line": true,
-                    "action_on_submit": "text_viewer_jump"
-                }),
-                json!({
-                    "type": "Button",
-                    "text": "Jump to offset",
-                    "action": "text_viewer_jump",
-                    "content_description": "text_viewer_jump"
-                })
-            ])
-            .padding(4),
+            json!({
+                "type": "Grid",
+                "columns": 2,
+                "padding": 4,
+                "children": [
+                    {
+                        "type": "TextInput",
+                        "bind_key": "offset_bytes",
+                        "hint": "Byte offset (0 = start)",
+                        "text": state.text_view_window_offset.to_string(),
+                        "single_line": true,
+                        "action_on_submit": "text_viewer_jump"
+                    },
+                    {
+                        "type": "Button",
+                        "text": "Jump",
+                        "action": "text_viewer_jump",
+                        "content_description": "text_viewer_jump"
+                    }
+                ]
+            })
         )
         .unwrap(),
     );
