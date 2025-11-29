@@ -23,7 +23,8 @@ use features::text_viewer::{guess_language_from_path, load_text_from_fd, load_te
 use features::{render_menu, Feature};
 use ui::{
     Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Compass as UiCompass,
-    DepsList as UiDepsList, Progress as UiProgress, Text as UiText,
+    DepsList as UiDepsList, Progress as UiProgress, Text as UiText, Barometer as UiBarometer,
+    Magnetometer as UiMagnetometer,
 };
 
 use jni::objects::{JClass, JString};
@@ -203,6 +204,16 @@ enum Action {
     CompassDemo,
     CompassSet {
         angle_radians: f64,
+        error: Option<String>,
+    },
+    BarometerScreen,
+    BarometerSet {
+        hpa: f64,
+        error: Option<String>,
+    },
+    MagnetometerScreen,
+    MagnetometerSet {
+        magnitude_ut: f64,
         error: Option<String>,
     },
 }
@@ -418,6 +429,16 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "compass_demo" => Ok(Action::CompassDemo),
         "compass_set" => Ok(Action::CompassSet {
             angle_radians: angle_radians.unwrap_or(0.0),
+            error,
+        }),
+        "barometer_screen" => Ok(Action::BarometerScreen),
+        "barometer_set" => Ok(Action::BarometerSet {
+            hpa: angle_radians.unwrap_or(0.0),
+            error,
+        }),
+        "magnetometer_screen" => Ok(Action::MagnetometerScreen),
+        "magnetometer_set" => Ok(Action::MagnetometerSet {
+            magnitude_ut: angle_radians.unwrap_or(0.0),
             error,
         }),
         other => {
@@ -664,6 +685,29 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.compass_error = error;
             if matches!(state.current_screen(), Screen::Compass) {
                 state.replace_current(Screen::Compass);
+            }
+        }
+        Action::BarometerScreen => {
+            state.push_screen(Screen::Barometer);
+        }
+        Action::BarometerSet { hpa, error } => {
+            state.barometer_hpa = Some(hpa);
+            state.barometer_error = error;
+            if matches!(state.current_screen(), Screen::Barometer) {
+                state.replace_current(Screen::Barometer);
+            }
+        }
+        Action::MagnetometerScreen => {
+            state.push_screen(Screen::Magnetometer);
+        }
+        Action::MagnetometerSet {
+            magnitude_ut,
+            error,
+        } => {
+            state.magnetometer_ut = Some(magnitude_ut);
+            state.magnetometer_error = error;
+            if matches!(state.current_screen(), Screen::Magnetometer) {
+                state.replace_current(Screen::Magnetometer);
             }
         }
         Action::PdfToolsScreen => {
@@ -1109,6 +1153,8 @@ fn render_ui(state: &AppState) -> Value {
         Screen::TextViewer => render_text_viewer_screen(state),
         Screen::ArchiveTools => render_archive_screen(state),
         Screen::Compass => render_compass_screen(state),
+        Screen::Barometer => render_barometer_screen(state),
+        Screen::Magnetometer => render_magnetometer_screen(state),
     }
 }
 
@@ -1238,6 +1284,59 @@ fn render_compass_screen(state: &AppState) -> Value {
             .size(12.0),
         )
         .unwrap(),
+    ];
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+}
+
+fn render_barometer_screen(state: &AppState) -> Value {
+    let reading = state.barometer_hpa.map(|v| format!("{:.1} hPa", v));
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Barometer").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new(
+                state
+                    .barometer_error
+                    .as_deref()
+                    .unwrap_or("Live pressure readout from the device barometer (if present)."),
+            )
+            .size(12.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new(
+                reading
+                    .as_deref()
+                    .unwrap_or("Waiting for sensor..."),
+            )
+            .size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(UiBarometer::new(state.barometer_hpa.unwrap_or(0.0))).unwrap(),
+    ];
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+}
+
+fn render_magnetometer_screen(state: &AppState) -> Value {
+    let reading = state
+        .magnetometer_ut
+        .map(|v| format!("{:.1} µT", v))
+        .unwrap_or_else(|| "Waiting for sensor...".into());
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Magnetometer").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new(
+                state
+                    .magnetometer_error
+                    .as_deref()
+                    .unwrap_or("Live magnetic field strength (device sensor)."),
+            )
+            .size(12.0),
+        )
+        .unwrap(),
+        serde_json::to_value(UiText::new(&reading).size(14.0)).unwrap(),
+        serde_json::to_value(UiMagnetometer::new(state.magnetometer_ut.unwrap_or(0.0))).unwrap(),
     ];
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
@@ -1629,6 +1728,22 @@ fn feature_catalog() -> Vec<Feature> {
             action: "compass_demo",
             requires_file_picker: false,
             description: "Sensor-driven dial",
+        },
+        Feature {
+            id: "barometer",
+            name: "🌡️ Barometer",
+            category: "🧪 Experiments",
+            action: "barometer_screen",
+            requires_file_picker: false,
+            description: "Pressure sensor",
+        },
+        Feature {
+            id: "magnetometer",
+            name: "🧲 Magnetometer",
+            category: "🧪 Experiments",
+            action: "magnetometer_screen",
+            requires_file_picker: false,
+            description: "Field strength",
         },
         Feature {
             id: "text_tools",

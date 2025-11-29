@@ -21,6 +21,8 @@ pub enum Screen {
     TextViewer,
     ArchiveTools,
     Compass,
+    Barometer,
+    Magnetometer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,10 @@ pub struct AppState {
     pub archive: ArchiveState,
     pub compass_angle_radians: f64,
     pub compass_error: Option<String>,
+    pub barometer_hpa: Option<f64>,
+    pub barometer_error: Option<String>,
+    pub magnetometer_ut: Option<f64>,
+    pub magnetometer_error: Option<String>,
 }
 
 impl AppState {
@@ -93,6 +99,10 @@ impl AppState {
             archive: ArchiveState::new(),
             compass_angle_radians: 0.0,
             compass_error: None,
+            barometer_hpa: None,
+            barometer_error: None,
+            magnetometer_ut: None,
+            magnetometer_error: None,
         }
     }
 
@@ -172,5 +182,9 @@ impl AppState {
         self.archive.reset();
         self.compass_angle_radians = 0.0;
         self.compass_error = None;
+        self.barometer_hpa = None;
+        self.barometer_error = None;
+        self.magnetometer_ut = None;
+        self.magnetometer_error = None;
     }
 }

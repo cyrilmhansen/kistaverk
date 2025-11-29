@@ -565,6 +565,56 @@ impl<'a> Compass<'a> {
 }
 
 #[derive(Serialize)]
+pub struct Barometer<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub hpa: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Barometer<'a> {
+    pub fn new(hpa: f64) -> Self {
+        Self {
+            kind: "Barometer",
+            hpa,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
+pub struct Magnetometer<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub magnitude_ut: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> Magnetometer<'a> {
+    pub fn new(magnitude_ut: f64) -> Self {
+        Self {
+            kind: "Magnetometer",
+            magnitude_ut,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
 pub struct DepsList<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
