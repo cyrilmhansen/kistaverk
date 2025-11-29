@@ -1987,6 +1987,22 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
         );
     }
 
+    if state.text_view_total_bytes.is_some() || state.text_view_loaded_bytes > 0 {
+        let total = state
+            .text_view_total_bytes
+            .map(|v| format!(" / {} bytes", v))
+            .unwrap_or_else(|| " / ?".into());
+        let loaded = state.text_view_loaded_bytes;
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Loaded: {}{}", loaded, total))
+                    .size(12.0)
+                    .content_description("text_viewer_progress"),
+            )
+            .unwrap(),
+        );
+    }
+
     if let Some(hex) = &state.text_view_hex_preview {
         children.push(
             serde_json::to_value(
