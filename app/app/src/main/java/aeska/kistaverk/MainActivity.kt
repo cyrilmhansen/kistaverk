@@ -318,7 +318,7 @@ class MainActivity : ComponentActivity() {
         if (rotationSensor == null && (accelSensor == null || magSensor == null)) {
             if (!compassUnavailable) {
                 compassUnavailable = true
-                refreshUi("compass_set", extras = mapOf("angle_radians" to 0.0, "error" to "Compass sensors unavailable"))
+                sendSensorUpdate("compass_set", extras = mapOf("angle_radians" to 0.0, "error" to "Compass sensors unavailable"))
             }
             return
         }
@@ -387,10 +387,9 @@ class MainActivity : ComponentActivity() {
         }
         lastCompassRadians = normalized
         // Update the on-screen dial immediately by reusing the last rendered JSON (lightweight)
-        refreshUi(
+        sendSensorUpdate(
             "compass_set",
-            extras = mapOf("angle_radians" to normalized.toDouble()),
-            loadingOnly = false
+            extras = mapOf("angle_radians" to normalized.toDouble(), "error" to JSONObject.NULL)
         )
         lastCompassDispatchTs = now
     }
@@ -420,7 +419,7 @@ class MainActivity : ComponentActivity() {
                 ?.getDefaultSensor(Sensor.TYPE_PRESSURE)
         }
         val sensor = barometerSensor ?: run {
-            refreshUi("barometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Barometer unavailable"))
+            sendSensorUpdate("barometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Barometer unavailable"))
             return
         }
         val thread = HandlerThread("BarometerListener")
@@ -433,7 +432,7 @@ class MainActivity : ComponentActivity() {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - lastBarometerDispatch < 300) return
                 lastBarometerDispatch = now
-                refreshUi("barometer_set", extras = mapOf("angle_radians" to hpa, "error" to JSONObject.NULL))
+                sendSensorUpdate("barometer_set", extras = mapOf("angle_radians" to hpa, "error" to JSONObject.NULL))
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -460,7 +459,7 @@ class MainActivity : ComponentActivity() {
                 ?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
         }
         val sensor = magnetometerSensor ?: run {
-            refreshUi("magnetometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Magnetometer unavailable"))
+            sendSensorUpdate("magnetometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Magnetometer unavailable"))
             return
         }
         val thread = HandlerThread("MagnetometerListener")
@@ -475,7 +474,7 @@ class MainActivity : ComponentActivity() {
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - lastMagnetometerDispatch < 300) return
                 lastMagnetometerDispatch = now
-                refreshUi("magnetometer_set", extras = mapOf("angle_radians" to mag, "error" to JSONObject.NULL))
+                sendSensorUpdate("magnetometer_set", extras = mapOf("angle_radians" to mag, "error" to JSONObject.NULL))
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -507,6 +506,18 @@ class MainActivity : ComponentActivity() {
             return false
         }
         return walk(root)
+    }
+
+    private fun sendSensorUpdate(action: String, extras: Map<String, Any?>) {
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                val command = JSONObject().apply {
+                    put("action", action)
+                    extras.forEach { (k, v) -> put(k, v) }
+                }
+                dispatch(command.toString())
+            }
+        }
     }
 
     private val pickDirLauncher = registerForActivityResult(
