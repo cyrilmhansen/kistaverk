@@ -2055,6 +2055,14 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
             code = code.language(lang_str);
         }
         children.push(serde_json::to_value(code).unwrap());
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Copy visible text", "noop")
+                    .copy_text(content)
+                    .id("copy_visible_text"),
+            )
+            .unwrap(),
+        );
     }
 
     if state.text_view_has_more {
