@@ -1987,6 +1987,17 @@ fn render_text_viewer_screen(state: &AppState) -> Value {
         );
     }
 
+    if let Some(lang) = state.text_view_language.as_deref() {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Language: {}", lang))
+                    .size(12.0)
+                    .content_description("text_viewer_language"),
+            )
+            .unwrap(),
+        );
+    }
+
     if state.text_view_total_bytes.is_some() || state.text_view_loaded_bytes > 0 {
         let total = state
             .text_view_total_bytes

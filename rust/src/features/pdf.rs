@@ -349,6 +349,18 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             )
             .unwrap(),
         );
+        let selected_len = state.pdf.selected_pages.len();
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!(
+                    "Selected pages: {} / {}",
+                    selected_len, count
+                ))
+                .size(12.0)
+                .content_description("pdf_selected_summary"),
+            )
+            .unwrap(),
+        );
 
         children.push(
             serde_json::to_value(
