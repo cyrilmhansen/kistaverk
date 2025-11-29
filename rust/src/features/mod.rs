@@ -164,6 +164,27 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         }
     }
 
+    if let Some(status) = &state.sensor_status {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Sensor logger: {}", status))
+                    .size(12.0)
+                    .content_description("sensor_logger_status_home"),
+            )
+            .unwrap(),
+        );
+    }
+    if let Some(path) = &state.last_sensor_log {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Last log: {}", path))
+                    .size(12.0)
+                    .content_description("sensor_logger_path_home"),
+            )
+            .unwrap(),
+        );
+    }
+
     if let Some(err) = &state.last_error {
         children.push(
             serde_json::to_value(
