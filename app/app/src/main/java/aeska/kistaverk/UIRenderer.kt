@@ -15,6 +15,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.os.Handler
+import android.os.Looper
 import android.util.Base64
 import android.view.View
 import android.view.MotionEvent
@@ -62,9 +64,11 @@ class UiRenderer(
             FrameLayout.LayoutParams.MATCH_PARENT
         )
     }
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var currentRoot: View? = null
     private var pooledCodeView: WebView? = null
     private val bindings = mutableMapOf<String, String>()
+    private val pendingBindingUpdates = mutableMapOf<String, Runnable>()
     private val allowedTypes = setOf(
         "Column",
         "Section",
@@ -261,6 +265,8 @@ class UiRenderer(
     private fun createColumn(data: JSONObject, existing: LinearLayout?): View {
         val layout = existing ?: LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         layout.orientation = LinearLayout.VERTICAL
+        val focusedInput = layout.findFocus() as? EditText
+        val selection = focusedInput?.selectionStart ?: -1
         val padding = data.optInt("padding", 0)
         layout.setPadding(padding, padding, padding, padding)
         val contentDescription = data.optString("content_description", "")
@@ -280,6 +286,14 @@ class UiRenderer(
         }
         layout.removeAllViews()
         newChildren.forEach { layout.addView(it) }
+        if (focusedInput != null && focusedInput.parent != null) {
+            focusedInput.requestFocus()
+            if (selection >= 0) {
+                val len = focusedInput.text?.length ?: 0
+                val pos = selection.coerceAtMost(len)
+                focusedInput.setSelection(pos)
+            }
+        }
         setMeta(layout, "Column", resolveNodeId(data))
         return layout
     }
@@ -319,6 +333,8 @@ class UiRenderer(
     ): View {
         val layout = existing ?: LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         layout.orientation = LinearLayout.VERTICAL
+        val focusedInput = layout.findFocus() as? EditText
+        val selection = focusedInput?.selectionStart ?: -1
         val padPx = dpToPx(context, data.optInt("padding", 12).toFloat())
         layout.setPadding(padPx, padPx, padPx, padPx)
         layout.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
@@ -352,6 +368,14 @@ class UiRenderer(
         layout.removeAllViews()
         buildHeaderView(data)?.let { layout.addView(it) }
         newChildren.forEach { layout.addView(it) }
+        if (focusedInput != null && focusedInput.parent != null) {
+            focusedInput.requestFocus()
+            if (selection >= 0) {
+                val len = focusedInput.text?.length ?: 0
+                val pos = selection.coerceAtMost(len)
+                focusedInput.setSelection(pos)
+            }
+        }
         setMeta(layout, type, resolveNodeId(data))
         return layout
     }
@@ -527,6 +551,7 @@ class UiRenderer(
         val copyText = data.optString("copy_text", "")
 
         btn.setOnClickListener {
+            flushPendingBindings()
             if (copyText.isNotEmpty()) {
                 copyToClipboard(copyText)
             }
@@ -571,7 +596,7 @@ class UiRenderer(
         if (bindKey.isNotEmpty() && editText.getTag(bindKeyTag) != bindKey) {
             editText.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
-                    bindings[bindKey] = s?.toString().orEmpty()
+                    scheduleBindingUpdate(bindKey, s?.toString().orEmpty())
                 }
 
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -585,12 +610,23 @@ class UiRenderer(
             editText.setOnEditorActionListener { _, actionId, _ ->
                 val isDone = actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_NULL
                 if (isDone) {
+                    flushPendingBindings()
                     onAction(submitAction, false, bindings.toMap())
                 }
                 isDone
             }
         } else {
             editText.setOnEditorActionListener(null)
+        }
+        if (bindKey.isNotEmpty()) {
+            editText.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+                if (!hasFocus) {
+                    scheduleBindingUpdate(bindKey, editText.text?.toString().orEmpty())
+                    flushPendingBindings()
+                }
+            }
+        } else {
+            editText.onFocusChangeListener = null
         }
         setMeta(editText, "TextInput", resolveNodeId(data))
         return editText
@@ -671,6 +707,7 @@ class UiRenderer(
         if (bindKey.isNotEmpty()) {
             checkBox.setOnCheckedChangeListener { _, isChecked ->
                 bindings[bindKey] = isChecked.toString()
+                flushPendingBindings()
                 if (actionName.isNotEmpty()) {
                     onAction(actionName, needsFilePicker, bindings.toMap())
                 }
@@ -1292,6 +1329,26 @@ class UiRenderer(
                     ?: data.optString("content_description", "").takeIf { it.isNotBlank() }
             "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"
             else -> null
+        }
+    }
+
+    private fun scheduleBindingUpdate(bindKey: String, value: String) {
+        pendingBindingUpdates.remove(bindKey)?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            bindings[bindKey] = value
+            pendingBindingUpdates.remove(bindKey)
+        }
+        pendingBindingUpdates[bindKey] = runnable
+        mainHandler.postDelayed(runnable, 120)
+    }
+
+    private fun flushPendingBindings() {
+        if (pendingBindingUpdates.isEmpty()) return
+        val pending = pendingBindingUpdates.toMap()
+        pendingBindingUpdates.clear()
+        pending.values.forEach { runnable ->
+            mainHandler.removeCallbacks(runnable)
+            runnable.run()
         }
     }
 
