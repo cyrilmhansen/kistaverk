@@ -100,6 +100,9 @@ enum Action {
         fd: Option<i32>,
         reference: Option<String>,
     },
+    HashVerifyPaste {
+        reference: Option<String>,
+    },
     QrGenerate {
         input: Option<String>,
     },
@@ -422,6 +425,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
             path,
             fd,
             reference: bindings.get("hash_reference").cloned(),
+        }),
+        "hash_verify_paste" => Ok(Action::HashVerifyPaste {
+            reference: bindings
+                .get("clipboard")
+                .cloned()
+                .or_else(|| bindings.get("hash_reference").cloned()),
         }),
         "hash_file_sha1" => Ok(Action::Hash {
             algo: HashAlgo::Sha1,
@@ -968,6 +977,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 }
             }
         }
+        Action::HashVerifyPaste { reference } => {
+            state.push_screen(Screen::HashVerify);
+            if let Some(text) = reference {
+                state.hash_reference = Some(text);
+                state.hash_match = None;
+                state.last_hash = None;
+                state.last_error = None;
+            } else {
+                state.last_error = Some("clipboard_empty".into());
+            }
+        }
         Action::PdfSignatureStore { data } => {
             state.pdf.signature_base64 = data;
             state.pdf.signature_width_pt = None;
@@ -1411,6 +1431,12 @@ fn render_hash_verify_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
+            UiButton::new("Paste from clipboard", "hash_verify_paste")
+                .id("hash_verify_paste")
+                .content_description("hash_verify_paste"),
+        )
+        .unwrap(),
+        serde_json::to_value(
             crate::ui::TextInput::new("hash_reference")
                 .hint("Reference hash")
                 .text(state.hash_reference.as_deref().unwrap_or_default())
@@ -1444,6 +1470,12 @@ fn render_hash_verify_screen(state: &AppState) -> Value {
                     hash
                 ))
                 .size(12.0),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Copy computed hash", "hash_verify_copy").copy_text(hash),
             )
             .unwrap(),
         );
