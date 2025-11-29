@@ -45,6 +45,8 @@ import android.widget.HorizontalScrollView
 import org.json.JSONObject
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.cos
+import kotlin.math.sin
 
 // Added 'onAction' callback: (String, Boolean) -> Unit where the boolean flags file picker needs
 class UiRenderer(
@@ -87,7 +89,8 @@ class UiRenderer(
         "PdfSignPlacement",
         "DepsList"
         ,
-        "CodeView"
+        "CodeView",
+        "Compass"
     )
 
     fun render(jsonString: String): View {
@@ -199,6 +202,7 @@ class UiRenderer(
             "PdfSignPlacement" -> createPdfSignPlacement(data, matched as? SignPlacementView)
             "DepsList" -> createDepsList(data, matched as? LinearLayout)
             "CodeView" -> createCodeView(data, matched as? WebView)
+            "Compass" -> createCompass(data, matched)
             "" -> createErrorView("Missing type")
             else -> createErrorView("Unknown: $type")
         }
@@ -249,6 +253,9 @@ class UiRenderer(
         }
         if (type == "CodeView" && !node.has("text")) {
             return "CodeView missing text"
+        }
+        if (type == "Compass" && !node.has("angle_radians")) {
+            return "Compass missing angle_radians"
         }
         if (type == "Grid" || type == "Column" || type == "Section" || type == "Card") {
             val children = node.optJSONArray("children") ?: return "$type missing children"
@@ -465,6 +472,20 @@ class UiRenderer(
         val cd = data.optString("content_description", "")
         view.contentDescription = cd.takeIf { it.isNotEmpty() }
         setMeta(view, "ColorSwatch", resolveNodeId(data))
+        return view
+    }
+
+    private fun createCompass(data: JSONObject, existing: View?): View {
+        val angle = data.optDouble("angle_radians", 0.0).toFloat()
+        val cd = data.optString("content_description", "").takeIf { it.isNotBlank() }
+        val size = dpToPx(context, 280f)
+
+        val glView = existing as? CompassGLView ?: CompassGLView(context)
+        glView.layoutParams = LayoutParams(size, size)
+        glView.contentDescription = cd
+        glView.setAngle(angle)
+        val view: View = glView
+        setMeta(view, "Compass", resolveNodeId(data))
         return view
     }
 
@@ -1327,6 +1348,7 @@ class UiRenderer(
             "Section", "Card" ->
                 data.optString("title", "").takeIf { it.isNotBlank() }
                     ?: data.optString("content_description", "").takeIf { it.isNotBlank() }
+            "Compass" -> data.optString("content_description", "").takeIf { it.isNotBlank() }
             "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"
             else -> null
         }
@@ -1405,6 +1427,90 @@ class UiRenderer(
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
         return if (screenWidthDp < 380) 1 else 2
+    }
+
+    private class CompassGLView(context: Context) : GLSurfaceView(context) {
+        private val renderer = CompassRenderer()
+
+        init {
+            setEGLContextClientVersion(2)
+            setRenderer(renderer)
+            renderMode = RENDERMODE_WHEN_DIRTY
+        }
+
+        fun setAngle(angle: Float) {
+            renderer.setAngle(angle)
+            requestRender()
+        }
+
+        private class CompassRenderer : Renderer {
+            private var program = 0
+            private var resolutionHandle = 0
+            private var angleHandle = 0
+            private var width = 1
+            private var height = 1
+            private var angle = 0f
+
+            override fun onSurfaceCreated(unused: GL10?, config: EGLConfig?) {
+                val vertex = """
+                    attribute vec4 a_position;
+                    void main() { gl_Position = a_position; }
+                """.trimIndent()
+                program = createProgram(vertex, COMPASS_GLSL_FRAGMENT)
+                GLES20.glUseProgram(program)
+                angleHandle = GLES20.glGetUniformLocation(program, "u_angle")
+                resolutionHandle = GLES20.glGetUniformLocation(program, "u_resolution")
+            }
+
+            override fun onSurfaceChanged(unused: GL10?, width: Int, height: Int) {
+                this.width = width
+                this.height = height
+                GLES20.glViewport(0, 0, width, height)
+                GLES20.glUniform2f(resolutionHandle, width.toFloat(), height.toFloat())
+            }
+
+            override fun onDrawFrame(unused: GL10?) {
+                GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+                GLES20.glUniform1f(angleHandle, angle)
+                GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+            }
+
+            fun setAngle(value: Float) {
+                angle = value
+            }
+
+            private fun createProgram(vs: String, fs: String): Int {
+                val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vs)
+                val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fs)
+                val program = GLES20.glCreateProgram()
+                GLES20.glAttachShader(program, vertexShader)
+                GLES20.glAttachShader(program, fragmentShader)
+                val positionHandle = 0
+                GLES20.glBindAttribLocation(program, positionHandle, "a_position")
+                GLES20.glLinkProgram(program)
+                GLES20.glUseProgram(program)
+                val verts = floatArrayOf(
+                    -1f, -1f,
+                    1f, -1f,
+                    -1f, 1f,
+                    1f, 1f
+                )
+                val buffer = java.nio.ByteBuffer.allocateDirect(verts.size * 4)
+                    .order(java.nio.ByteOrder.nativeOrder())
+                    .asFloatBuffer()
+                buffer.put(verts).position(0)
+                GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, buffer)
+                GLES20.glEnableVertexAttribArray(positionHandle)
+                return program
+            }
+
+            private fun loadShader(type: Int, code: String): Int {
+                val shader = GLES20.glCreateShader(type)
+                GLES20.glShaderSource(shader, code)
+                GLES20.glCompileShader(shader)
+                return shader
+            }
+        }
     }
 
     private class ShaderToyView(context: Context, fragmentSrc: String) : GLSurfaceView(context) {
@@ -1491,6 +1597,142 @@ class UiRenderer(
                 vec2 uv = gl_FragCoord.xy / u_resolution.xy;
                 vec3 col = 0.5 + 0.5 * cos(u_time*0.2 + uv.xyx + vec3(0.0,2.0,4.0));
                 gl_FragColor = vec4(col, 1.0);
+            }
+        """
+        private const val COMPASS_GLSL_FRAGMENT = """
+            precision mediump float;
+            uniform vec2 u_resolution;
+            uniform float u_angle;
+
+            const float PI = 3.14159265359;
+            const float TWO_PI = 6.28318530718;
+
+            vec2 rotate(vec2 uv, float a) {
+                float s = sin(a);
+                float c = cos(a);
+                return vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
+            }
+
+            float sdCircle(vec2 p, float r) {
+                return length(p) - r;
+            }
+
+            float sdTriangle(vec2 p, float r) {
+                const float k = 1.73205080757;
+                p.x = abs(p.x) - r;
+                p.y = p.y + r / k;
+                if (p.x + k * p.y > 0.0) p = vec2(p.x - k * p.y, -k * p.x - p.y) / 2.0;
+                p.x -= clamp(p.x, -2.0 * r, 0.0);
+                return -length(p) * sign(p.y);
+            }
+
+            float drawTicks(vec2 p, float r, float numTicks, float thick, float len) {
+                float angle = atan(p.y, p.x);
+                float dist = length(p);
+                float tickAngle = TWO_PI / numTicks;
+                float a = mod(angle + (tickAngle/2.0), tickAngle) - (tickAngle/2.0);
+                float mask = step(r - len, dist) * step(dist, r);
+                float w = abs(a) * dist;
+                return (1.0 - smoothstep(0.0, thick, w)) * mask;
+            }
+
+            void main() {
+                vec2 fragCoord = gl_FragCoord.xy;
+                vec2 uv = (fragCoord - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
+                vec3 color = vec3(0.1, 0.12, 0.15);
+                vec2 headerUV = uv;
+                headerUV.y -= 0.38;
+                float pointer = sdTriangle(vec2(headerUV.x, -headerUV.y), 0.03);
+                float pointerFill = 1.0 - smoothstep(0.0, 0.005, pointer);
+                vec2 rotUV = rotate(uv, u_angle);
+                float rotLen = length(rotUV);
+                float circleDist = abs(sdCircle(uv, 0.35));
+                float circleRim = 1.0 - smoothstep(0.002, 0.008, circleDist);
+                float minorTicks = drawTicks(rotUV, 0.33, 36.0, 0.005, 0.03);
+                float majorTicks = drawTicks(rotUV, 0.33, 4.0, 0.015, 0.06);
+                vec2 northUV = rotUV;
+                northUV.y -= 0.25;
+                float northMark = sdTriangle(vec2(northUV.x, -northUV.y), 0.04);
+                float northFill = 1.0 - smoothstep(0.0, 0.005, northMark);
+                color = mix(color, vec3(0.5, 0.8, 1.0), circleRim);
+                color = mix(color, vec3(0.6, 0.6, 0.7), minorTicks);
+                color = mix(color, vec3(1.0, 1.0, 1.0), majorTicks);
+                color = mix(color, vec3(1.0, 0.2, 0.2), northFill);
+                float southDist = sdCircle(rotUV + vec2(0.0, 0.25), 0.015);
+                float southFill = 1.0 - smoothstep(0.0, 0.005, southDist);
+                color = mix(color, vec3(0.2, 0.5, 1.0), southFill);
+                color = mix(color, vec3(1.0, 0.7, 0.0), pointerFill);
+                float glass = smoothstep(0.35, 0.0, rotLen) * 0.2;
+                color += vec3(glass);
+                gl_FragColor = vec4(color, 1.0);
+            }
+        """
+        private const val COMPASS_SHADER = """
+            uniform float2 uResolution;
+            uniform float uAngle;
+            
+            const float PI = 3.14159265359;
+            const float TWO_PI = 6.28318530718;
+            
+            float2 rotate(float2 uv, float a) {
+                float s = sin(a);
+                float c = cos(a);
+                return float2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
+            }
+            
+            float sdCircle(float2 p, float r) {
+                return length(p) - r;
+            }
+            
+            float sdTriangle(float2 p, float r) {
+                const float k = sqrt(3.0);
+                p.x = abs(p.x) - r;
+                p.y = p.y + r / k;
+                if (p.x + k * p.y > 0.0) p = float2(p.x - k * p.y, -k * p.x - p.y) / 2.0;
+                p.x -= clamp(p.x, -2.0 * r, 0.0);
+                return -length(p) * sign(p.y);
+            }
+            
+            float drawTicks(float2 p, float r, float numTicks, float thick, float len) {
+                float angle = atan(p.y, p.x);
+                float dist = length(p);
+                float tickAngle = TWO_PI / numTicks;
+                float a = mod(angle + (tickAngle/2.0), tickAngle) - (tickAngle/2.0);
+                float2 tickPos = float2(cos(a), sin(a)) * dist;
+                float d = abs(dist - r);
+                float mask = step(r - len, dist) * step(dist, r);
+                float w = abs(a) * dist;
+                return (1.0 - smoothstep(0.0, thick, w)) * mask;
+            }
+            
+            half4 main(float2 fragCoord) {
+                float2 uv = (fragCoord - 0.5 * uResolution) / min(uResolution.x, uResolution.y);
+                half3 color = half3(0.1, 0.12, 0.15);
+                float2 headerUV = uv;
+                headerUV.y -= 0.38;
+                float pointer = sdTriangle(float2(headerUV.x, -headerUV.y), 0.03);
+                float pointerFill = 1.0 - smoothstep(0.0, 0.005, pointer);
+                float2 rotUV = rotate(uv, uAngle);
+                float rotLen = length(rotUV);
+                float circleDist = abs(sdCircle(uv, 0.35));
+                float circleRim = 1.0 - smoothstep(0.002, 0.008, circleDist);
+                float minorTicks = drawTicks(rotUV, 0.33, 36.0, 0.005, 0.03);
+                float majorTicks = drawTicks(rotUV, 0.33, 4.0, 0.015, 0.06);
+                float2 northUV = rotUV;
+                northUV.y -= 0.25;
+                float northMark = sdTriangle(float2(northUV.x, -northUV.y), 0.04);
+                float northFill = 1.0 - smoothstep(0.0, 0.005, northMark);
+                color = mix(color, half3(0.5, 0.8, 1.0), circleRim);
+                color = mix(color, half3(0.6, 0.6, 0.7), minorTicks);
+                color = mix(color, half3(1.0, 1.0, 1.0), majorTicks);
+                color = mix(color, half3(1.0, 0.2, 0.2), northFill);
+                float southDist = sdCircle(rotUV + float2(0.0, 0.25), 0.015);
+                float southFill = 1.0 - smoothstep(0.0, 0.005, southDist);
+                color = mix(color, half3(0.2, 0.5, 1.0), southFill);
+                color = mix(color, half3(1.0, 0.7, 0.0), pointerFill);
+                float glass = smoothstep(0.35, 0.0, rotLen) * 0.2;
+                color += half3(glass);
+                return half4(color, 1.0);
             }
         """
     }
