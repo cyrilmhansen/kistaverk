@@ -133,6 +133,28 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
             )
             .unwrap(),
         );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Paste reference (clipboard)", "hash_paste_reference")
+                    .id("hash_paste_reference_btn"),
+            )
+            .unwrap(),
+        );
+        if let Some(matches) = state.hash_match {
+            let status = if matches {
+                "Reference match ✅"
+            } else {
+                "Reference mismatch ❌"
+            };
+            children.push(
+                serde_json::to_value(
+                    UiText::new(status)
+                        .size(12.0)
+                        .content_description("hash_ref_status"),
+                )
+                .unwrap(),
+            );
+        }
     }
 
     if let Some(err) = &state.last_error {
