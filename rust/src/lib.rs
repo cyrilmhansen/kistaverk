@@ -1615,6 +1615,7 @@ fn feature_catalog() -> Vec<Feature> {
 mod tests {
     use super::*;
     use crate::features::sensor_logger::parse_bindings as parse_sensor_bindings;
+    use crate::ui::{Card as UiCard, Section as UiSection, Text as UiText};
     use serde_json::Value;
     use std::collections::HashMap;
     use std::fs::File;
@@ -1678,6 +1679,29 @@ mod tests {
             texts.iter().any(|t| t.contains(needle)),
             "expected UI to contain text with `{needle}`, found: {texts:?}"
         );
+    }
+
+    #[test]
+    fn section_and_card_serialize_with_headers() {
+        let body = vec![serde_json::to_value(UiText::new("Body")).unwrap()];
+        let section = UiSection::new(body.clone())
+            .title("📁 Files")
+            .subtitle("2 tools")
+            .icon("📁")
+            .padding(8);
+        let card = UiCard::new(body)
+            .title("⚡ Quick access")
+            .padding(6);
+
+        let section_val = serde_json::to_value(section).expect("section should serialize");
+        assert_eq!(section_val.get("type"), Some(&Value::String("Section".into())));
+        assert_eq!(section_val.get("title"), Some(&Value::String("📁 Files".into())));
+        assert_eq!(section_val.get("icon"), Some(&Value::String("📁".into())));
+        assert!(section_val.get("children").and_then(|c| c.as_array()).is_some());
+
+        let card_val = serde_json::to_value(card).expect("card should serialize");
+        assert_eq!(card_val.get("type"), Some(&Value::String("Card".into())));
+        assert!(card_val.get("children").and_then(|c| c.as_array()).is_some());
     }
 
     #[test]

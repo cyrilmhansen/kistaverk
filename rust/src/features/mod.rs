@@ -24,7 +24,10 @@ pub struct Feature {
 
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
-    use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
+    use crate::ui::{
+        Button as UiButton, Card as UiCard, Column as UiColumn, Section as UiSection,
+        Text as UiText,
+    };
     use std::collections::BTreeMap;
 
     let mut children = vec![
@@ -55,8 +58,10 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         })
         .collect();
     if !quick_buttons.is_empty() {
-        children.push(serde_json::to_value(UiText::new("Quick access").size(16.0)).unwrap());
-        children.push(serde_json::to_value(UiColumn::new(quick_buttons)).unwrap());
+        let quick = UiCard::new(vec![serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()])
+            .title("⚡ Quick access")
+            .padding(12);
+        children.push(serde_json::to_value(quick).unwrap());
     }
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
@@ -65,9 +70,9 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     }
 
     for (category, feats) in grouped {
-        children.push(serde_json::to_value(UiText::new(category).size(16.0)).unwrap());
+        let mut section_children: Vec<Value> = Vec::new();
         if category.contains("Hash") {
-            children.push(
+            section_children.push(
                 serde_json::to_value(
                     UiText::new("MD5/SHA-1 are legacy. Prefer SHA-256 or BLAKE3.").size(12.0),
                 )
@@ -85,10 +90,26 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
                 .unwrap()
             })
             .collect();
-        children.push(
-            serde_json::to_value(UiColumn::new(list).padding(4).content_description(category))
-                .unwrap(),
+        section_children.push(
+            serde_json::to_value(
+                UiColumn::new(list)
+                    .padding(4)
+                    .content_description(category),
+            )
+            .unwrap(),
         );
+
+        let subtitle = format!("{} tools", feats.len());
+        let mut section = UiSection::new(section_children)
+            .title(category)
+            .subtitle(&subtitle)
+            .padding(12);
+        if let Some(first) = category.split_whitespace().next() {
+            if first.chars().all(|c| !c.is_ascii_alphanumeric()) {
+                section = section.icon(first);
+            }
+        }
+        children.push(serde_json::to_value(section).unwrap());
     }
 
     if let Some(hash) = &state.last_hash {

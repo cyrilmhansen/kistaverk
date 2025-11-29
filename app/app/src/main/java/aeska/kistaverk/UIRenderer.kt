@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.drawable.GradientDrawable
 import android.graphics.pdf.PdfRenderer
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
@@ -66,6 +67,8 @@ class UiRenderer(
     private val bindings = mutableMapOf<String, String>()
     private val allowedTypes = setOf(
         "Column",
+        "Section",
+        "Card",
         "Text",
         "Button",
         "ShaderToy",
@@ -176,6 +179,8 @@ class UiRenderer(
         val matched = if (existing != null && matchesMeta(existing, type, nodeId)) existing else null
         return when (type) {
             "Column" -> createColumn(data, matched as? LinearLayout)
+            "Section" -> createSection(data, matched as? LinearLayout)
+            "Card" -> createCard(data, matched as? LinearLayout)
             "Text" -> createText(data, matched as? TextView)
             "Button" -> createButton(data, matched as? Button)
             "ShaderToy" -> createShaderToy(data, matched as? ShaderToyView)
@@ -199,7 +204,7 @@ class UiRenderer(
         val type = node.optString("type", "")
         if (type.isBlank()) return "Missing type"
         if (!allowedTypes.contains(type)) return "Unknown widget: $type"
-        if ((type == "Column" || type == "Grid") && !node.has("children")) {
+        if ((type == "Column" || type == "Grid" || type == "Section" || type == "Card") && !node.has("children")) {
             return "$type missing children"
         }
         if (type == "ImageBase64" && !node.has("base64")) {
@@ -241,15 +246,8 @@ class UiRenderer(
         if (type == "CodeView" && !node.has("text")) {
             return "CodeView missing text"
         }
-        if (type == "Grid") {
-            val children = node.optJSONArray("children") ?: return "Grid missing children"
-            for (i in 0 until children.length()) {
-                val childErr = validate(children.getJSONObject(i))
-                if (childErr != null) return childErr
-            }
-        }
-        if (type == "Column") {
-            val children = node.optJSONArray("children") ?: return "Column missing children"
+        if (type == "Grid" || type == "Column" || type == "Section" || type == "Card") {
+            val children = node.optJSONArray("children") ?: return "$type missing children"
             for (i in 0 until children.length()) {
                 val childErr = validate(children.getJSONObject(i))
                 if (childErr != null) return childErr
@@ -284,6 +282,111 @@ class UiRenderer(
         newChildren.forEach { layout.addView(it) }
         setMeta(layout, "Column", resolveNodeId(data))
         return layout
+    }
+
+    private fun createSection(data: JSONObject, existing: LinearLayout?): View {
+        return createContainerWithHeader(
+            data = data,
+            existing = existing,
+            type = "Section",
+            backgroundColor = Color.parseColor("#f6f7fb"),
+            strokeColor = Color.parseColor("#e4e7ee"),
+            cornerRadiusDp = 12f,
+            elevationDp = 0f
+        )
+    }
+
+    private fun createCard(data: JSONObject, existing: LinearLayout?): View {
+        return createContainerWithHeader(
+            data = data,
+            existing = existing,
+            type = "Card",
+            backgroundColor = Color.WHITE,
+            strokeColor = Color.parseColor("#dfe3eb"),
+            cornerRadiusDp = 14f,
+            elevationDp = 2f
+        )
+    }
+
+    private fun createContainerWithHeader(
+        data: JSONObject,
+        existing: LinearLayout?,
+        type: String,
+        backgroundColor: Int,
+        strokeColor: Int,
+        cornerRadiusDp: Float,
+        elevationDp: Float
+    ): View {
+        val layout = existing ?: LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        layout.orientation = LinearLayout.VERTICAL
+        val padPx = dpToPx(context, data.optInt("padding", 12).toFloat())
+        layout.setPadding(padPx, padPx, padPx, padPx)
+        layout.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dpToPx(context, 8f)
+            bottomMargin = dpToPx(context, 8f)
+        }
+        val background = GradientDrawable().apply {
+            cornerRadius = dpToPx(context, cornerRadiusDp).toFloat()
+            setColor(backgroundColor)
+            setStroke(dpToPx(context, 1f), strokeColor)
+        }
+        layout.background = background
+        layout.elevation = dpToPx(context, elevationDp).toFloat()
+        val cd = data.optString("content_description", "")
+        layout.contentDescription = cd.takeIf { it.isNotEmpty() }
+
+        val children = data.optJSONArray("children")
+        val newChildren = mutableListOf<View>()
+        if (children != null) {
+            for (i in 0 until children.length()) {
+                val childJson = children.getJSONObject(i)
+                val reuse = existing?.let { findReusableChild(it, childJson) }
+                val childView = createView(childJson, reuse)
+                detachFromParent(childView, layout)
+                newChildren.add(childView)
+            }
+        } else {
+            newChildren.add(createErrorView("$type missing children"))
+        }
+
+        layout.removeAllViews()
+        buildHeaderView(data)?.let { layout.addView(it) }
+        newChildren.forEach { layout.addView(it) }
+        setMeta(layout, type, resolveNodeId(data))
+        return layout
+    }
+
+    private fun buildHeaderView(data: JSONObject): View? {
+        val title = data.optString("title", "").takeIf { it.isNotBlank() } ?: return null
+        val subtitle = data.optString("subtitle", "")
+        val icon = data.optString("icon", "")
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+            setPadding(0, 0, 0, dpToPx(context, 6f))
+        }
+        if (icon.isNotEmpty()) {
+            row.addView(TextView(context).apply {
+                text = icon
+                textSize = 18f
+                setPadding(0, 0, dpToPx(context, 8f), 0)
+            })
+        }
+        val textCol = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        textCol.addView(TextView(context).apply {
+            text = title
+            textSize = 16f
+        })
+        if (subtitle.isNotBlank()) {
+            textCol.addView(TextView(context).apply {
+                text = subtitle
+                textSize = 12f
+                setTextColor(Color.parseColor("#5f6372"))
+            })
+        }
+        row.addView(textCol)
+        return row
     }
 
     private fun createImageBase64(data: JSONObject, existing: LinearLayout?): View {
@@ -1184,6 +1287,9 @@ class UiRenderer(
             "TextInput", "Checkbox", "PdfPagePicker", "SignaturePad", "PdfSignPlacement" ->
                 data.optString("bind_key", "").takeIf { it.isNotBlank() }
             "Button" -> data.optString("action", "").takeIf { it.isNotBlank() }
+            "Section", "Card" ->
+                data.optString("title", "").takeIf { it.isNotBlank() }
+                    ?: data.optString("content_description", "").takeIf { it.isNotBlank() }
             "CodeView" -> data.optString("content_description", "").takeIf { it.isNotBlank() } ?: "code_view"
             else -> null
         }
