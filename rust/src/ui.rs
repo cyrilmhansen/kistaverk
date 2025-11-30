@@ -1,4 +1,6 @@
 use serde::Serialize;
+use serde_json::{json, Value};
+use crate::state::AppState;
 
 #[derive(Serialize)]
 pub struct Text<'a> {
@@ -703,4 +705,72 @@ impl<'a> CodeView<'a> {
         self.content_description = Some(cd);
         self
     }
+}
+
+pub fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
+    if state.nav_depth() > 1 {
+        children.push(json!({
+            "type": "Button",
+            "text": "Back",
+            "action": "back"
+        }));
+    }
+}
+
+pub fn format_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    if bytes as f64 >= MB {
+        format!("{:.1} MB", bytes as f64 / MB)
+    } else if bytes as f64 >= KB {
+        format!("{:.1} KB", bytes as f64 / KB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+pub fn render_multi_hash_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(Text::new("Multi-Hash Calculator").size(20.0)).unwrap(),
+        serde_json::to_value(Text::new("Select a file to compute MD5, SHA-1, SHA-256, and BLAKE3 hashes.").size(14.0)).unwrap(),
+        json!({
+            "type": "Button",
+            "text": "Pick File to Hash",
+            "action": "hash_all", // New action for multi-hash
+            "requires_file_picker": true,
+            "id": "pick_file_to_hash_btn",
+            "content_description": "Pick a file to compute multiple hashes"
+        }),
+    ];
+
+    if let Some(err) = &state.multi_hash_error {
+        children.push(
+            serde_json::to_value(Text::new(&format!("Error: {}", err)).size(14.0)).unwrap(),
+        );
+    }
+
+    if let Some(results) = &state.multi_hash_results {
+        children.push(
+            serde_json::to_value(Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0)).unwrap(),
+        );
+
+        let hash_display = |label: &str, value: &str| {
+            json!({
+                "type": "Column",
+                "padding": 8,
+                "children": [
+                    serde_json::to_value(Text::new(label).size(12.0)).unwrap(),
+                    serde_json::to_value(Text::new(value).size(10.0)).unwrap(),
+                    serde_json::to_value(Button::new("Copy", "noop").copy_text(value)).unwrap(),
+                ]
+            })
+        };
+
+        children.push(hash_display("MD5", &results.md5));
+        children.push(hash_display("SHA-1", &results.sha1));
+        children.push(hash_display("SHA-256", &results.sha256));
+        children.push(hash_display("BLAKE3", &results.blake3));
+    }
+
+    serde_json::to_value(Column::new(children).padding(24)).unwrap()
 }

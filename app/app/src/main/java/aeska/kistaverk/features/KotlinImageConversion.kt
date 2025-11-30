@@ -30,6 +30,7 @@ object KotlinImageConversion {
     fun isConversionAction(action: String): Boolean {
         return action == "kotlin_image_convert_webp" ||
             action == "kotlin_image_convert_png" ||
+            action == "kotlin_image_convert_jpeg" ||
             action == "kotlin_image_resize"
     }
 
@@ -280,6 +281,7 @@ object KotlinImageConversion {
         return when (action) {
             "kotlin_image_convert_webp" -> webpTarget(100)
             "kotlin_image_convert_png" -> pngTarget()
+            "kotlin_image_convert_jpeg" -> jpegTarget(100)
             else -> null
         }
     }
