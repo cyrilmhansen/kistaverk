@@ -38,9 +38,11 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - On-device QA: text viewer (large files, binary/UTF-8 errors, TalkBack), sensor logger permissions/CSV, size audits via `scripts/size_report.sh`.
 - UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls.
 
-## Known Risks (short)
-- Global Rust `STATE` mutex can block long ops; consider queue/timeout; watch for poison on panic.
-- FD lifetime: detached FDs rely on manual close; migrate to `OwnedFd`/RAII.
-- PDF signing coords: normalized mapping needs tests/clamping; may misplace on DPI mismatch.
-- Text viewer streams in 128 KB windows (next/prev/jump) with hex preview for binaries; further UX polish may be needed for search on paged data.
-- Schema drift: no versioned JSON schema between Rust/Kotlin; renderer guards cover most cases but not all.
+## Known Risks & Mitigations
+- **Global Rust `STATE` mutex**: Blocks long ops; mitigation: spawn threads for heavy tasks (hash, PDF), use channels/local locks.
+- **JSON Overhead**: Serialization cost; mitigation: diffing, partial updates, or separate data channels for blobs.
+- **Blocking I/O**: JNI boundary blocking; mitigation: thread pool for I/O.
+- **UI Scalability**: `LinearLayout` OOM on lists; mitigation: `RecyclerView` adapter for lists.
+- **FD lifetime**: Detached FDs rely on manual close; mitigation: migrate to `OwnedFd`/RAII.
+- **PDF signing coords**: DPI mismatch; mitigation: normalized mapping tests.
+- **Schema drift**: No versioned schema; mitigation: expand renderer guards.

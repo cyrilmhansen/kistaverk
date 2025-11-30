@@ -4,6 +4,9 @@ use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::{FromRawFd, RawFd};
+use crate::state::AppState;
+use serde_json::{json, Value};
+use crate::ui::{Text as UiText, maybe_push_back};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileInfoResult {
@@ -77,4 +80,57 @@ fn info_from_reader(file: File) -> FileInfoResult {
         .get(&buf[..read])
         .map(|t| t.mime_type().to_string());
     info
+}
+
+pub fn render_file_info_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("File info").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new("Select a file to see its size and MIME type").size(14.0))
+            .unwrap(),
+        json!({
+            "type": "Button",
+            "text": "Pick file",
+            "action": "file_info",
+            "requires_file_picker": true
+        }),
+    ];
+
+    if let Some(info_json) = &state.last_file_info {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(info_json) {
+            if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
+                children.push(json!({
+                    "type": "Text",
+                    "text": format!("Error: {err}"),
+                    "size": 14.0
+                }));
+            } else {
+                if let Some(path) = parsed.get("path").and_then(|p| p.as_str()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("Path: {path}"),
+                    }));
+                }
+                if let Some(size) = parsed.get("size_bytes").and_then(|s| s.as_u64()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("Size: {} bytes", size),
+                    }));
+                }
+                if let Some(mime) = parsed.get("mime").and_then(|m| m.as_str()) {
+                    children.push(json!({
+                        "type": "Text",
+                        "text": format!("MIME: {mime}"),
+                    }));
+                }
+            }
+        }
+    }
+
+    maybe_push_back(&mut children, state);
+
+    json!({
+        "type": "Column",
+        "padding": 24,
+        "children": children
+    })
 }

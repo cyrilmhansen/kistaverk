@@ -1267,7 +1267,7 @@ class MainActivity : ComponentActivity() {
         bindings: Map<String, String> = emptyMap(),
         extras: Map<String, Any?> = emptyMap()
     ) {
-        val isHashAction = action.startsWith("hash_file_")
+        val isHashAction = action.startsWith("hash_file_") || action == "hash_all"
         if (isHashAction) {
             showOverlay("Computing hash...")
             refreshUi(action, bindings = bindings, loadingOnly = true)

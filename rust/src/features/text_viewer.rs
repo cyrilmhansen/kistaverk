@@ -5,6 +5,8 @@ use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+use serde_json::{json, Value};
+use crate::ui::{Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Text as UiText, maybe_push_back, format_bytes};
 
 const MAX_BYTES: usize = 256 * 1024; // 256 KiB cap to avoid memory bloat for generic reads
 pub const CHUNK_BYTES: usize = 128 * 1024; // chunk size for incremental loads
@@ -25,7 +27,8 @@ fn is_binary_sample(bytes: &[u8]) -> bool {
         return false;
     }
     bytes.iter().any(|b| *b == 0)
-        || bytes
+        ||
+        bytes
             .iter()
             .any(|b| *b < 0x09 && *b != b'\n' && *b != b'\r')
 }
@@ -372,4 +375,284 @@ fn temp_dirs() -> Vec<PathBuf> {
         dirs.push(Path::new(d).to_path_buf());
     }
     dirs
+}
+
+pub fn render_text_viewer_screen(state: &AppState) -> Value {
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new(
+                "Open a text/CSV/log file and preview it in 128 KB chunks with syntax highlighting."
+            )
+            .size(14.0),
+        )
+        .unwrap(),
+        json!({
+            "type": "Button",
+            "text": "Pick text file",
+            "action": "text_viewer_open",
+            "requires_file_picker": true,
+            "content_description": "Pick text or CSV file"
+        }),
+    ];
+
+    if let Some(path) = &state.text_view_path {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
+        );
+    }
+
+    if state.text_view_loaded_bytes > 0 || state.text_view_total_bytes.is_some() {
+        let start = state.text_view_window_offset;
+        let end = state.text_view_loaded_bytes;
+        let window_size = end.saturating_sub(start);
+        let status = if let Some(total) = state.text_view_total_bytes {
+            let pct = if total > 0 {
+                (end as f64 / total as f64 * 100.0).min(100.0)
+            } else {
+                100.0
+            };
+            format!(
+                "Showing {}–{} of {} ({} window, {:.1}%)",
+                format_bytes(start),
+                format_bytes(end),
+                format_bytes(total),
+                format_bytes(window_size),
+                pct
+            )
+        } else {
+            format!(
+                "Showing {}–{} ({} window, chunked preview)",
+                format_bytes(start),
+                format_bytes(end),
+                format_bytes(window_size)
+            )
+        };
+        children.push(serde_json::to_value(UiText::new(&status).size(12.0)).unwrap());
+    }
+
+    if state.text_view_has_previous || state.text_view_has_more {
+        children.push(
+            serde_json::to_value(
+                json!({
+                    "type": "Grid",
+                    "columns": 2,
+                    "padding": 4,
+                    "children": [
+                        { "type": "Button", "text": "Load previous", "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
+                        { "type": "Button", "text": "Load next", "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
+                    ]
+                })
+            )
+            .unwrap(),
+        );
+    }
+
+    children.push(
+        serde_json::to_value(json!({
+            "type": "Grid",
+            "columns": 2,
+            "padding": 4,
+            "children": [
+                {
+                    "type": "TextInput",
+                    "bind_key": "offset_bytes",
+                    "hint": "Byte offset (0 = start)",
+                    "text": state.text_view_window_offset.to_string(),
+                    "single_line": true,
+                    "action_on_submit": "text_viewer_jump"
+                },
+                {
+                    "type": "Button",
+                    "text": "Jump",
+                    "action": "text_viewer_jump",
+                    "content_description": "text_viewer_jump"
+                }
+            ]
+        }))
+        .unwrap(),
+    );
+
+    // Find bar
+    children.push(
+        serde_json::to_value(
+            UiColumn::new(vec![
+                serde_json::to_value(UiText::new("Find in text").size(14.0)).unwrap(),
+                serde_json::to_value(
+                    UiColumn::new(vec![
+                        json!({
+                            "type": "TextInput",
+                            "bind_key": "find_query",
+                            "text": state
+                                .text_view_find_query
+                                .as_deref()
+                                .unwrap_or(""),
+                            "hint": "Enter search term",
+                            "action_on_submit": "text_viewer_find_submit",
+                            "single_line": true
+                        }),
+                        json!({
+                            "type": "Grid",
+                            "columns": 3,
+                            "children": [
+                                { "type": "Button", "text": "Prev", "action": "text_viewer_find_prev", "id": "find_prev", "content_description": "find_prev" },
+                                { "type": "Button", "text": "Next", "action": "text_viewer_find_next", "id": "find_next", "content_description": "find_next" },
+                                { "type": "Button", "text": "Clear", "action": "text_viewer_find_clear", "id": "find_clear", "content_description": "find_clear" }
+                            ]
+                        }),
+                    ])
+                    .padding(4),
+                )
+                .unwrap(),
+                serde_json::to_value(
+                    UiText::new(
+                        state
+                            .text_view_find_match
+                            .as_deref()
+                            .unwrap_or("Type a query and tap next/prev."),
+                    )
+                    .id("find_status")
+                    .size(12.0),
+                )
+                .unwrap(),
+            ])
+            .padding(8),
+        )
+        .unwrap(),
+    );
+
+    let theme_label = if state.text_view_dark {
+        "Switch to light"
+    } else {
+        "Switch to dark"
+    };
+    children.push(
+        serde_json::to_value(
+            UiButton::new(theme_label, "text_viewer_toggle_theme")
+                .content_description("text_viewer_toggle_theme"),
+        )
+        .unwrap(),
+    );
+    let ln_label = if state.text_view_line_numbers {
+        "Hide line numbers"
+    } else {
+        "Show line numbers"
+    };
+    children.push(
+        serde_json::to_value(
+            UiButton::new(ln_label, "text_viewer_toggle_line_numbers")
+                .content_description("text_viewer_toggle_line_numbers"),
+        )
+        .unwrap(),
+    );
+
+    if let Some(err) = &state.text_view_error {
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+        );
+    }
+
+    if let Some(lang) = state.text_view_language.as_deref() {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Language: {}", lang))
+                    .size(12.0)
+                    .content_description("text_viewer_language"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if state.text_view_total_bytes.is_some() || state.text_view_loaded_bytes > 0 {
+        let total = state
+            .text_view_total_bytes
+            .map(|v| format!(" / {} bytes", v))
+            .unwrap_or_else(|| " / ?".into());
+        let loaded = state.text_view_loaded_bytes;
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Loaded: {}{}", loaded, total))
+                    .size(12.0)
+                    .content_description("text_viewer_progress"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if let Some(hex) = &state.text_view_hex_preview {
+        children.push(
+            serde_json::to_value(
+                crate::ui::Warning::new(
+                    "Binary or unsupported text detected. Showing hex preview (first 4KB).",
+                )
+                .content_description("text_viewer_hex_warning"),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiCodeView::new(hex)
+                    .wrap(false)
+                    .theme(if state.text_view_dark {
+                        "dark"
+                    } else {
+                        "light"
+                    })
+                    .line_numbers(false),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Load anyway (may be slow)", "text_viewer_load_anyway")
+                    .content_description("text_viewer_load_anyway"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if let Some(content) = &state.text_view_content {
+        let mut lang = state.text_view_language.clone();
+        if lang.is_none() {
+            if let Some(path) = &state.text_view_path {
+                lang = guess_language_from_path(path);
+            }
+        }
+        let theme = if state.text_view_dark {
+            "dark"
+        } else {
+            "light"
+        };
+        let mut code = UiCodeView::new(content)
+            .wrap(true)
+            .theme(theme)
+            .line_numbers(state.text_view_line_numbers);
+        if let Some(lang_str) = lang.as_deref() {
+            code = code.language(lang_str);
+        }
+        children.push(serde_json::to_value(code).unwrap());
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Copy visible text", "noop")
+                    .copy_text(content)
+                    .id("copy_visible_text"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if state.text_view_has_more {
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Load more", "text_viewer_load_more")
+                    .id("text_viewer_load_more")
+                    .content_description("text_viewer_load_more"),
+            )
+            .unwrap(),
+        );
+    }
+
+    maybe_push_back(&mut children, state);
+
+    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
 }

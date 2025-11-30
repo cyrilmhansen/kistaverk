@@ -10,6 +10,7 @@ pub enum Screen {
     ShaderDemo,
     KotlinImage,
     HashVerify,
+    MultiHash,
     FileInfo,
     TextTools,
     Loading,
@@ -24,6 +25,15 @@ pub enum Screen {
     Compass,
     Barometer,
     Magnetometer,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiHashResults {
+    pub md5: String,
+    pub sha1: String,
+    pub sha256: String,
+    pub blake3: String,
+    pub file_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +83,8 @@ pub struct AppState {
     pub barometer_error: Option<String>,
     pub magnetometer_ut: Option<f64>,
     pub magnetometer_error: Option<String>,
+    pub multi_hash_results: Option<MultiHashResults>,
+    pub multi_hash_error: Option<String>,
 }
 
 impl AppState {
@@ -124,6 +136,8 @@ impl AppState {
             barometer_error: None,
             magnetometer_ut: None,
             magnetometer_error: None,
+            multi_hash_results: None,
+            multi_hash_error: None,
         }
     }
 
@@ -217,5 +231,7 @@ impl AppState {
         self.barometer_error = None;
         self.magnetometer_ut = None;
         self.magnetometer_error = None;
+        self.multi_hash_results = None;
+        self.multi_hash_error = None;
     }
 }

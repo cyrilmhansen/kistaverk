@@ -2,7 +2,8 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
-## Status (2025-11-28)
+## Status (2025-11-30)
+- **Refactoring Complete**: `lib.rs` size reduced by extracting UI rendering logic to feature modules (`misc_screens.rs`, `file_info.rs`, `hashes.rs`, `text_viewer.rs`, `sensor_logger.rs`) and shared helpers to `ui.rs`. Codebase is more modular and easier to maintain.
 - App state/navigation: Rust owns a `Vec<Screen>` stack; hardware Back pops safely. Inline Back buttons present when depth > 1 (QR, text tools, archive, sensor logger, color, Kotlin image).
 - Renderer now does basic diffing: stable node IDs (explicit `id`, `bind_key`, or action) allow view reuse and keyboard/focus stability instead of full `removeAllViews`.
 - Text viewer: Prism-backed WebView (MIT assets bundled into `prism-bundle.min.js`), language guessing, wrap toggle, theme toggle, line numbers. Archive text entries open directly in viewer. Binary sniff with hex preview; chunked, windowed loads (128 KB) with next/prev and byte-offset jump.
@@ -14,30 +15,57 @@ Keep this file short and actionable. Update it at the end of each session.
  - Barometer/Magnetometer: GLSL widgets fed by sensors with throttled Rust sync; error surfaced when sensors unavailable.
 - DSL: Section/Card grouping widgets added to the DSL and renderer; menu now uses them for quick access and category grouping.
 
+## Technical Debt & Issues (High Priority)
+1. **Global Mutex Contention**: `STATE` mutex in `lib.rs` blocks all JNI calls during long-running ops.
+   - *Action*: Refactor heavy tasks to spawn threads and update state via channels/local locks.
+2. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
+   - *Action*: Implement partial updates/diffing or separate data channels.
+3. **Blocking I/O**: JNI calls block the thread.
+   - *Action*: Move file I/O to a dedicated blocking thread pool.
+4. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
+   - *Action*: Implement a JSON-backed `RecyclerView` adapter.
+
+## Roadmap (Future Features)
+- **Multi-hash view**: Compute MD5, SHA-1, SHA-256, BLAKE3 for a single file at once.
+- **Hash compare**: Compare file hash against clipboard/input.
+- **Hash manifest**: Generate/verify manifests for multiple files.
+- **File inspector**: Detailed size, MIME, hex dump, UTF-8 detection.
+- **Regex tester**: Regex compilation and matching with sample text.
+- **UUID/Random**: Generate UUID v4 or random strings.
+- **Dithering tools**: Monochrome (MacPaint) and retro palette dithering.
+- **Pixel art mode**: Downscale and nearest-neighbor upscale.
+- **PDF grid**: Thumbnail grid and full page preview.
+- **PDF surgery**: Extract/delete pages; merge PDFs.
+- **ZIP tools**: Extract ZIPs; create ZIPs.
+- **GZIP**: Compress/decompress single files.
+- **System panels**: Storage, App inspector, Network, Battery.
+- **QR transfer**: Data transfer via QR slideshow.
+- **Math/CAS**: Numeric solver and optional symbolic CAS.
+- **Presets**: Save/load favorite tool settings.
+
 ## Immediate Focus
-- Harden input UX: avoid spamming Rust on every character; consider focusing updates on submit/blur unless diffing is smarter. Verify keyboard doesn’t dismiss when background actions refresh UI.
-- On-device QA for text viewer (large logs), TalkBack labels, theme/line-number toggles.
-- Ensure Back buttons stay wired for all nested flows (QR, archive, text tools, sensors, color, Kotlin image, PDF sign placement); add guardrail for unsafe back pops.
-- Robolectric coverage: add tests for `CodeView`/Prism payloads, PdfSignPlacement tap mapping, and Back button presence in QR screen.
-- PDF UX: refine placement overlay (pinch-zoom? page thumbnails carousel) and consider auto-open viewer after save.
-- Rust core: mitigate long-held STATE mutex (queue/channel, parking_lot + timeout) and migrate FDs to OwnedFd to avoid leaks.
-- Text viewer: on-device QA for chunked loads/large logs; verify windowed paging + find UX stay stable; tune window size if needed.
-- DSL grouping: add renderer tests for Section/Card and apply to more screens as we refactor layouts.
-  - Robolectric coverage added for Section/Card validation and rendering.
- - Compass/Barometer/Magnetometer: consider smoothing/filtering and exposing calibration/error hints in UI; current sync is throttled to reduce redraw pulses.
+- Harden input UX: avoid spamming Rust on every character.
+- On-device QA for text viewer (large logs), TalkBack, theme toggles.
+- Ensure Back buttons stay wired for all nested flows.
+- Robolectric coverage: add tests for `CodeView` and `PdfSignPlacement`.
+- PDF UX: refine placement overlay.
+- Rust core: mitigate long-held STATE mutex.
+- Text viewer: polish chunked loads/paging.
+- DSL grouping: add renderer tests.
+- Compass/Barometer/Magnetometer: smoothing/filtering.
 
 ## Near-Term
-- Schema hardening: move UI generation fully to typed builders; expand renderer validation coverage.
-- Snapshot/restore: wire into CI; keep native load mocked in tests.
-- Packaging: verify arm64-only output, clean stale ABIs, track size (`scripts/size_report.sh`).
-- Sensor logger: on-device QA for permissions, GPS intervals, CSV accuracy, TalkBack; Foreground Service with status indicator now in place.
-- Text viewer roadmap: WebView search bar via `findAllAsync` instead of Rust re-render; polish chunked pagination UX (progress, keyboard focus).
-- PDF UX: add 3x3 placement grid and thumbnail overlay preview for signature positioning.
-- Outputs: offer ACTION_CREATE_DOCUMENT “Save As” for PDF/image results; keep power-user directory control.
-- Image tools: Kotlin-side resize/quality controls landed (scale %, quality, optional target KB, WebP/JPEG toggle); validate file suffixes and on-device UX.
-- Hash verify: SHA-256 verify screen added with clipboard-friendly paste/copy helpers; on-device QA still needed.
-- DSL polish: keep Section/Card grouping widget readable; keep emoji iconography.
+- Schema hardening: typed builders, validation.
+- Snapshot/restore: wire into CI.
+- Packaging: verify arm64-only, clean ABIs.
+- Sensor logger: QA permissions, GPS, CSV.
+- Text viewer: WebView search bar.
+- PDF UX: 3x3 placement grid.
+- Outputs: “Save As” flow.
+- Image tools: resize/quality controls.
+- Hash verify: on-device QA.
+- DSL polish: keep grouping readable.
 
 ## Notes
 - Prism assets are MIT; license stored in `assets/prism/PRISM_LICENSE.txt`.
-- Keep APK slim (<5 MB): avoid adding heavy WebView deps or extra language packs; keep Prism component set minimal.***
+- Keep APK slim (<5 MB).***

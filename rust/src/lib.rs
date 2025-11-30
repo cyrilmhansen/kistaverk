@@ -3,14 +3,21 @@ mod state;
 mod ui;
 use features::archive::{handle_archive_open, render_archive_screen};
 use features::color_tools::{handle_color_action, render_color_screen};
-use features::file_info::{file_info_from_fd, file_info_from_path};
-use features::hashes::{handle_hash_action, handle_hash_verify, HashAlgo};
+use features::file_info::{file_info_from_fd, file_info_from_path, render_file_info_screen};
+use features::hashes::{
+    handle_hash_action, handle_hash_verify, handle_multi_hash_action, render_hash_verify_screen,
+    HashAlgo,
+};
 use features::kotlin_image::{
     handle_output_dir as handle_kotlin_image_output_dir,
     handle_resize_screen as handle_kotlin_image_resize_screen,
     handle_resize_sync as handle_kotlin_image_resize_sync,
     handle_result as handle_kotlin_image_result, handle_screen_entry as handle_kotlin_image_screen,
     parse_image_target, render_kotlin_image_screen, ImageConversionResult, ImageTarget,
+};
+use features::misc_screens::{
+    render_about_screen, render_barometer_screen, render_compass_screen, render_loading_screen,
+    render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
 use features::pdf::{
     handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen,
@@ -19,18 +26,14 @@ use features::pdf::{
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
+    render_sensor_logger_screen,
 };
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::text_viewer::{
     guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
-    load_text_from_path, load_text_from_path_at_offset,
+    load_text_from_path, load_text_from_path_at_offset, render_text_viewer_screen,
 };
-use features::{render_menu, Feature};
-use ui::{
-    Barometer as UiBarometer, Button as UiButton, CodeView as UiCodeView, Column as UiColumn,
-    Compass as UiCompass, DepsList as UiDepsList, Magnetometer as UiMagnetometer,
-    Progress as UiProgress, Text as UiText, Warning as UiWarning,
-};
+use ui::render_multi_hash_screen;
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -39,7 +42,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use state::{AppState, Screen};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, BTreeMap},
     fs::File,
     io::Read,
     os::unix::io::{FromRawFd, RawFd},
@@ -238,6 +241,12 @@ enum Action {
     ArchiveOpenText {
         index: usize,
     },
+    MultiHashScreen,
+    HashAll {
+        path: Option<String>,
+        fd: Option<i32>,
+        loading_only: bool,
+    },
     CompassDemo,
     CompassSet {
         angle_radians: f64,
@@ -392,6 +401,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "load_shader_file" => Ok(Action::LoadShader { path, fd, error }),
         "kotlin_image_screen_webp" => Ok(Action::KotlinImageScreen(ImageTarget::Webp)),
         "kotlin_image_screen_png" => Ok(Action::KotlinImageScreen(ImageTarget::Png)),
+        "kotlin_image_screen_jpg" => Ok(Action::KotlinImageScreen(ImageTarget::Jpeg)),
         "kotlin_image_resize_screen" => Ok(Action::KotlinImageResizeScreen),
         "kotlin_image_resize_sync" => Ok(Action::KotlinImageResizeSync { bindings }),
         "kotlin_image_result" => Ok(Action::KotlinImageResult {
@@ -536,7 +546,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
                     .parse::<usize>()
                     .map_err(|_| format!("invalid_archive_index:{idx}"))?;
                 Ok(Action::ArchiveOpenText { index })
-            } else if let Some(text_action) = parse_text_action(other) {
+            } else if other == "multi_hash_screen" {
+                Ok(Action::MultiHashScreen)
+            } else if other == "hash_all" {
+                Ok(Action::HashAll { path, fd, loading_only })
+            }
+            else if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
                     action: text_action,
                     bindings,
@@ -738,14 +753,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.archive.error = Some("missing_fd".into());
             }
         }
-        Action::ArchiveOpenText { index } => {
+        Action::ArchiveOpenText { index: _index } => {
             state.push_screen(Screen::TextViewer);
-            match features::archive::read_text_entry(&state, index) {
+            match features::archive::read_text_entry(&state, _index) {
                 Ok((label, text)) => {
                     state.text_view_path = Some(label);
                     state.text_view_content = Some(text);
                     state.text_view_error = None;
-                    if let Some(entry) = state.archive.entries.get(index) {
+                    if let Some(entry) = state.archive.entries.get(_index) {
                         state.text_view_language = guess_language_from_path(&entry.name);
                     } else {
                         state.text_view_language = None;
@@ -755,7 +770,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     state.text_view_error = Some(e);
                     state.text_view_content = None;
                     state.text_view_language = None;
-                    if let Some(entry) = state.archive.entries.get(index) {
+                    if let Some(entry) = state.archive.entries.get(_index) {
                         state.text_view_path = state
                             .archive
                             .path
@@ -765,6 +780,28 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     }
                 }
             }
+        }
+        Action::MultiHashScreen => {
+            state.push_screen(Screen::MultiHash);
+            state.multi_hash_results = None;
+            state.multi_hash_error = None;
+        }
+        Action::HashAll { path, fd, loading_only } => {
+            if loading_only {
+                state.loading_with_spinner = false;
+                state.replace_current(Screen::Loading);
+                state.loading_message = Some("Computing all hashes...".into());
+                state.multi_hash_results = None; // Clear previous results
+                state.multi_hash_error = None; // Clear previous errors
+                return Ok(render_ui(&state));
+            }
+            state.reset_navigation(); // This might be too aggressive, consider just pushing to MultiHash
+            state.push_screen(Screen::MultiHash); // Ensure we are on the MultiHash screen
+            state.multi_hash_results = None; // Clear previous results
+            state.multi_hash_error = None; // Clear previous errors
+            handle_multi_hash_action(&mut state, fd, path.as_deref());
+            state.loading_message = None;
+            state.loading_with_spinner = true;
         }
         Action::CompassDemo => {
             state.push_screen(Screen::Compass);
@@ -1393,113 +1430,105 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Compass => render_compass_screen(state),
         Screen::Barometer => render_barometer_screen(state),
         Screen::Magnetometer => render_magnetometer_screen(state),
+        Screen::MultiHash => render_multi_hash_screen(state),
     }
 }
 
-fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
-    if state.nav_depth() > 1 {
-        children.push(json!({
-            "type": "Button",
-            "text": "Back",
-            "action": "back"
-        }));
-    }
+/// A feature entry for the home menu.
+pub struct Feature {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub category: &'static str,
+    pub action: &'static str,
+    pub requires_file_picker: bool,
+    pub description: &'static str,
 }
 
-fn render_file_info_screen(state: &AppState) -> Value {
+/// Render the home screen using a catalog of features.
+pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
+    use crate::ui::{
+        Button as UiButton, Card as UiCard, Column as UiColumn, Section as UiSection,
+        Text as UiText,
+    };
+
     let mut children = vec![
-        serde_json::to_value(UiText::new("File info").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("Select a file to see its size and MIME type").size(14.0))
-            .unwrap(),
-        json!({
-            "type": "Button",
-            "text": "Pick file",
-            "action": "file_info",
-            "requires_file_picker": true
-        }),
+        serde_json::to_value(UiText::new("🧰 Tool menu").size(22.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiText::new("Legacy notice: MD5 and SHA-1 are not suitable for security; prefer SHA-256 or BLAKE3.")
+                .size(12.0),
+        )
+        .unwrap(),
     ];
 
-    if let Some(info_json) = &state.last_file_info {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(info_json) {
-            if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
-                children.push(json!({
-                    "type": "Text",
-                    "text": format!("Error: {err}"),
-                    "size": 14.0
-                }));
-            } else {
-                if let Some(path) = parsed.get("path").and_then(|p| p.as_str()) {
-                    children.push(json!({
-                        "type": "Text",
-                        "text": format!("Path: {path}"),
-                    }));
-                }
-                if let Some(size) = parsed.get("size_bytes").and_then(|s| s.as_u64()) {
-                    children.push(json!({
-                        "type": "Text",
-                        "text": format!("Size: {} bytes", size),
-                    }));
-                }
-                if let Some(mime) = parsed.get("mime").and_then(|m| m.as_str()) {
-                    children.push(json!({
-                        "type": "Text",
-                        "text": format!("MIME: {mime}"),
-                    }));
-                }
-            }
+    // Quick access row (static for now; prefer high-traffic tools).
+    let quick_ids = ["pdf_tools", "text_tools", "text_viewer", "hash_sha256"];
+    let quick_buttons: Vec<Value> = catalog
+        .iter()
+        .filter(|f| quick_ids.contains(&f.id))
+        .map(|f| {
+            serde_json::to_value(
+                UiButton::new(f.name, f.action)
+                    .id(f.id)
+                    .requires_file_picker(f.requires_file_picker),
+            )
+            .unwrap()
+        })
+        .collect();
+    if !quick_buttons.is_empty() {
+        let quick = UiCard::new(vec![serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()])
+            .title("⚡ Quick access")
+            .padding(12);
+        children.push(serde_json::to_value(quick).unwrap());
+    }
+
+    let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
+    for feature in catalog.iter() {
+        grouped.entry(feature.category).or_default().push(feature);
+    }
+
+    for (category, feats) in grouped {
+        let mut section_children: Vec<Value> = Vec::new();
+        if category.contains("Hash") {
+            section_children.push(
+                serde_json::to_value(
+                    UiText::new("MD5/SHA-1 are legacy. Prefer SHA-256 or BLAKE3.").size(12.0),
+                )
+                .unwrap(),
+            );
         }
-    }
-
-    maybe_push_back(&mut children, state);
-
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
-}
-
-fn render_hash_verify_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Hash verify (SHA-256)").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Paste a reference hash, then pick a file to verify.").size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiButton::new("Copy last hash", "noop")
-                .id("copy_last_hash_btn")
-                .copy_text(state.last_hash.as_deref().unwrap_or("")),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiButton::new("Paste from clipboard", "hash_verify_paste")
-                .id("hash_verify_paste")
-                .content_description("hash_verify_paste"),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            crate::ui::TextInput::new("hash_reference")
-                .hint("Reference hash")
-                .text(state.hash_reference.as_deref().unwrap_or_default())
-                .single_line(true),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiButton::new("Pick file and verify", "hash_verify")
-                .requires_file_picker(true)
-                .id("hash_verify_btn"),
-        )
-        .unwrap(),
-    ];
-
-    if let Some(matches) = state.hash_match {
-        let status = if matches { "Match ✅" } else { "Mismatch ❌" };
-        children.push(
-            serde_json::to_value(UiText::new(status).size(14.0).content_description("hash_verify_status"))
+        let list: Vec<Value> = feats
+            .iter()
+            .map(|f| {
+                serde_json::to_value(
+                    UiButton::new(&format!("{} – {}", f.name, f.description), f.action)
+                        .id(f.id)
+                        .requires_file_picker(f.requires_file_picker),
+                )
+                .unwrap()
+            })
+            .collect();
+        section_children.push(
+            serde_json::to_value(UiColumn::new(list).padding(4).content_description(category))
                 .unwrap(),
         );
+
+        let subtitle = format!("{} tools", feats.len());
+        let mut section = UiSection::new(section_children)
+            .title(category)
+            .subtitle(&subtitle)
+            .padding(12);
+        if let Some(first) = category.split_whitespace().next() {
+            if first.chars().all(|c| !c.is_ascii_alphanumeric()) {
+                section = section.icon(first);
+            }
+        }
+        children.push(serde_json::to_value(section).unwrap());
     }
+
     if let Some(hash) = &state.last_hash {
         children.push(
             serde_json::to_value(
@@ -1508,601 +1537,86 @@ fn render_hash_verify_screen(state: &AppState) -> Value {
                     state
                         .last_hash_algo
                         .clone()
-                        .unwrap_or_else(|| "SHA-256".into()),
+                        .unwrap_or_else(|| "Hash".into()),
                     hash
                 ))
-                .size(12.0),
+                .size(14.0),
             )
             .unwrap(),
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy computed hash", "hash_verify_copy").copy_text(hash),
+                UiButton::new("Copy last hash", "noop")
+                    .copy_text(hash)
+                    .id("copy_last_hash_home"),
             )
             .unwrap(),
         );
-    }
-    if let Some(err) = &state.last_error {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+            serde_json::to_value(
+                UiButton::new("Paste reference (clipboard)", "hash_paste_reference")
+                    .id("hash_paste_reference_btn"),
+            )
+            .unwrap(),
         );
-    }
-
-    maybe_push_back(&mut children, state);
-
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
-}
-
-fn render_loading_screen(state: &AppState) -> Value {
-    let message = state.loading_message.as_deref().unwrap_or("Working...");
-    let mut children = vec![serde_json::to_value(UiText::new(message).size(16.0)).unwrap()];
-    if state.loading_with_spinner {
         children.push(
-            serde_json::to_value(UiProgress::new().content_description("In progress")).unwrap(),
+            serde_json::to_value(
+                UiButton::new("Show QR for last hash", "hash_qr_last")
+                    .id("hash_qr_last_btn"),
+            )
+            .unwrap(),
         );
+        if let Some(matches) = state.hash_match {
+            let status = if matches {
+                "Reference match ✅"
+            } else {
+                "Reference mismatch ❌"
+            };
+            children.push(
+                serde_json::to_value(
+                    UiText::new(status)
+                        .size(12.0)
+                        .content_description("hash_ref_status"),
+                )
+                .unwrap(),
+            );
+        }
     }
-    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
-}
-
-fn render_shader_screen(state: &AppState) -> Value {
-    let fragment = state
-        .last_shader
-        .as_ref()
-        .map(|s| s.as_str())
-        .unwrap_or(SAMPLE_SHADER);
-
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Shader toy demo").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Simple fragment shader with time and resolution uniforms."),
-        )
-        .unwrap(),
-        json!({
-            "type": "ShaderToy",
-            "fragment": fragment
-        }),
-        serde_json::to_value(
-            UiButton::new("Load shader from file", "load_shader_file").requires_file_picker(true),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiText::new("Sample syntax:\nprecision mediump float;\nuniform float u_time;\nuniform vec2 u_resolution;\nvoid main(){ vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec3 col=0.5+0.5*cos(u_time*0.2+uv.xyx+vec3(0.,2.,4.)); gl_FragColor=vec4(col,1.0); }").size(12.0),
-        )
-        .unwrap(),
-    ];
-    maybe_push_back(&mut children, state);
-
-    serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
-}
-
-fn render_compass_screen(state: &AppState) -> Value {
-    let degrees = state.compass_angle_radians.to_degrees();
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Compass (AGSL)").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Compass dial driven by device sensors. Heading auto-updates when sensors are available.")
-                .size(12.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiText::new(&format!("Heading: {:.1}°", degrees)).size(14.0)).unwrap(),
-        serde_json::to_value(UiCompass::new(state.compass_angle_radians)).unwrap(),
-        serde_json::to_value(
-            UiText::new(
-                state
-                    .compass_error
-                    .as_deref()
-                    .unwrap_or("Sensor updates will appear automatically.")
-            )
-            .size(12.0),
-        )
-        .unwrap(),
-    ];
-    maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
-}
-
-fn render_barometer_screen(state: &AppState) -> Value {
-    let reading = state.barometer_hpa.map(|v| format!("{:.1} hPa", v));
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Barometer").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new(
-                state
-                    .barometer_error
-                    .as_deref()
-                    .unwrap_or("Live pressure readout from the device barometer (if present)."),
-            )
-            .size(12.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiText::new(reading.as_deref().unwrap_or("Waiting for sensor...")).size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiBarometer::new(state.barometer_hpa.unwrap_or(0.0))).unwrap(),
-    ];
-    maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
-}
-
-fn render_magnetometer_screen(state: &AppState) -> Value {
-    let reading = state
-        .magnetometer_ut
-        .map(|v| format!("{:.1} µT", v))
-        .unwrap_or_else(|| "Waiting for sensor...".into());
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Magnetometer").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new(
-                state
-                    .magnetometer_error
-                    .as_deref()
-                    .unwrap_or("Live magnetic field strength (device sensor)."),
-            )
-            .size(12.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiText::new(&reading).size(14.0)).unwrap(),
-        serde_json::to_value(UiMagnetometer::new(state.magnetometer_ut.unwrap_or(0.0))).unwrap(),
-    ];
-    maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
-}
-
-fn render_progress_demo_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        json!({
-            "type": "Text",
-            "text": "Progress demo",
-            "size": 20.0
-        }),
-        json!({
-            "type": "Text",
-            "text": "Tap start to show a 10 second simulated progress and return here when done.",
-            "size": 14.0
-        }),
-        json!({
-            "type": "Button",
-            "text": "Start 10s work",
-            "action": "progress_demo_start"
-        }),
-    ];
-
-    if let Some(status) = &state.progress_status {
-        children.push(json!({
-            "type": "Text",
-            "text": format!("Status: {}", status),
-            "size": 14.0
-        }));
-    }
-
-    maybe_push_back(&mut children, state);
-
-    json!({
-        "type": "Column",
-        "padding": 24,
-        "children": children
-    })
-}
-
-fn render_about_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        serde_json::to_value(UiText::new("About Kistaverk").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new(&format!("Version: {}", env!("CARGO_PKG_VERSION"))).size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiText::new("Copyright © 2025 Kistaverk").size(14.0)).unwrap(),
-        serde_json::to_value(UiText::new("License: GPLv3").size(14.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("This app is open-source under GPL-3.0; contributions welcome.").size(12.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiDepsList::new()).unwrap(),
-    ];
-    maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
-}
-
-fn render_sensor_logger_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Sensor Logger").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Select sensors and start logging to CSV in app storage.").size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(UiText::new("Sensors").size(14.0)).unwrap(),
-        serde_json::to_value(
-            UiColumn::new(vec![
-                serde_json::to_value(
-                    ui::Checkbox::new("Accelerometer", "sensor_accel")
-                        .checked(state.sensor_selection.map(|s| s.accel).unwrap_or(true)),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    ui::Checkbox::new("Gyroscope", "sensor_gyro")
-                        .checked(state.sensor_selection.map(|s| s.gyro).unwrap_or(true)),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    ui::Checkbox::new("Magnetometer", "sensor_mag")
-                        .checked(state.sensor_selection.map(|s| s.mag).unwrap_or(true)),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    ui::Checkbox::new("Barometer", "sensor_pressure")
-                        .checked(state.sensor_selection.map(|s| s.pressure).unwrap_or(false)),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    ui::Checkbox::new("GPS", "sensor_gps")
-                        .checked(state.sensor_selection.map(|s| s.gps).unwrap_or(false)),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    ui::Checkbox::new("Battery", "sensor_battery")
-                        .checked(state.sensor_selection.map(|s| s.battery).unwrap_or(true)),
-                )
-                .unwrap(),
-            ])
-            .padding(8),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            ui::TextInput::new("sensor_interval_ms")
-                .hint("Interval ms (50-10000)")
-                .text(
-                    &state
-                        .sensor_interval_ms
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "200".into()),
-                )
-                .content_description("Sensor interval ms"),
-        )
-        .unwrap(),
-        serde_json::to_value(UiButton::new("Start logging", "sensor_logger_start")).unwrap(),
-        serde_json::to_value(UiButton::new("Stop logging", "sensor_logger_stop")).unwrap(),
-    ];
 
     if let Some(status) = &state.sensor_status {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Status: {}", status)).size(12.0)).unwrap(),
-        );
-    }
-    if state.sensor_status.as_deref() == Some("logging") {
-        children.push(
             serde_json::to_value(
-                UiWarning::new("Logging continues in a foreground service.")
-                    .content_description("sensor_logger_foreground_status"),
+                UiText::new(&format!("Sensor logger: {}", status))
+                    .size(12.0)
+                    .content_description("sensor_logger_status_home"),
             )
             .unwrap(),
-        );
-    }
-    if let Some(err) = &state.last_error {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
         );
     }
     if let Some(path) = &state.last_sensor_log {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Last log: {}", path)).size(12.0)).unwrap(),
-        );
-        children.push(
-            serde_json::to_value(UiButton::new("Share last log", "sensor_logger_share")).unwrap(),
-        );
-    }
-
-    maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
-}
-
-fn format_bytes(bytes: u64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    if bytes as f64 >= MB {
-        format!("{:.1} MB", bytes as f64 / MB)
-    } else if bytes as f64 >= KB {
-        format!("{:.1} KB", bytes as f64 / KB)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
-fn render_text_viewer_screen(state: &AppState) -> Value {
-    let mut children = vec![
-        serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new(
-                "Open a text/CSV/log file and preview it in 128 KB chunks with syntax highlighting.",
-            )
-            .size(14.0),
-        )
-        .unwrap(),
-        json!({
-            "type": "Button",
-            "text": "Pick text file",
-            "action": "text_viewer_open",
-            "requires_file_picker": true,
-            "content_description": "Pick text or CSV file"
-        }),
-    ];
-
-    if let Some(path) = &state.text_view_path {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
-        );
-    }
-
-    if state.text_view_loaded_bytes > 0 || state.text_view_total_bytes.is_some() {
-        let start = state.text_view_window_offset;
-        let end = state.text_view_loaded_bytes;
-        let window_size = end.saturating_sub(start);
-        let status = if let Some(total) = state.text_view_total_bytes {
-            let pct = if total > 0 {
-                (end as f64 / total as f64 * 100.0).min(100.0)
-            } else {
-                100.0
-            };
-            format!(
-                "Showing {}–{} of {} ({} window, {:.1}%)",
-                format_bytes(start),
-                format_bytes(end),
-                format_bytes(total),
-                format_bytes(window_size),
-                pct
-            )
-        } else {
-            format!(
-                "Showing {}–{} ({} window, chunked preview)",
-                format_bytes(start),
-                format_bytes(end),
-                format_bytes(window_size)
-            )
-        };
-        children.push(serde_json::to_value(UiText::new(&status).size(12.0)).unwrap());
-    }
-
-    if state.text_view_has_previous || state.text_view_has_more {
-        children.push(
             serde_json::to_value(
-                json!({
-                    "type": "Grid",
-                    "columns": 2,
-                    "padding": 4,
-                    "children": [
-                        { "type": "Button", "text": "Load previous", "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
-                        { "type": "Button", "text": "Load next", "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
-                    ]
-                })
-            )
-            .unwrap(),
-        );
-    }
-
-    children.push(
-        serde_json::to_value(json!({
-            "type": "Grid",
-            "columns": 2,
-            "padding": 4,
-            "children": [
-                {
-                    "type": "TextInput",
-                    "bind_key": "offset_bytes",
-                    "hint": "Byte offset (0 = start)",
-                    "text": state.text_view_window_offset.to_string(),
-                    "single_line": true,
-                    "action_on_submit": "text_viewer_jump"
-                },
-                {
-                    "type": "Button",
-                    "text": "Jump",
-                    "action": "text_viewer_jump",
-                    "content_description": "text_viewer_jump"
-                }
-            ]
-        }))
-        .unwrap(),
-    );
-
-    // Find bar
-    children.push(
-        serde_json::to_value(
-            UiColumn::new(vec![
-                serde_json::to_value(UiText::new("Find in text").size(14.0)).unwrap(),
-                serde_json::to_value(
-                    UiColumn::new(vec![
-                        json!({
-                            "type": "TextInput",
-                            "bind_key": "find_query",
-                            "text": state
-                                .text_view_find_query
-                                .as_deref()
-                                .unwrap_or(""),
-                            "hint": "Enter search term",
-                            "action_on_submit": "text_viewer_find_submit",
-                            "single_line": true
-                        }),
-                        json!({
-                            "type": "Grid",
-                            "columns": 3,
-                            "children": [
-                                { "type": "Button", "text": "Prev", "action": "text_viewer_find_prev", "id": "find_prev", "content_description": "find_prev" },
-                                { "type": "Button", "text": "Next", "action": "text_viewer_find_next", "id": "find_next", "content_description": "find_next" },
-                                { "type": "Button", "text": "Clear", "action": "text_viewer_find_clear", "id": "find_clear", "content_description": "find_clear" }
-                            ]
-                        }),
-                    ])
-                    .padding(4),
-                )
-                .unwrap(),
-                serde_json::to_value(
-                    UiText::new(
-                        state
-                            .text_view_find_match
-                            .as_deref()
-                            .unwrap_or("Type a query and tap next/prev."),
-                    )
-                    .id("find_status")
-                    .size(12.0),
-                )
-                .unwrap(),
-            ])
-            .padding(8),
-        )
-        .unwrap(),
-    );
-
-    let theme_label = if state.text_view_dark {
-        "Switch to light"
-    } else {
-        "Switch to dark"
-    };
-    children.push(
-        serde_json::to_value(
-            UiButton::new(theme_label, "text_viewer_toggle_theme")
-                .content_description("text_viewer_toggle_theme"),
-        )
-        .unwrap(),
-    );
-    let ln_label = if state.text_view_line_numbers {
-        "Hide line numbers"
-    } else {
-        "Show line numbers"
-    };
-    children.push(
-        serde_json::to_value(
-            UiButton::new(ln_label, "text_viewer_toggle_line_numbers")
-                .content_description("text_viewer_toggle_line_numbers"),
-        )
-        .unwrap(),
-    );
-
-    if let Some(err) = &state.text_view_error {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
-        );
-    }
-
-    if let Some(lang) = state.text_view_language.as_deref() {
-        children.push(
-            serde_json::to_value(
-                UiText::new(&format!("Language: {}", lang))
+                UiText::new(&format!("Last log: {}", path))
                     .size(12.0)
-                    .content_description("text_viewer_language"),
+                    .content_description("sensor_logger_path_home"),
             )
             .unwrap(),
         );
     }
 
-    if state.text_view_total_bytes.is_some() || state.text_view_loaded_bytes > 0 {
-        let total = state
-            .text_view_total_bytes
-            .map(|v| format!(" / {} bytes", v))
-            .unwrap_or_else(|| " / ?".into());
-        let loaded = state.text_view_loaded_bytes;
+    if let Some(err) = &state.last_error {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Loaded: {}{}", loaded, total))
-                    .size(12.0)
-                    .content_description("text_viewer_progress"),
+                UiText::new(&format!("Error: {}", err))
+                    .size(14.0)
+                    .content_description("error_text"),
             )
             .unwrap(),
         );
     }
 
-    if let Some(hex) = &state.text_view_hex_preview {
-        children.push(
-            serde_json::to_value(
-                crate::ui::Warning::new(
-                    "Binary or unsupported text detected. Showing hex preview (first 4KB).",
-                )
-                .content_description("text_viewer_hex_warning"),
-            )
-            .unwrap(),
-        );
-        children.push(
-            serde_json::to_value(
-                UiCodeView::new(hex)
-                    .wrap(false)
-                    .theme(if state.text_view_dark {
-                        "dark"
-                    } else {
-                        "light"
-                    })
-                    .line_numbers(false),
-            )
-            .unwrap(),
-        );
-        children.push(
-            serde_json::to_value(
-                UiButton::new("Load anyway (may be slow)", "text_viewer_load_anyway")
-                    .content_description("text_viewer_load_anyway"),
-            )
-            .unwrap(),
-        );
-    }
-
-    if let Some(content) = &state.text_view_content {
-        let mut lang = state.text_view_language.clone();
-        if lang.is_none() {
-            if let Some(path) = &state.text_view_path {
-                lang = guess_language_from_path(path);
-            }
-        }
-        let theme = if state.text_view_dark {
-            "dark"
-        } else {
-            "light"
-        };
-        let mut code = UiCodeView::new(content)
-            .wrap(true)
-            .theme(theme)
-            .line_numbers(state.text_view_line_numbers);
-        if let Some(lang_str) = lang.as_deref() {
-            code = code.language(lang_str);
-        }
-        children.push(serde_json::to_value(code).unwrap());
-        children.push(
-            serde_json::to_value(
-                UiButton::new("Copy visible text", "noop")
-                    .copy_text(content)
-                    .id("copy_visible_text"),
-            )
-            .unwrap(),
-        );
-    }
-
-    if state.text_view_has_more {
-        children.push(
-            serde_json::to_value(
-                UiButton::new("Load more", "text_viewer_load_more")
-                    .id("text_viewer_load_more")
-                    .content_description("text_viewer_load_more"),
-            )
-            .unwrap(),
-        );
-    }
-
-    maybe_push_back(&mut children, state);
-
-    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
+    serde_json::to_value(UiColumn::new(children).padding(32)).unwrap()
 }
-
-const SAMPLE_SHADER: &str = r#"
-precision mediump float;
-uniform float u_time;
-uniform vec2 u_resolution;
-void main() {
-    vec2 uv = gl_FragCoord.xy / u_resolution.xy;
-    float t = u_time * 0.2;
-    vec3 col = 0.5 + 0.5*cos(t + uv.xyx + vec3(0.0,2.0,4.0));
-    gl_FragColor = vec4(col, 1.0);
-}
-"#;
 
 fn feature_catalog() -> Vec<Feature> {
     vec![
@@ -2121,6 +1635,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_verify_screen",
             requires_file_picker: false,
             description: "compare to reference",
+        },
+        Feature {
+            id: "multi_hash",
+            name: "Multi-hash",
+            category: "🔐 Hashes",
+            action: "multi_hash_screen",
+            requires_file_picker: false,
+            description: "Compute MD5, SHA-1, SHA-256, BLAKE3",
         },
         Feature {
             id: "hash_sha1",
@@ -2503,10 +2025,7 @@ mod tests {
         reset_state();
 
         let mut command = make_command("text_tools_word_count");
-        command.bindings = Some(HashMap::from([(
-            "text_input".into(),
-            "one two  three".into(),
-        )]));
+        command.bindings = Some(HashMap::from([("text_input".into(), "one two  three".into())]));
 
         let ui = handle_command(command).expect("text command should succeed");
 
@@ -2809,11 +2328,8 @@ mod tests {
 
         handle_command(make_command("text_viewer_load_more")).expect("load more should succeed");
         let state = STATE.lock().unwrap();
-        let after_len = state
-            .text_view_content
-            .as_ref()
-            .map(|c| c.len())
-            .unwrap_or(0);
+        let after_len =
+            state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
         assert!(after_len > 0);
         assert!(after_len <= 150_000);
         assert_eq!(state.text_view_total_bytes, Some(total));
