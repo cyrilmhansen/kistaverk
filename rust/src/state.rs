@@ -28,6 +28,7 @@ pub enum Screen {
     Barometer,
     Magnetometer,
     PixelArt,
+    RegexTester,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -60,6 +61,20 @@ pub struct PixelArtState {
     pub source_path: Option<String>,
     pub result_path: Option<String>,
     pub scale_factor: u32,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegexMatchResult {
+    pub matched: bool,
+    pub groups: Vec<Option<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegexTesterState {
+    pub pattern: String,
+    pub sample_text: String,
+    pub match_result: Option<RegexMatchResult>,
     pub error: Option<String>,
 }
 
@@ -119,6 +134,7 @@ pub struct AppState {
     pub dithering_error: Option<String>,
     pub dithering_output_dir: Option<String>,
     pub pixel_art: PixelArtState,
+    pub regex_tester: RegexTesterState,
 }
 
 impl AppState {
@@ -182,6 +198,12 @@ impl AppState {
                 source_path: None,
                 result_path: None,
                 scale_factor: 4,
+                error: None,
+            },
+            regex_tester: RegexTesterState {
+                pattern: String::new(),
+                sample_text: String::new(),
+                match_result: None,
                 error: None,
             },
         }
@@ -289,5 +311,9 @@ impl AppState {
         self.pixel_art.result_path = None;
         self.pixel_art.scale_factor = 4;
         self.pixel_art.error = None;
+        self.regex_tester.pattern.clear();
+        self.regex_tester.sample_text.clear();
+        self.regex_tester.match_result = None;
+        self.regex_tester.error = None;
     }
 }

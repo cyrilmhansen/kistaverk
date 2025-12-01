@@ -21,6 +21,7 @@ use features::misc_screens::{
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
 use features::pixel_art::{process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd};
+use features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use features::pdf::{
     handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title,
     render_pdf_preview_screen, render_pdf_screen, PdfOperation,
@@ -296,6 +297,10 @@ enum Action {
     PixelArtApply {
         loading_only: bool,
     },
+    RegexTesterScreen,
+    RegexTest {
+        bindings: HashMap<String, String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -406,6 +411,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
             scale: parse_u32_binding(&bindings, "scale").unwrap_or(4),
         }),
         "pixel_art_apply" => Ok(Action::PixelArtApply { loading_only }),
+        "regex_tester_screen" => Ok(Action::RegexTesterScreen),
+        "regex_test" => Ok(Action::RegexTest { bindings }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
@@ -970,6 +977,18 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 }
             } else {
                 state.pixel_art.error = Some("no_image_selected".into());
+            }
+        }
+        Action::RegexTesterScreen => {
+            state.push_screen(Screen::RegexTester);
+            state.regex_tester.error = None;
+            state.regex_tester.match_result = None;
+        }
+        Action::RegexTest { bindings } => {
+            state.push_screen(Screen::RegexTester);
+            handle_regex_action(&mut state, &bindings);
+            if matches!(state.current_screen(), Screen::RegexTester) {
+                state.replace_current(Screen::RegexTester);
             }
         }
         Action::PdfToolsScreen => {
@@ -1669,6 +1688,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Magnetometer => render_magnetometer_screen(state),
         Screen::MultiHash => render_multi_hash_screen(state),
         Screen::PixelArt => render_pixel_art_screen(state),
+        Screen::RegexTester => render_regex_tester_screen(state),
     }
 }
 
@@ -1905,6 +1925,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "pixel_art_screen",
             requires_file_picker: false,
             description: "downscale+nearest upscale",
+        },
+        Feature {
+            id: "regex_tester",
+            name: "🔎 Regex tester",
+            category: "🧰 Utilities",
+            action: "regex_tester_screen",
+            requires_file_picker: false,
+            description: "test patterns & captures",
         },
         Feature {
             id: "hash_md4",

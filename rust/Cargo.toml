@@ -26,6 +26,7 @@ memmap2 = "0.9"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 time = { version = "0.3", default-features = false, features = ["formatting", "macros", "std"] }
 tempfile = "3"
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
