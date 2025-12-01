@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-01)
+- **ZIP Extraction**: Implemented full ZIP extraction ("Extract All" and single file "Extract") with directory traversal protection (Zip Slip). Added unit tests for path sanitization.
 - **File Inspector**: Upgraded "File Info" to "File Inspector". Now includes a 512-byte hex dump preview and UTF-8 text detection check.
 - **Refactoring Complete**: `lib.rs` size reduced by extracting UI rendering logic to feature modules (`misc_screens.rs`, `file_info.rs`, `hashes.rs`, `text_viewer.rs`, `sensor_logger.rs`) and shared helpers to `ui.rs`. Codebase is more modular and easier to maintain.
 - App state/navigation: Rust owns a `Vec<Screen>` stack; hardware Back pops safely. Inline Back buttons present when depth > 1 (QR, text tools, archive, sensor logger, color, Kotlin image).
@@ -27,13 +28,8 @@ Keep this file short and actionable. Update it at the end of each session.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 
 ## Roadmap (Future Features)
-- **Regex tester**: Regex compilation and matching with sample text. (Rust Done)
-- **Pixel art mode**: Downscale and nearest-neighbor upscale. (Rust Done, Kotlin Pending)
-- **PDF grid**: Thumbnail grid and full page preview. (Rust Done, Kotlin Pending)
-- **UUID/Random**: Generate UUID v4 or random strings. (Rust Done)
-- **Dithering tools**: Monochrome (MacPaint) and retro palette dithering. (Done)
 - **PDF surgery**: Extract/delete pages; merge PDFs.
-- **ZIP tools**: Extract ZIPs; create ZIPs.
+- **ZIP tools**: Create ZIPs (Compression).
 - **GZIP**: Compress/decompress single files.
 - **System panels**: Storage, App inspector, Network, Battery.
 - **QR transfer**: Data transfer via QR slideshow.
