@@ -1,38 +1,42 @@
-# Task In Progress: ZIP Creation
+# Task In Progress: GZIP Compression
 
 ## Feature Description
-Implement the ability to create `.zip` archives. Users should be able to select a file or a directory (folder) and compress it into a standard ZIP file.
+Implement GZIP compression and decompression for single files. This allows users to compress a file into a `.gz` archive and restore it.
 
 ## Plan
 
-### Step 1: Update Core Logic (`rust/src/features/archive.rs`)
-*   **Goal:** Add compression logic.
+### Step 1: Dependencies (`rust/Cargo.toml`)
+*   **Goal:** Enable GZIP support.
 *   **Actions:**
-    1.  Implement `create_archive(source_path: &Path, output_path: &Path) -> Result<(), String>`.
-    2.  Implement a recursive directory walker (using `std::fs`) to handle folder compression.
-    3.  Use `zip::ZipWriter` with `zip::write::FileOptions` (Deflate compression).
-    4.  Ensure relative paths in the ZIP are correct (stripping the absolute prefix of the source).
+    1.  Add `flate2 = "1.0"` to dependencies.
 
-### Step 2: Integration (`rust/src/lib.rs`)
-*   **Goal:** Expose the feature.
+### Step 2: Core Logic (`rust/src/features/compression.rs`)
+*   **Goal:** Implement compression logic.
 *   **Actions:**
-    1.  Add `Action::ArchiveCompress { path, fd, ... }`.
-    2.  Add "Compress to ZIP" entry to the `feature_catalog` (Category: Files).
-    3.  In `handle_command`, for `ArchiveCompress`:
-        *   Determine output filename (`<source>.zip`).
-        *   Show `Screen::Loading`.
-        *   Call `create_archive`.
-        *   On success, open the *newly created archive* in the Archive Viewer (reusing `Action::ArchiveOpen`).
+    1.  Create `compression.rs`.
+    2.  Implement `gzip_compress(source: &Path) -> Result<PathBuf, String>`.
+        *   Use `flate2::write::GzEncoder`.
+        *   Target: `source.gz` (in output dir).
+    3.  Implement `gzip_decompress(source: &Path) -> Result<PathBuf, String>`.
+        *   Use `flate2::read::GzDecoder`.
+        *   Target: Strip `.gz` extension or append `_decoded`.
 
-### Step 3: Testing
+### Step 3: Integration (`rust/src/lib.rs` & `rust/src/features/mod.rs`)
+*   **Goal:** Expose actions.
 *   **Actions:**
-    1.  Unit test: Create a ZIP from a temporary directory structure and verify its contents (using the existing `ZipArchive` reader logic).
-    2.  Unit test: Create a ZIP from a single file.
+    1.  Register module in `mod.rs`.
+    2.  Add `Action::GzipCompress` and `Action::GzipDecompress` in `lib.rs`.
+    3.  Add menu entries to "Files" or "Utilities" category.
+
+### Step 4: Testing
+*   **Actions:**
+    1.  Unit test: Roundtrip compression/decompression of a sample text file.
 
 ---
 
 ## Completed Tasks
-*   **PDF Page Reordering**: Done.
+*   **ZIP Creation**: Done.
+*   **PDF Reordering**: Done.
 *   **ZIP Extraction**: Done.
 *   **File Inspector**: Done.
 *   **Dithering Tools**: Done.
