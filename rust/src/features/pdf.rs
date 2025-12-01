@@ -83,7 +83,7 @@ fn output_filename(source_uri: Option<&str>) -> String {
 
 use crate::state::{AppState, Screen};
 use crate::ui::{
-    Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText,
+    Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText, maybe_push_back,
 };
 
 #[cfg(target_os = "android")]
@@ -589,6 +589,8 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
     serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
 }
 
+
+
 fn load_document(fd: RawFd) -> Result<Document, String> {
     if fd < 0 {
         return Err("invalid_fd".into());
@@ -725,15 +727,7 @@ fn write_pdf(mut doc: Document, source_uri: Option<&str>) -> Result<String, Stri
     Ok(path_str)
 }
 
-fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
-    if state.nav_depth() > 1 {
-        children.push(json!({
-            "type": "Button",
-            "text": "Back",
-            "action": "back"
-        }));
-    }
-}
+
 
 pub fn handle_pdf_sign(
     state: &mut AppState,
