@@ -1,11 +1,16 @@
 package aeska.kistaverk
 
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Environment
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.Context
 import android.util.Base64
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -13,6 +18,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.StatFs
+import android.os.BatteryManager
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
@@ -38,6 +45,9 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
 import java.io.FileDescriptor
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -608,6 +618,19 @@ class MainActivity : ComponentActivity() {
                 launchSaveAs(lastFileOutputPath, mime)
                 return@UiRenderer
             }
+            if (action == "system_info_update") {
+                val bindingsWithMetrics = bindings + collectSystemInfoBindings()
+                dispatchWithOptionalLoading(action, bindings = bindingsWithMetrics)
+                return@UiRenderer
+            }
+            if (action == "system_info_screen") {
+                dispatchWithOptionalLoading(action, bindings = bindings)
+                val metrics = collectSystemInfoBindings()
+                if (metrics.isNotEmpty()) {
+                    dispatchWithOptionalLoading("system_info_update", bindings = metrics)
+                }
+                return@UiRenderer
+            }
 
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
@@ -709,6 +732,110 @@ class MainActivity : ComponentActivity() {
     }
 
     private val skipNativeLoad = System.getProperty("kistaverk.skipNativeLoad") == "true"
+
+    private fun collectSystemInfoBindings(): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        val storage = readStorageStats()
+        storage?.totalBytes?.let { result["storage_total_bytes"] = it.toString() }
+        storage?.freeBytes?.let { result["storage_free_bytes"] = it.toString() }
+
+        val network = readNetworkInfo()
+        network.connection?.let { result["network_connection"] = it }
+        network.ssid?.let { result["network_ssid"] = it }
+        network.ip?.let { result["network_ip"] = it }
+
+        val battery = readBatteryInfo()
+        battery.level?.let { result["battery_level_pct"] = it.toString() }
+        battery.status?.let { result["battery_status"] = it }
+
+        result["device_manufacturer"] = android.os.Build.MANUFACTURER ?: ""
+        result["device_model"] = android.os.Build.MODEL ?: ""
+        result["device_os_version"] = android.os.Build.VERSION.RELEASE ?: ""
+
+        result["timestamp"] = isoTimestamp()
+        return result.filterValues { it.isNotEmpty() }
+    }
+
+    private data class StorageStats(val totalBytes: Long, val freeBytes: Long)
+
+    private fun readStorageStats(): StorageStats? {
+        return runCatching {
+            val dir = filesDir ?: return null
+            val stat = StatFs(dir.absolutePath)
+            StorageStats(stat.totalBytes, stat.availableBytes)
+        }.getOrNull()
+    }
+
+    private data class NetworkSnapshot(val connection: String?, val ssid: String?, val ip: String?)
+
+    private fun readNetworkInfo(): NetworkSnapshot {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val active = cm?.activeNetwork
+        val caps = active?.let { cm.getNetworkCapabilities(it) }
+        val lp = active?.let { cm.getLinkProperties(it) }
+
+        val connection = when {
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
+            caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> "ethernet"
+            caps != null -> "online"
+            else -> "offline"
+        }
+
+        val ip = lp?.linkAddresses
+            ?.firstOrNull { !it.address.isLoopbackAddress }
+            ?.address
+            ?.hostAddress
+
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val ssidRaw = runCatching { wifiManager?.connectionInfo?.ssid }.getOrNull()
+            .onFailure { showNetworkPermissionToastOnce() }
+        val ssid = ssidRaw
+            ?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+            ?.trim('"')
+
+        return NetworkSnapshot(connection = connection, ssid = ssid, ip = ip)
+    }
+
+    private var networkToastShown = false
+    private fun showNetworkPermissionToastOnce() {
+        if (networkToastShown) return
+        networkToastShown = true
+        runOnUiThread {
+            Toast.makeText(
+                this,
+                "Network details unavailable (permission or state).",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private data class BatterySnapshot(val level: Int?, val status: String?)
+
+    private fun readBatteryInfo(): BatterySnapshot {
+        val intent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val pct = if (level >= 0 && scale > 0) ((level * 100f) / scale).toInt() else null
+        val statusCode = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val status = when (statusCode) {
+            BatteryManager.BATTERY_STATUS_CHARGING -> "charging"
+            BatteryManager.BATTERY_STATUS_DISCHARGING -> "discharging"
+            BatteryManager.BATTERY_STATUS_FULL -> "full"
+            BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "not_charging"
+            else -> null
+        }
+        return BatterySnapshot(level = pct, status = status)
+    }
+
+    private fun isoTimestamp(): String {
+        return try {
+            val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+            fmt.format(Date())
+        } catch (_: Exception) {
+            System.currentTimeMillis().toString()
+        }
+    }
 
     private fun refreshUi(
         action: String,
