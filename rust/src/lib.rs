@@ -183,6 +183,11 @@ enum Action {
         uri: Option<String>,
         selection: Vec<u32>,
     },
+    PdfReorder {
+        fd: Option<i32>,
+        uri: Option<String>,
+        order: Vec<u32>,
+    },
     PdfMerge {
         primary_fd: Option<i32>,
         primary_uri: Option<String>,
@@ -374,6 +379,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
             fd,
             uri: path,
             selection: parse_pdf_selection(&bindings),
+        }),
+        "pdf_reorder" => Ok(Action::PdfReorder {
+            fd,
+            uri: path,
+            order: parse_pdf_order(&bindings),
         }),
         "pdf_set_title" => Ok(Action::PdfSetTitle {
             fd,
@@ -691,6 +701,16 @@ fn parse_pdf_selection(bindings: &HashMap<String, String>) -> Vec<u32> {
         .cloned()
         .unwrap_or_default();
     raw.split(',')
+        .filter_map(|s| s.trim().parse::<u32>().ok())
+        .collect()
+}
+
+fn parse_pdf_order(bindings: &HashMap<String, String>) -> Vec<u32> {
+    bindings
+        .get("pdf_reorder_pages")
+        .cloned()
+        .unwrap_or_default()
+        .split(',')
         .filter_map(|s| s.trim().parse::<u32>().ok())
         .collect()
 }
@@ -1129,6 +1149,28 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     uri.as_deref(),
                     None,
                     &selection,
+                ) {
+                    Ok(_) => {}
+                    Err(e) => state.pdf.last_error = Some(e),
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfReorder { fd, uri, order } => {
+            state.push_screen(Screen::PdfTools);
+            let mut fd_handle = FdHandle::new(fd);
+            if order.is_empty() {
+                state.pdf.last_error = Some("no_pages_selected".into());
+            } else if let Some(raw_fd) = fd_handle.take() {
+                match handle_pdf_operation(
+                    &mut state,
+                    PdfOperation::Reorder,
+                    Some(raw_fd),
+                    None,
+                    uri.as_deref(),
+                    None,
+                    &order,
                 ) {
                     Ok(_) => {}
                     Err(e) => state.pdf.last_error = Some(e),
