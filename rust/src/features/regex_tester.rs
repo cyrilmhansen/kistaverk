@@ -1,7 +1,7 @@
-use crate::state::{AppState, RegexMatchResult, RegexTesterState};
+use crate::state::{AppState, RegexMatchResult};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput, maybe_push_back};
 use regex::Regex;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub fn render_regex_tester_screen(state: &AppState) -> Value {
     let mut children = vec![
