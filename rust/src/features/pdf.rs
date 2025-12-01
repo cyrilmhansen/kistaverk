@@ -309,6 +309,10 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             )
             .unwrap(),
         );
+        children.push(
+            serde_json::to_value(UiButton::new("Open viewer", "pdf_preview_screen").id("pdf_preview_btn"))
+                .unwrap(),
+        );
     }
 
     // Title editing

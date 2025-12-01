@@ -904,6 +904,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::PdfSelect { fd, uri, error } => {
             state.push_screen(Screen::PdfTools);
             state.pdf.last_error = error.clone();
+            state.pdf.preview_page = None;
             let mut fd_handle = FdHandle::new(fd);
             if error.is_none() {
                 if let Some(raw_fd) = fd_handle.take() {
@@ -1012,7 +1013,13 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 state.push_screen(Screen::PdfPreview);
             }
-            state.pdf.preview_page = Some(page);
+            let mut target_page = page.max(1);
+            if let Some(count) = state.pdf.page_count {
+                if target_page > count {
+                    target_page = count;
+                }
+            }
+            state.pdf.preview_page = Some(target_page);
         }
         Action::PdfPageClose => {
             if matches!(state.current_screen(), Screen::PdfPreview) {
