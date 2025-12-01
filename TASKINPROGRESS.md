@@ -1,73 +1,46 @@
-# Task In Progress: Dithering Tools
+# Task In Progress: PDF Thumbnail Grid & Preview
 
 ## Feature Description
-Implement a "Dithering Tool" that allows users to apply various dithering algorithms (e.g., Floyd-Steinberg, Bayer) and retro color palettes (e.g., Monochrome, CGA, Game Boy) to images. The tool will process images locally in Rust and allow users to save or share the result.
+Implement a PDF viewer that displays a grid of page thumbnails and allows users to view individual pages in full screen. This leverages the Android `PdfRenderer` API on the Kotlin side, with navigation and state managed by the Rust core.
 
 ## Plan
 
-### Step 1: Update Rust State Management (`rust/src/state.rs`)
-*   **Goal:** support the dithering screen state.
+### Step 1: Update Rust State (`rust/src/state.rs`)
+*   **Goal:** Track preview state.
 *   **Actions:**
-    1.  Add `Screen::Dithering` to the `Screen` enum.
-    2.  Define `DitheringMode` enum (FloydSteinberg, Bayer4x4, Bayer8x8).
-    3.  Define `DitheringPalette` enum (Monochrome, Cga, GameBoy).
-    4.  Add `dithering_source_path`, `dithering_result_path`, `dithering_mode`, `dithering_palette`, and `dithering_error` fields to `AppState`.
-    5.  Initialize these fields in `AppState::new()` and `AppState::reset_runtime()`.
+    1.  Add `Screen::PdfPreview` to `Screen` enum.
+    2.  Add `preview_page: Option<u32>` to `PdfState` struct.
+    3.  Initialize/reset this field in `PdfState::new()` and `PdfState::reset()`.
 
-### Step 2: Implement Core Dithering Logic (`rust/src/features/dithering.rs`)
-*   **Goal:** Implement the image processing algorithms.
+### Step 2: Implement Rust UI Generation (`rust/src/features/pdf.rs`)
+*   **Goal:** Define the JSON UI for the grid and single-page view.
 *   **Actions:**
-    1.  Create `rust/src/features/dithering.rs`.
-    2.  Implement palette quantization logic (finding nearest color).
-    3.  Implement dithering algorithms:
-        *   **Floyd-Steinberg**: Error diffusion.
-        *   **Ordered**: Using Bayer matrices.
-    4.  Implement `process_dithering(path: &str, mode: DitheringMode, palette: DitheringPalette) -> Result<String, String>`:
-        *   Load image using `image` crate.
-        *   Apply selected algorithm and palette.
-        *   Save result to a temporary file (e.g., in cache dir).
-        *   Return the path to the saved file.
+    1.  Implement `render_pdf_preview_screen`.
+    2.  **Grid View:** If `preview_page` is `None`, render a `PdfPreviewGrid` widget (custom type) containing the `source_uri` and `page_count`.
+    3.  **Page View:** If `preview_page` is `Some(n)`, render a `PdfSinglePage` widget with navigation buttons ("Prev", "Next", "Grid").
 
-### Step 3: Implement UI Rendering (`rust/src/features/dithering.rs`)
-*   **Goal:** Create the UI for the tool.
+### Step 3: Update JNI Dispatch (`rust/src/lib.rs`)
+*   **Goal:** Handle navigation actions.
 *   **Actions:**
-    1.  Implement `render_dithering_screen(state: &AppState) -> Value`.
-    2.  UI Components:
-        *   Title "Retro Dithering".
-        *   "Pick Image" button (`requires_file_picker: true`).
-        *   Selection controls for Mode (Algorithm) and Palette.
-        *   "Apply" button to trigger processing (if an image is selected).
-        *   Display of the processed image result (path/status).
-        *   "Save/Share" button for the result.
+    1.  Add actions: `PdfPreviewScreen`, `PdfPageOpen { page: u32 }`, `PdfPageClose`.
+    2.  Update `parse_action` and `handle_command`.
+    3.  Add "PDF Viewer" to `feature_catalog`.
 
-### Step 4: Integrate into JNI Dispatch (`rust/src/lib.rs`)
-*   **Goal:** Connect UI actions to logic.
+### Step 4: Implement Kotlin Renderer Widgets (`app/.../UiRenderer.kt`)
+*   **Goal:** Render the actual PDF bitmaps.
 *   **Actions:**
-    1.  Add new `Action` variants: `DitheringScreen`, `DitheringPickImage`, `DitheringSetMode`, `DitheringSetPalette`, `DitheringApply`.
-    2.  Update `parse_action` to map JSON strings to these variants.
-    3.  Update `handle_command`:
-        *   `DitheringScreen`: Reset state, push screen.
-        *   `DitheringPickImage`: Update source path.
-        *   `DitheringSetMode/Palette`: Update state options.
-        *   `DitheringApply`: Call `process_dithering` (potentially with `loading_only` pattern).
-    4.  Update `render_ui` to match `Screen::Dithering`.
-    5.  Add the feature to `feature_catalog`.
+    1.  **`PdfPreviewGrid`**: A grid layout that uses `PdfRenderer` to generate thumbnails for all pages. Each thumbnail is a clickable button dispatching `pdf_page_open`.
+    2.  **`PdfSinglePage`**: A view rendering a single high-res page from `PdfRenderer`. Supports zooming (basic) or just fits screen.
 
-### Step 5: Dependency Check (`rust/Cargo.toml`) - **Completed**
-*   **Goal:** Ensure image processing libraries are available.
+### Step 5: Testing
 *   **Actions:**
-    1.  Verified `image` crate is present (v0.24) with `png`, `jpeg`, `webp` features enabled.
+    1.  Verify grid loads for small and large PDFs.
+    2.  Verify navigation between grid and single page.
+    3.  Check memory usage (PdfRenderer bitmaps can be large; ensure they are recycled or cache is managed).
 
-### Step 6: Testing & Validation
-*   **Goal:** Verify functionality.
-*   **Actions:**
-    1.  Write unit tests for dithering logic in `dithering.rs`.
-        *   **Test:** Verify palette quantization (e.g., closest color to pure white is white).
-        *   **Test:** Verify output dimensions match input dimensions.
-        *   **Test:** Check behavior with 0-size or invalid images (should return error, not panic).
-    2.  Manual testing on device:
-        *   Load image -> Select algorithm/palette -> Apply.
-        *   **Edge Case:** Test with a very large image (e.g., camera photo) to ensure no OOM or excessive lag (consider resizing if > 2048px).
-        *   **Edge Case:** Test with non-image file (should show error).
-        *   Verify visual output matches expectations (retro look).
-        *   Verify saving/sharing works.
+---
+
+## Completed Tasks
+*   **Dithering Tools**: Implemented core logic, UI, and integration.
+*   **Multi-hash view**: Implemented and refactored.
+*   **Refactoring lib.rs**: Completed.

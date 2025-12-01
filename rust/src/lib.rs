@@ -21,8 +21,8 @@ use features::misc_screens::{
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
 use features::pdf::{
-    handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title, render_pdf_screen,
-    PdfOperation,
+    handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title,
+    render_pdf_preview_screen, render_pdf_screen, PdfOperation,
 };
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::sensor_logger::{
@@ -186,6 +186,11 @@ enum Action {
         secondary_fd: Option<i32>,
         secondary_uri: Option<String>,
     },
+    PdfPreviewScreen,
+    PdfPageOpen {
+        page: u32,
+    },
+    PdfPageClose,
     PdfSign {
         fd: Option<i32>,
         uri: Option<String>,
@@ -377,6 +382,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
             data: bindings.get("signature_base64").cloned(),
         }),
         "pdf_signature_clear" => Ok(Action::PdfSignatureClear),
+        "pdf_preview_screen" => Ok(Action::PdfPreviewScreen),
+        "pdf_page_open" => Ok(Action::PdfPageOpen {
+            page: parse_u32_binding(&bindings, "page").unwrap_or(1),
+        }),
+        "pdf_page_close" => Ok(Action::PdfPageClose),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
@@ -988,6 +998,30 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.pdf.last_error = Some("missing_fd".into());
             }
         }
+        Action::PdfPreviewScreen => {
+            if matches!(state.current_screen(), Screen::PdfPreview) {
+                state.replace_current(Screen::PdfPreview);
+            } else {
+                state.push_screen(Screen::PdfPreview);
+            }
+            state.pdf.preview_page = None;
+        }
+        Action::PdfPageOpen { page } => {
+            if matches!(state.current_screen(), Screen::PdfPreview) {
+                state.replace_current(Screen::PdfPreview);
+            } else {
+                state.push_screen(Screen::PdfPreview);
+            }
+            state.pdf.preview_page = Some(page);
+        }
+        Action::PdfPageClose => {
+            if matches!(state.current_screen(), Screen::PdfPreview) {
+                state.replace_current(Screen::PdfPreview);
+            } else {
+                state.push_screen(Screen::PdfPreview);
+            }
+            state.pdf.preview_page = None;
+        }
         Action::PdfSign {
             fd,
             uri,
@@ -1541,6 +1575,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Qr => render_qr_screen(state),
         Screen::ColorTools => render_color_screen(state),
         Screen::PdfTools => render_pdf_screen(state),
+        Screen::PdfPreview => render_pdf_preview_screen(state),
         Screen::About => render_about_screen(state),
         Screen::SensorLogger => render_sensor_logger_screen(state),
         Screen::TextViewer => render_text_viewer_screen(state),
@@ -1818,6 +1853,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "pdf_tools_screen",
             requires_file_picker: false,
             description: "extract/delete pages",
+        },
+        Feature {
+            id: "pdf_preview",
+            name: "📑 PDF viewer",
+            category: "📁 Files",
+            action: "pdf_preview_screen",
+            requires_file_picker: false,
+            description: "thumbnails & single-page view",
         },
         Feature {
             id: "image_resize_kotlin",
@@ -2468,6 +2511,42 @@ mod tests {
             state.text_view_content.as_ref().unwrap().chars().next(),
             Some('a')
         );
+    }
+
+    #[test]
+    fn pdf_preview_screen_sets_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        {
+            let mut state = STATE.lock().unwrap();
+            state.pdf.source_uri = Some("file://dummy.pdf".into());
+            state.pdf.page_count = Some(3);
+        }
+        let ui = handle_command(make_command("pdf_preview_screen")).expect("preview screen");
+        assert_contains_text(&ui, "PDF viewer");
+        let state = STATE.lock().unwrap();
+        assert!(matches!(state.current_screen(), Screen::PdfPreview));
+        assert!(state.pdf.preview_page.is_none());
+    }
+
+    #[test]
+    fn pdf_page_open_sets_page() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        {
+            let mut state = STATE.lock().unwrap();
+            state.pdf.source_uri = Some("file://dummy.pdf".into());
+            state.pdf.page_count = Some(5);
+        }
+        let mut cmd = make_command("pdf_page_open");
+        let mut bindings = HashMap::new();
+        bindings.insert("page".to_string(), "2".to_string());
+        cmd.bindings = Some(bindings);
+        handle_command(cmd).expect("open page");
+
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.pdf.preview_page, Some(2));
+        assert!(matches!(state.current_screen(), Screen::PdfPreview));
     }
 
     #[test]

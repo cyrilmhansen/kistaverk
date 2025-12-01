@@ -27,6 +27,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.CheckBox
+import android.widget.GridLayout
 import android.widget.LinearLayout.LayoutParams
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -90,6 +91,8 @@ class UiRenderer(
         "SignaturePad",
         "PdfSignPlacement",
         "PdfSignPreview",
+        "PdfPreviewGrid",
+        "PdfSinglePage",
         "DepsList"
         ,
         "CodeView",
@@ -216,6 +219,8 @@ class UiRenderer(
             "SignaturePad" -> createSignaturePad(data, matched as? SignaturePadView)
             "PdfSignPlacement" -> createPdfSignPlacement(data, matched as? SignPlacementView)
             "PdfSignPreview" -> createPdfSignPreview(data, matched as? PdfSignPreview)
+            "PdfPreviewGrid" -> createPdfPreviewGrid(data, matched as? ScrollView)
+            "PdfSinglePage" -> createPdfSinglePage(data, matched as? ImageView)
             "DepsList" -> createDepsList(data, matched as? LinearLayout)
             "CodeView" -> createCodeView(data, matched as? WebView)
             "Compass" -> createCompass(data, matched)
@@ -272,6 +277,15 @@ class UiRenderer(
             if (!node.has("bind_key_x_pct")) return "PdfSignPreview missing bind_key_x_pct"
             if (!node.has("bind_key_y_pct")) return "PdfSignPreview missing bind_key_y_pct"
             if (!node.has("source_uri")) return "PdfSignPreview missing source_uri"
+        }
+        if (type == "PdfPreviewGrid") {
+            if (!node.has("source_uri")) return "PdfPreviewGrid missing source_uri"
+            if (!node.has("page_count")) return "PdfPreviewGrid missing page_count"
+            if (!node.has("action")) return "PdfPreviewGrid missing action"
+        }
+        if (type == "PdfSinglePage") {
+            if (!node.has("source_uri")) return "PdfSinglePage missing source_uri"
+            if (!node.has("page")) return "PdfSinglePage missing page"
         }
         if (type == "DepsList") {
             // no required fields
@@ -1008,6 +1022,118 @@ class UiRenderer(
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun createPdfPreviewGrid(data: JSONObject, existing: ScrollView?): View {
+        val sourceUri = data.optString("source_uri", "")
+        val pageCount = data.optInt("page_count", 0)
+        val actionName = data.optString("action", "")
+        val uri = try {
+            Uri.parse(sourceUri)
+        } catch (_: Exception) {
+            return createErrorView("Invalid source_uri")
+        }
+        val container = existing ?: ScrollView(context)
+        val grid = (container.getChildAt(0) as? GridLayout) ?: GridLayout(context).apply {
+            columnCount = 2
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        grid.removeAllViews()
+
+        val thumbs = if (pageCount > 0) renderPdfThumbnails(uri, pageCount) else emptyList()
+        for (i in 0 until pageCount) {
+            val pageIndex = i + 1
+            val cell = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                val pad = dpToPx(context, 8f)
+                setPadding(pad, pad, pad, pad)
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                }
+            }
+            val thumb = thumbs.getOrNull(i)
+            if (thumb != null) {
+                val iv = ImageView(context).apply {
+                    setImageBitmap(thumb)
+                    adjustViewBounds = true
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+                }
+                cell.addView(iv)
+            } else {
+                cell.addView(createErrorView("Page $pageIndex"))
+            }
+            val btn = Button(context).apply {
+                text = "Page $pageIndex"
+                setOnClickListener {
+                    flushPendingBindings()
+                    if (actionName.isNotEmpty()) {
+                        onAction(actionName, false, mapOf("page" to pageIndex.toString()))
+                    }
+                }
+            }
+            cell.addView(btn)
+            grid.addView(cell)
+        }
+        if (grid.parent != container) {
+            container.removeAllViews()
+            container.addView(grid)
+        }
+        setMeta(container, "PdfPreviewGrid", resolveNodeId(data))
+        return container
+    }
+
+    private fun createPdfSinglePage(data: JSONObject, existing: ImageView?): View {
+        val sourceUri = data.optString("source_uri", "")
+        val page = data.optInt("page", 1).coerceAtLeast(1) - 1
+        val uri = try {
+            Uri.parse(sourceUri)
+        } catch (_: Exception) {
+            return createErrorView("Invalid source_uri")
+        }
+        val image = existing ?: ImageView(context)
+        image.adjustViewBounds = true
+        val bmp = renderPdfPage(uri, page)
+        if (bmp == null) return createErrorView("Preview unavailable")
+        image.setImageBitmap(bmp)
+        image.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        image.scaleType = ImageView.ScaleType.FIT_CENTER
+        setMeta(image, "PdfSinglePage", resolveNodeId(data))
+        return image
+    }
+
+    private fun renderPdfPage(uri: Uri, index: Int): Bitmap? {
+        val pfd: ParcelFileDescriptor = try {
+            context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+        } catch (_: Exception) {
+            return null
+        }
+        pfd.use { descriptor ->
+            return try {
+                PdfRenderer(descriptor).use { renderer ->
+                    if (index < 0 || index >= renderer.pageCount) return null
+                    renderer.openPage(index).use { page ->
+                        val targetWidth = dpToPx(context, 320f).coerceAtLeast(160)
+                        val aspect = page.height / page.width.toFloat()
+                        val targetHeight = (targetWidth * aspect).toInt().coerceAtLeast(120)
+                        val bmp = Bitmap.createBitmap(
+                            targetWidth,
+                            targetHeight,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bmp
+                    }
+                }
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 

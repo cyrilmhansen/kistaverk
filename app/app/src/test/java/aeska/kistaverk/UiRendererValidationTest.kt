@@ -50,4 +50,12 @@ class UiRendererValidationTest {
         assertTrue(title.text.toString().contains("Render error"))
         assertTrue(msg.text.toString().contains("ColorSwatch missing color"))
     }
+
+    @Test
+    fun pdf_preview_grid_requires_source_and_action() {
+        val ui = """{ "type": "PdfPreviewGrid", "page_count": 2 }"""
+        val (title, msg) = render(ui)
+        assertTrue(title.text.toString().contains("Render error"))
+        assertTrue(msg.text.toString().contains("PdfPreviewGrid missing source_uri"))
+    }
 }
