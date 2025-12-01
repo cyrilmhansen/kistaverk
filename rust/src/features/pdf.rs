@@ -166,6 +166,7 @@ pub enum PdfOperation {
     Extract,
     Delete,
     Merge,
+    Reorder,
 }
 
 pub fn handle_pdf_select(
@@ -217,6 +218,7 @@ pub fn handle_pdf_operation(
             let secondary = load_document(secondary_fd)?;
             merge_documents(doc, secondary)?
         }
+        PdfOperation::Reorder => reorder_pages(doc, selected_pages)?,
     };
     let page_count = output_doc.get_pages().len() as u32;
     let new_title = extract_pdf_title(&output_doc);
@@ -285,6 +287,36 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 ))
                 .size(12.0)
                 .content_description("pdf_selected_summary"),
+            )
+            .unwrap(),
+        );
+
+        let reorder_default: String = if !state.pdf.selected_pages.is_empty() {
+            state
+                .pdf
+                .selected_pages
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            (1..=count)
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        children.push(
+            serde_json::to_value(
+                crate::ui::TextInput::new("pdf_reorder_pages")
+                    .hint("New page order (e.g., 2, 1, 3)")
+                    .text(&reorder_default)
+                    .single_line(true),
+            )
+            .unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Reorder pages", "pdf_reorder").id("pdf_reorder_btn"),
             )
             .unwrap(),
         );
@@ -658,6 +690,129 @@ fn delete_pages(mut doc: Document, selection: &[u32]) -> Result<Document, String
     }
     doc.delete_pages(&uniq);
     Ok(doc)
+}
+
+fn reorder_pages(mut doc: Document, order: &[u32]) -> Result<Document, String> {
+    if order.is_empty() {
+        return Err("no_pages_selected".into());
+    }
+    let pages: BTreeMap<u32, lopdf::ObjectId> = doc.get_pages().into_iter().collect();
+    let mut page_ids: Vec<lopdf::ObjectId> = Vec::with_capacity(order.len());
+    for p in order {
+        let id = pages.get(p).ok_or_else(|| "page_out_of_range".to_string())?;
+        page_ids.push(*id);
+    }
+
+    let pages_root_id = doc
+        .catalog()
+        .map_err(|e| format!("pdf_reorder_no_catalog:{e}"))?
+        .get(b"Pages")
+        .and_then(|o| o.as_reference())
+        .map_err(|_| "pdf_reorder_missing_pages_root")?;
+
+    {
+        let pages_dict = doc
+            .get_object_mut(pages_root_id)
+            .and_then(|o| o.as_dict_mut())
+            .map_err(|_| "pdf_reorder_missing_pages_dict")?;
+        pages_dict.set(
+            "Kids",
+            Object::Array(page_ids.iter().map(|id| Object::Reference(*id)).collect()),
+        );
+        pages_dict.set("Count", order.len() as i64);
+    }
+
+    for page_id in &page_ids {
+        if let Ok(page_dict) = doc
+            .get_object_mut(*page_id)
+            .and_then(|o| o.as_dict_mut())
+        {
+            page_dict.set("Parent", pages_root_id);
+        }
+    }
+
+    Ok(doc)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_doc(page_count: u32) -> Document {
+        let mut doc = Document::with_version("1.4");
+        let pages_id = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Kids" => Vec::<Object>::new(),
+            "Count" => 0i64,
+        });
+        let mut page_ids = Vec::new();
+        for _ in 0..page_count {
+            let contents_id = doc.add_object(Stream::new(dictionary! {}, Vec::new()));
+            let page_id = doc.add_object(dictionary! {
+                "Type" => "Page",
+                "Parent" => pages_id,
+                "Contents" => contents_id,
+                "MediaBox" => vec![
+                    Object::Integer(0),
+                    Object::Integer(0),
+                    Object::Integer(300),
+                    Object::Integer(300)
+                ],
+                "Resources" => dictionary! {},
+            });
+            page_ids.push(page_id);
+        }
+        {
+            let pages_dict = doc
+                .get_object_mut(pages_id)
+                .and_then(|o| o.as_dict_mut())
+                .unwrap();
+            pages_dict.set(
+                "Kids",
+                Object::Array(page_ids.iter().map(|id| Object::Reference(*id)).collect()),
+            );
+            pages_dict.set("Count", page_ids.len() as i64);
+        }
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+        doc
+    }
+
+    #[test]
+    fn reorder_pages_changes_order() {
+        let doc = make_test_doc(3);
+        let original: Vec<_> = doc.page_iter().collect();
+        let reordered = reorder_pages(doc, &[2, 1, 3]).expect("reorder succeeds");
+        let after: Vec<_> = reordered.page_iter().collect();
+        assert_eq!(after.len(), 3);
+        assert_eq!(after[0], original[1]);
+        assert_eq!(after[1], original[0]);
+        assert_eq!(after[2], original[2]);
+    }
+
+    #[test]
+    fn reorder_pages_allows_duplicates() {
+        let doc = make_test_doc(2);
+        let original: Vec<_> = doc.page_iter().collect();
+        let reordered = reorder_pages(doc, &[2, 2, 1]).expect("reorder succeeds");
+        let after: Vec<_> = reordered.page_iter().collect();
+        assert_eq!(after.len(), 3);
+        assert_eq!(after[0], original[1]);
+        assert_eq!(after[1], original[1]);
+        assert_eq!(after[2], original[0]);
+    }
+
+    #[test]
+    fn reorder_pages_rejects_invalid() {
+        let doc_empty = make_test_doc(2);
+        assert!(reorder_pages(doc_empty, &[]).is_err());
+
+        let doc_oob = make_test_doc(2);
+        assert!(reorder_pages(doc_oob, &[3]).is_err());
+    }
 }
 
 fn merge_documents(mut primary: Document, mut secondary: Document) -> Result<Document, String> {
