@@ -26,12 +26,11 @@ Keep this file short and actionable. Update it at the end of each session.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 
 ## Roadmap (Future Features)
-- **Multi-hash view**: Compute MD5, SHA-1, SHA-256, BLAKE3 for a single file at once.
-- **Hash compare**: Compare file hash against clipboard/input.
-- **Hash manifest**: Generate/verify manifests for multiple files.
-- **File inspector**: Detailed size, MIME, hex dump, UTF-8 detection.
-- **Regex tester**: Regex compilation and matching with sample text.
-- **UUID/Random**: Generate UUID v4 or random strings.
+- **File inspector**: Detailed size, MIME, hex dump, UTF-8 detection. (In Progress)
+- **Regex tester**: Regex compilation and matching with sample text. (Rust Done)
+- **Pixel art mode**: Downscale and nearest-neighbor upscale. (Rust Done, Kotlin Pending)
+- **PDF grid**: Thumbnail grid and full page preview. (Rust Done, Kotlin Pending)
+- **UUID/Random**: Generate UUID v4 or random strings. (Rust Done)
 - **Dithering tools**: Monochrome (MacPaint) and retro palette dithering. (Done)
 - **UUID/Random**: Generate UUID v4 or random strings. (In Progress)
 - **Regex tester**: Regex compilation and matching with sample text. (Plan reviewed)

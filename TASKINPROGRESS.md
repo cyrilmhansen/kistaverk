@@ -1,67 +1,41 @@
-# Task In Progress: UUID & Random String Generator
+# Task In Progress: File Inspector
 
 ## Feature Description
-Implement a tool for generating UUIDs (version 4) and random strings with configurable length and character sets. This provides a quick, offline way for developers and users to generate unique identifiers and passwords.
+Enhance the existing "File Info" tool into a robust "File Inspector". In addition to basic size and MIME type, it will provide a hex dump preview of the file header and a UTF-8 validation check to determine if the file is text-safe.
 
 ## Plan
 
-### Step 1: Update Rust State (`rust/src/state.rs`)
-*   **Goal:** Manage state for generated values and configuration.
+### Step 1: Update Core Logic (`rust/src/features/file_info.rs`)
+*   **Goal:** Extend file analysis capabilities.
 *   **Actions:**
-    1.  Add `Screen::UuidGenerator` to `Screen` enum.
-    2.  Define `StringCharset` enum (Alphanumeric, Numeric, Alpha, Hex).
-    3.  Create `UuidGeneratorState` struct:
-        *   `last_uuid: Option<String>`
-        *   `last_string: Option<String>`
-        *   `string_length: u32` (default 16)
-        *   `string_charset: StringCharset`
-    4.  Add `uuid_generator: UuidGeneratorState` to `AppState`.
-    5.  Initialize in `AppState::new()` and `reset_runtime()`.
+    1.  Update `FileInfoResult` struct to include:
+        *   `hex_dump: Option<String>`
+        *   `is_utf8: Option<bool>`
+    2.  Modify `info_from_reader` (or create `inspect_reader`):
+        *   Read the first 512 bytes.
+        *   Generate a hex dump string (Offset | Hex | ASCII).
+        *   Check if the read buffer is valid UTF-8.
+        *   (Optimization) For UTF-8 check, if the file is small (< 64KB), read all and check; if large, checking the head is a good heuristic for "starts with text", or we can scan the whole file efficiently if needed. For now, header check + extension heuristic is a good start for a "preview".
 
-### Step 2: Dependency Check (`rust/Cargo.toml`)
-*   **Goal:** Ensure `uuid` and `rand` crates are available.
+### Step 2: Update UI Rendering (`rust/src/features/file_info.rs`)
+*   **Goal:** Display the new detailed info.
 *   **Actions:**
-    1.  Check `Cargo.toml` for `uuid` (with `v4`, `fast-rng` features) and `rand`.
-    2.  Add them if missing.
+    1.  Update `render_file_info_screen`.
+    2.  Add a `UiCodeView` or `UiText` section for the `hex_dump`.
+    3.  Add a status label for `is_utf8` (e.g., "Content: Text (UTF-8)" vs "Content: Binary/Unknown").
+    4.  Organize layout: File Path -> Meta (Size/MIME/Type) -> Preview (Hex).
 
-### Step 3: Implement Core Logic (`rust/src/features/uuid_gen.rs`)
-*   **Goal:** Implement generation logic.
+### Step 3: Integration (`rust/src/lib.rs`)
+*   **Goal:** Expose the new functionality.
 *   **Actions:**
-    1.  Create `rust/src/features/uuid_gen.rs`.
-    2.  Implement `generate_uuid() -> String` using `uuid::Uuid::new_v4()`.
-    3.  Implement `generate_string(len: usize, charset: StringCharset) -> String` using `rand`.
-    4.  Implement `handle_uuid_action` to process generation requests and update state.
+    1.  Rename "File info" to "File Inspector" in `feature_catalog`.
+    2.  Ensure `handle_command` calls the updated logic for `Action::FileInfo`.
 
-### Step 4: Implement UI Rendering (`rust/src/features/uuid_gen.rs`)
-*   **Goal:** Create the user interface.
+### Step 4: Testing
 *   **Actions:**
-    1.  Implement `render_uuid_screen(state: &AppState) -> Value`.
-    2.  **UUID Section:**
-        *   "Generate UUID v4" button.
-        *   Result text + Copy button.
-    3.  **Random String Section:**
-        *   Text input for length (`bind_key: "uuid_str_len"`).
-        *   Buttons/Checkbox to select charset.
-        *   "Generate String" button.
-        *   Result text + Copy button.
-
-### Step 5: Integrate into JNI Dispatch (`rust/src/lib.rs`)
-*   **Goal:** Connect actions.
-*   **Actions:**
-    1.  Add actions:
-        *   `UuidScreen`
-        *   `UuidGenerate`
-        *   `RandomStringGenerate`
-    2.  Update `parse_action` and `handle_command`.
-        *   `RandomStringGenerate` should read bindings for length and charset preferences.
-    3.  Update `render_ui`.
-    4.  Add to `feature_catalog`.
-
-### Step 6: Testing
-*   **Actions:**
-    1.  Unit test UUID generation (valid format).
-    2.  Unit test string generation (correct length and charset).
-    3.  Manual test on device.
+    1.  Unit test the hex dump formatter.
+    2.  Unit test the UTF-8 check with valid text, invalid text, and binary data.
+    3.  Manual test with various file types (images, text scripts, binaries).
 
 ---
 
@@ -70,5 +44,6 @@ Implement a tool for generating UUIDs (version 4) and random strings with config
 *   **Multi-hash view**: Done.
 *   **Refactoring lib.rs**: Done.
 *   **PDF Thumbnail Grid**: Rust side done (Kotlin pending).
-*   **Pixel Art Mode**: Plan reviewed, pending implementation.
-*   **Regex Tester**: Plan reviewed, pending implementation.
+*   **Pixel Art Mode**: Implemented (Rust Done, Kotlin Pending).
+*   **Regex Tester**: Implemented (Rust Done).
+*   **UUID/Random**: Implemented (Rust Done).
