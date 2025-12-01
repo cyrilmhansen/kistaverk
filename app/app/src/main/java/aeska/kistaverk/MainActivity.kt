@@ -38,6 +38,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,9 +54,6 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.OutputStreamWriter
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.Date
 
 class MainActivity : ComponentActivity() {
 
@@ -788,9 +786,11 @@ class MainActivity : ComponentActivity() {
             ?.hostAddress
 
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val ssidRaw = runCatching { wifiManager?.connectionInfo?.ssid }.getOrNull()
-            .onFailure { showNetworkPermissionToastOnce() }
-        val ssid = ssidRaw
+        val ssidResult = runCatching { currentSsid(wifiManager) }
+        if (ssidResult.isFailure) {
+            showNetworkPermissionToastOnce()
+        }
+        val ssid = ssidResult.getOrNull()
             ?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
             ?.trim('"')
 
@@ -809,6 +809,9 @@ class MainActivity : ComponentActivity() {
             ).show()
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun currentSsid(wifiManager: WifiManager?): String? = wifiManager?.connectionInfo?.ssid
 
     private data class BatterySnapshot(val level: Int?, val status: String?)
 
