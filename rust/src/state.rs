@@ -27,6 +27,7 @@ pub enum Screen {
     Compass,
     Barometer,
     Magnetometer,
+    PixelArt,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,6 +53,14 @@ pub struct MultiHashResults {
     pub sha256: String,
     pub blake3: String,
     pub file_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PixelArtState {
+    pub source_path: Option<String>,
+    pub result_path: Option<String>,
+    pub scale_factor: u32,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +118,7 @@ pub struct AppState {
     pub dithering_palette: DitheringPalette,
     pub dithering_error: Option<String>,
     pub dithering_output_dir: Option<String>,
+    pub pixel_art: PixelArtState,
 }
 
 impl AppState {
@@ -168,6 +178,12 @@ impl AppState {
             dithering_palette: DitheringPalette::Monochrome,
             dithering_error: None,
             dithering_output_dir: None,
+            pixel_art: PixelArtState {
+                source_path: None,
+                result_path: None,
+                scale_factor: 4,
+                error: None,
+            },
         }
     }
 
@@ -269,5 +285,9 @@ impl AppState {
         self.dithering_palette = DitheringPalette::Monochrome;
         self.dithering_error = None;
         self.dithering_output_dir = None;
+        self.pixel_art.source_path = None;
+        self.pixel_art.result_path = None;
+        self.pixel_art.scale_factor = 4;
+        self.pixel_art.error = None;
     }
 }
