@@ -2,6 +2,7 @@ mod features;
 mod state;
 mod ui;
 use features::archive::{handle_archive_open, render_archive_screen};
+use features::compression::{gzip_compress, gzip_decompress, render_compression_screen};
 use features::color_tools::{handle_color_action, render_color_screen};
 use features::dithering::{process_dithering, render_dithering_screen, save_fd_to_temp};
 use features::file_info::{file_info_from_fd, file_info_from_path, render_file_info_screen};
@@ -273,6 +274,17 @@ enum Action {
     ArchiveExtractAll,
     ArchiveExtractEntry {
         index: usize,
+    },
+    CompressionScreen,
+    GzipCompress {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    GzipDecompress {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
     },
     ArchiveCompress {
         path: Option<String>,
@@ -633,6 +645,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
         "archive_compress" => Ok(Action::ArchiveCompress { path, fd, error }),
+        "gzip_screen" => Ok(Action::CompressionScreen),
+        "gzip_compress" => Ok(Action::GzipCompress { path, fd, error }),
+        "gzip_decompress" => Ok(Action::GzipDecompress { path, fd, error }),
         "compass_demo" => Ok(Action::CompassDemo),
         "compass_set" => Ok(Action::CompassSet {
             angle_radians: angle_radians.unwrap_or(0.0),
@@ -941,6 +956,51 @@ fn handle_command(command: Command) -> Result<Value, String> {
                             .or_else(|| Some(entry.name.clone()));
                     }
                 }
+            }
+        }
+        Action::CompressionScreen => {
+            state.push_screen(Screen::Compression);
+            state.compression_error = None;
+            state.compression_status = None;
+        }
+        Action::GzipCompress { path, fd, error } => {
+            state.push_screen(Screen::Compression);
+            state.compression_error = None;
+            state.compression_status = None;
+            if let Some(err) = error {
+                state.compression_error = Some(err);
+            } else if let Some(p) = path {
+                match gzip_compress(&p) {
+                    Ok(out) => {
+                        state.compression_status =
+                            Some(format!("Compressed to {}", out.display()));
+                    }
+                    Err(e) => state.compression_error = Some(e),
+                }
+            } else if fd.is_some() {
+                state.compression_error = Some("gzip_requires_path".into());
+            } else {
+                state.compression_error = Some("missing_path".into());
+            }
+        }
+        Action::GzipDecompress { path, fd, error } => {
+            state.push_screen(Screen::Compression);
+            state.compression_error = None;
+            state.compression_status = None;
+            if let Some(err) = error {
+                state.compression_error = Some(err);
+            } else if let Some(p) = path {
+                match gzip_decompress(&p) {
+                    Ok(out) => {
+                        state.compression_status =
+                            Some(format!("Decompressed to {}", out.display()));
+                    }
+                    Err(e) => state.compression_error = Some(e),
+                }
+            } else if fd.is_some() {
+                state.compression_error = Some("gzip_requires_path".into());
+            } else {
+                state.compression_error = Some("missing_path".into());
             }
         }
         Action::ArchiveExtractAll => {
@@ -1851,6 +1911,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::TextViewer => render_text_viewer_screen(state),
         Screen::Dithering => render_dithering_screen(state),
         Screen::ArchiveTools => render_archive_screen(state),
+        Screen::Compression => render_compression_screen(state),
         Screen::Compass => render_compass_screen(state),
         Screen::Barometer => render_barometer_screen(state),
         Screen::Magnetometer => render_magnetometer_screen(state),
@@ -2150,6 +2211,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "archive_compress",
             requires_file_picker: true,
             description: "compress file or folder",
+        },
+        Feature {
+            id: "gzip_tools",
+            name: "🌀 GZIP",
+            category: "📁 Files",
+            action: "gzip_screen",
+            requires_file_picker: false,
+            description: "single-file .gz compress/decompress",
         },
         Feature {
             id: "pdf_tools",

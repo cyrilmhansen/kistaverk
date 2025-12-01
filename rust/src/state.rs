@@ -24,6 +24,7 @@ pub enum Screen {
     SensorLogger,
     TextViewer,
     ArchiveTools,
+    Compression,
     Compass,
     Barometer,
     Magnetometer,
@@ -136,6 +137,8 @@ pub struct AppState {
     pub text_view_window_offset: u64,
     pub text_view_has_previous: bool,
     pub archive: ArchiveState,
+    pub compression_status: Option<String>,
+    pub compression_error: Option<String>,
     pub compass_angle_radians: f64,
     pub compass_error: Option<String>,
     pub barometer_hpa: Option<f64>,
@@ -198,6 +201,8 @@ impl AppState {
             text_view_window_offset: 0,
             text_view_has_previous: false,
             archive: ArchiveState::new(),
+            compression_status: None,
+            compression_error: None,
             compass_angle_radians: 0.0,
             compass_error: None,
             barometer_hpa: None,
@@ -317,6 +322,8 @@ impl AppState {
         self.text_view_window_offset = 0;
         self.text_view_has_previous = false;
         self.archive.reset();
+        self.compression_status = None;
+        self.compression_error = None;
         self.compass_angle_radians = 0.0;
         self.compass_error = None;
         self.barometer_hpa = None;
