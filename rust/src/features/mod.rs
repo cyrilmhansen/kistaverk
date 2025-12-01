@@ -15,3 +15,4 @@ pub mod pixel_art;
 pub mod regex_tester;
 pub mod uuid_gen;
 pub mod compression;
+pub mod system_info;

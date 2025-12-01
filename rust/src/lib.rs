@@ -286,6 +286,10 @@ enum Action {
         fd: Option<i32>,
         error: Option<String>,
     },
+    SystemInfoScreen,
+    SystemInfoUpdate {
+        bindings: HashMap<String, String>,
+    },
     ArchiveCompress {
         path: Option<String>,
         fd: Option<i32>,
@@ -648,6 +652,8 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "gzip_screen" => Ok(Action::CompressionScreen),
         "gzip_compress" => Ok(Action::GzipCompress { path, fd, error }),
         "gzip_decompress" => Ok(Action::GzipDecompress { path, fd, error }),
+        "system_info_screen" => Ok(Action::SystemInfoScreen),
+        "system_info_update" => Ok(Action::SystemInfoUpdate { bindings }),
         "compass_demo" => Ok(Action::CompassDemo),
         "compass_set" => Ok(Action::CompassSet {
             angle_radians: angle_radians.unwrap_or(0.0),
@@ -1001,6 +1007,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.compression_error = Some("gzip_requires_path".into());
             } else {
                 state.compression_error = Some("missing_path".into());
+            }
+        }
+        Action::SystemInfoScreen => {
+            state.push_screen(Screen::SystemInfo);
+            state.system_info.error = None;
+        }
+        Action::SystemInfoUpdate { bindings } => {
+            state.push_screen(Screen::SystemInfo);
+            match features::system_info::apply_system_info_bindings(&mut state, &bindings) {
+                Ok(_) => {}
+                Err(e) => state.system_info.error = Some(e),
             }
         }
         Action::ArchiveExtractAll => {
@@ -1912,6 +1929,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Dithering => render_dithering_screen(state),
         Screen::ArchiveTools => render_archive_screen(state),
         Screen::Compression => render_compression_screen(state),
+        Screen::SystemInfo => features::system_info::render_system_info_screen(state),
         Screen::Compass => render_compass_screen(state),
         Screen::Barometer => render_barometer_screen(state),
         Screen::Magnetometer => render_magnetometer_screen(state),
@@ -2219,6 +2237,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "gzip_screen",
             requires_file_picker: false,
             description: "single-file .gz compress/decompress",
+        },
+        Feature {
+            id: "system_info",
+            name: "📊 System panels",
+            category: "🧰 Utilities",
+            action: "system_info_screen",
+            requires_file_picker: false,
+            description: "device storage/network/battery snapshot",
         },
         Feature {
             id: "pdf_tools",

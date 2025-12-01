@@ -1,4 +1,5 @@
 use crate::features::archive::ArchiveState;
+use crate::features::system_info::SystemInfoState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
 use crate::features::sensor_logger::SensorSelection;
@@ -25,6 +26,7 @@ pub enum Screen {
     TextViewer,
     ArchiveTools,
     Compression,
+    SystemInfo,
     Compass,
     Barometer,
     Magnetometer,
@@ -156,6 +158,7 @@ pub struct AppState {
     pub pixel_art: PixelArtState,
     pub regex_tester: RegexTesterState,
     pub uuid_generator: UuidGeneratorState,
+    pub system_info: SystemInfoState,
 }
 
 impl AppState {
@@ -235,6 +238,7 @@ impl AppState {
                 string_length: 16,
                 string_charset: StringCharset::Alphanumeric,
             },
+            system_info: SystemInfoState::new(),
         }
     }
 
@@ -350,5 +354,6 @@ impl AppState {
         self.uuid_generator.last_string = None;
         self.uuid_generator.string_length = 16;
         self.uuid_generator.string_charset = StringCharset::Alphanumeric;
+        self.system_info = SystemInfoState::new();
     }
 }
