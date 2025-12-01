@@ -3,6 +3,7 @@ mod state;
 mod ui;
 use features::archive::{handle_archive_open, render_archive_screen};
 use features::color_tools::{handle_color_action, render_color_screen};
+use features::dithering::{process_dithering, render_dithering_screen, save_fd_to_temp};
 use features::file_info::{file_info_from_fd, file_info_from_path, render_file_info_screen};
 use features::hashes::{
     handle_hash_action, handle_hash_verify, handle_multi_hash_action, render_hash_verify_screen,
@@ -40,7 +41,7 @@ use jni::sys::jstring;
 use jni::JNIEnv;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use state::{AppState, Screen};
+use state::{AppState, DitheringMode, DitheringPalette, Screen};
 use std::{
     collections::{HashMap, BTreeMap},
     fs::File,
@@ -96,6 +97,21 @@ enum Action {
     KotlinImageOutputDir {
         target: Option<ImageTarget>,
         output_dir: Option<String>,
+    },
+    DitheringScreen,
+    DitheringPickImage {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    DitheringSetMode {
+        mode: DitheringMode,
+    },
+    DitheringSetPalette {
+        palette: DitheringPalette,
+    },
+    DitheringApply {
+        loading_only: bool,
     },
     HashVerifyScreen,
     HashVerify {
@@ -427,6 +443,33 @@ fn parse_action(command: Command) -> Result<Action, String> {
             target: target.as_deref().and_then(parse_image_target),
             output_dir,
         }),
+        "dithering_screen" => Ok(Action::DitheringScreen),
+        "dithering_pick_image" => Ok(Action::DitheringPickImage { path, fd, error }),
+        "dithering_mode_fs" => Ok(Action::DitheringSetMode {
+            mode: DitheringMode::FloydSteinberg,
+        }),
+        "dithering_mode_sierra" => Ok(Action::DitheringSetMode {
+            mode: DitheringMode::Sierra,
+        }),
+        "dithering_mode_atkinson" => Ok(Action::DitheringSetMode {
+            mode: DitheringMode::Atkinson,
+        }),
+        "dithering_mode_bayer4" => Ok(Action::DitheringSetMode {
+            mode: DitheringMode::Bayer4x4,
+        }),
+        "dithering_mode_bayer8" => Ok(Action::DitheringSetMode {
+            mode: DitheringMode::Bayer8x8,
+        }),
+        "dithering_palette_mono" => Ok(Action::DitheringSetPalette {
+            palette: DitheringPalette::Monochrome,
+        }),
+        "dithering_palette_cga" => Ok(Action::DitheringSetPalette {
+            palette: DitheringPalette::Cga,
+        }),
+        "dithering_palette_gb" => Ok(Action::DitheringSetPalette {
+            palette: DitheringPalette::GameBoy,
+        }),
+        "dithering_apply" => Ok(Action::DitheringApply { loading_only }),
         "hash_file_sha256" => Ok(Action::Hash {
             algo: HashAlgo::Sha256,
             path,
@@ -1264,6 +1307,81 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::KotlinImageOutputDir { target, output_dir } => {
             handle_kotlin_image_output_dir(&mut state, target, output_dir);
         }
+        Action::DitheringScreen => {
+            state.push_screen(Screen::Dithering);
+            state.dithering_error = None;
+            state.dithering_result_path = None;
+        }
+        Action::DitheringPickImage { path, fd, error } => {
+            state.push_screen(Screen::Dithering);
+            state.dithering_error = error.clone();
+            state.dithering_result_path = None;
+            let output_dir = path
+                .as_deref()
+                .map(|p| features::storage::output_dir_for(Some(p)).to_string_lossy().into_owned())
+                .unwrap_or_else(|| features::storage::preferred_temp_dir().to_string_lossy().into_owned());
+            state.dithering_output_dir = Some(output_dir);
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_none() {
+                if let Some(raw_fd) = fd_handle.take() {
+                    match save_fd_to_temp(raw_fd as RawFd, path.as_deref()) {
+                        Ok(saved) => {
+                            state.dithering_source_path = Some(saved);
+                            state.dithering_error = None;
+                        }
+                        Err(e) => state.dithering_error = Some(e),
+                    }
+                } else if let Some(p) = path {
+                    state.dithering_source_path = Some(p);
+                    state.dithering_error = None;
+                } else {
+                    state.dithering_error = Some("missing_source".into());
+                }
+            }
+        }
+        Action::DitheringSetMode { mode } => {
+            state.dithering_mode = mode;
+            if matches!(state.current_screen(), Screen::Dithering) {
+                state.replace_current(Screen::Dithering);
+            }
+        }
+        Action::DitheringSetPalette { palette } => {
+            state.dithering_palette = palette;
+            if matches!(state.current_screen(), Screen::Dithering) {
+                state.replace_current(Screen::Dithering);
+            }
+        }
+        Action::DitheringApply { loading_only } => {
+            if loading_only {
+                state.loading_with_spinner = false;
+                state.loading_message = Some("Applying dithering...".into());
+                state.replace_current(Screen::Loading);
+                return Ok(render_ui(&state));
+            }
+            state.loading_message = None;
+            state.loading_with_spinner = true;
+            state.replace_current(Screen::Dithering);
+            if let Some(path) = state.dithering_source_path.clone() {
+                let output_dir = state.dithering_output_dir.as_deref();
+                match process_dithering(
+                    &path,
+                    state.dithering_mode,
+                    state.dithering_palette,
+                    output_dir,
+                ) {
+                    Ok(out_path) => {
+                        state.dithering_result_path = Some(out_path);
+                        state.dithering_error = None;
+                    }
+                    Err(e) => {
+                        state.dithering_result_path = None;
+                        state.dithering_error = Some(e);
+                    }
+                }
+            } else {
+                state.dithering_error = Some("no_image_selected".into());
+            }
+        }
         Action::QrGenerate { input } => {
             state.push_screen(Screen::Qr);
             let text = input.unwrap_or_default();
@@ -1426,6 +1544,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::About => render_about_screen(state),
         Screen::SensorLogger => render_sensor_logger_screen(state),
         Screen::TextViewer => render_text_viewer_screen(state),
+        Screen::Dithering => render_dithering_screen(state),
         Screen::ArchiveTools => render_archive_screen(state),
         Screen::Compass => render_compass_screen(state),
         Screen::Barometer => render_barometer_screen(state),
@@ -1723,6 +1842,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "kotlin_image_screen_png",
             requires_file_picker: false,
             description: "Kotlin conversion with Rust UI",
+        },
+        Feature {
+            id: "image_dithering",
+            name: "🟪 Retro dithering",
+            category: "📸 Media",
+            action: "dithering_screen",
+            requires_file_picker: false,
+            description: "Floyd-Steinberg, Bayer, retro palettes",
         },
         Feature {
             id: "shader_demo",
