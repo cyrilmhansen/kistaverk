@@ -1630,6 +1630,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     path: path.map(|p| p.to_string()),
                     size_bytes: None,
                     mime: None,
+                    hex_dump: None,
+                    is_utf8: None,
                     error: Some(err),
                 }
             } else if let Some(fd) = fd_handle.take() {
@@ -1641,6 +1643,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     path: None,
                     size_bytes: None,
                     mime: None,
+                    hex_dump: None,
+                    is_utf8: None,
                     error: Some("missing_path".into()),
                 }
             };
@@ -1979,11 +1983,11 @@ fn feature_catalog() -> Vec<Feature> {
         },
         Feature {
             id: "file_info",
-            name: "📂 File info",
+            name: "📂 File Inspector",
             category: "📁 Files",
             action: "file_info_screen",
             requires_file_picker: false,
-            description: "size & MIME",
+            description: "size, MIME, and header preview",
         },
         Feature {
             id: "text_viewer",

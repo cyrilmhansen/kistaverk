@@ -1,4 +1,4 @@
-use crate::state::{AppState, StringCharset, UuidGeneratorState};
+use crate::state::{AppState, StringCharset};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput, maybe_push_back};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -42,12 +42,12 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
     );
 
     let charset_options = [
-        (StringCharset::Alphanumeric, "Alphanumeric", "uuid_charset_alnum"),
-        (StringCharset::Numeric, "Numeric", "uuid_charset_numeric"),
-        (StringCharset::Alpha, "Alphabetic", "uuid_charset_alpha"),
-        (StringCharset::Hex, "Hex", "uuid_charset_hex"),
+        (StringCharset::Alphanumeric, "Alphanumeric"),
+        (StringCharset::Numeric, "Numeric"),
+        (StringCharset::Alpha, "Alphabetic"),
+        (StringCharset::Hex, "Hex"),
     ];
-    for (charset, label, action) in charset_options {
+    for (charset, label) in charset_options {
         children.push(json!({
             "type": "Button",
             "text": label,
@@ -110,7 +110,7 @@ pub fn generate_uuid() -> String {
 }
 
 pub fn generate_string(len: usize, charset: StringCharset) -> String {
-    let mut rng = thread_rng();
+    let rng = thread_rng();
     match charset {
         StringCharset::Alphanumeric => rng
             .sample_iter(&Alphanumeric)
@@ -133,7 +133,7 @@ pub fn generate_string(len: usize, charset: StringCharset) -> String {
             .map(|b| {
                 let c = b as char;
                 if c >= 'g' {
-                    ((b'0' + (b % 16)) as char)
+                    (b'0' + (b % 16)) as char
                 } else {
                     c
                 }
