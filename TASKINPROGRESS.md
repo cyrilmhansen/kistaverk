@@ -1,42 +1,38 @@
-# Task In Progress: PDF Page Reordering
+# Task In Progress: ZIP Creation
 
 ## Feature Description
-Extend the PDF tools to allow reordering pages. Users should be able to specify a new order for the pages (e.g., "3, 1, 2" or "1, 3-5, 2"). This builds upon the existing extract/delete infrastructure.
+Implement the ability to create `.zip` archives. Users should be able to select a file or a directory (folder) and compress it into a standard ZIP file.
 
 ## Plan
 
-### Step 1: Update Core Logic (`rust/src/features/pdf.rs`)
-*   **Goal:** Add `reorder_pages` logic.
+### Step 1: Update Core Logic (`rust/src/features/archive.rs`)
+*   **Goal:** Add compression logic.
 *   **Actions:**
-    1.  Add `PdfOperation::Reorder` variant.
-    2.  Implement `reorder_pages(doc, page_order: &[u32]) -> Result<Document, String>`.
-        *   Create a new document structure.
-        *   Copy pages from the source document in the specified order.
-        *   Handle duplicates (if a user wants to duplicate a page) or strictly reorder (permutation). *Decision: Allow duplication/subsetting as it's more flexible.*
-        *   Validation: Ensure all input page numbers exist in the source.
+    1.  Implement `create_archive(source_path: &Path, output_path: &Path) -> Result<(), String>`.
+    2.  Implement a recursive directory walker (using `std::fs`) to handle folder compression.
+    3.  Use `zip::ZipWriter` with `zip::write::FileOptions` (Deflate compression).
+    4.  Ensure relative paths in the ZIP are correct (stripping the absolute prefix of the source).
 
-### Step 2: Update UI Rendering (`rust/src/features/pdf.rs`)
-*   **Goal:** Add reorder input.
+### Step 2: Integration (`rust/src/lib.rs`)
+*   **Goal:** Expose the feature.
 *   **Actions:**
-    1.  Add a `TextInput` for "Page Order" (defaulting to "1, 2, 3...").
-    2.  Add a "Reorder" button.
-    3.  (Ideally) drag-and-drop UI is hard with the current JSON DSL, so a text input with comma-separated values is the pragmatic MVP.
+    1.  Add `Action::ArchiveCompress { path, fd, ... }`.
+    2.  Add "Compress to ZIP" entry to the `feature_catalog` (Category: Files).
+    3.  In `handle_command`, for `ArchiveCompress`:
+        *   Determine output filename (`<source>.zip`).
+        *   Show `Screen::Loading`.
+        *   Call `create_archive`.
+        *   On success, open the *newly created archive* in the Archive Viewer (reusing `Action::ArchiveOpen`).
 
-### Step 3: Integration (`rust/src/lib.rs`)
-*   **Goal:** Wire up action.
+### Step 3: Testing
 *   **Actions:**
-    1.  Add `Action::PdfReorder { fd, uri, order: Vec<u32> }`.
-    2.  Parse the comma-separated string from the bindings into a `Vec<u32>`.
-    3.  Call `handle_pdf_operation` with `PdfOperation::Reorder`.
-
-### Step 4: Testing
-*   **Actions:**
-    1.  Unit test the reordering logic (mocking a document structure or using a minimal PDF generator if available, otherwise rely on logic verification).
-    2.  Verify behavior with invalid page numbers.
+    1.  Unit test: Create a ZIP from a temporary directory structure and verify its contents (using the existing `ZipArchive` reader logic).
+    2.  Unit test: Create a ZIP from a single file.
 
 ---
 
 ## Completed Tasks
+*   **PDF Page Reordering**: Done.
 *   **ZIP Extraction**: Done.
 *   **File Inspector**: Done.
 *   **Dithering Tools**: Done.

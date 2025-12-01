@@ -274,6 +274,11 @@ enum Action {
     ArchiveExtractEntry {
         index: usize,
     },
+    ArchiveCompress {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
     MultiHashScreen,
     HashAll {
         path: Option<String>,
@@ -627,6 +632,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "color_copy_clipboard" => Ok(Action::ColorCopyClipboard),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
+        "archive_compress" => Ok(Action::ArchiveCompress { path, fd, error }),
         "compass_demo" => Ok(Action::CompassDemo),
         "compass_set" => Ok(Action::CompassSet {
             angle_radians: angle_radians.unwrap_or(0.0),
@@ -873,6 +879,40 @@ fn handle_command(command: Command) -> Result<Value, String> {
             } else {
                 state.archive.error = Some("missing_fd".into());
                 state.archive.last_output = None;
+            }
+        }
+        Action::ArchiveCompress { path, fd, error } => {
+            state.push_screen(Screen::ArchiveTools);
+            state.archive.error = None;
+            state.archive.last_output = None;
+            if let Some(err) = error {
+                state.archive.error = Some(err);
+            } else if let Some(path) = path {
+                match features::archive::create_archive(&path) {
+                    Ok(out) => {
+                        state.archive.last_output =
+                            Some(format!("Archive created at {}", out.display()));
+                        if let Ok(file) = File::open(&out) {
+                            let raw_fd = std::os::unix::io::IntoRawFd::into_raw_fd(file);
+                            if let Err(e) = handle_archive_open(
+                                &mut state,
+                                raw_fd,
+                                Some(out.to_string_lossy().as_ref()),
+                            ) {
+                                state.archive.error = Some(e);
+                            }
+                        } else {
+                            state.archive.error =
+                                Some("archive_reopen_failed:open".into());
+                            state.archive.last_output = None;
+                        }
+                    }
+                    Err(e) => state.archive.error = Some(e),
+                }
+            } else if fd.is_some() {
+                state.archive.error = Some("archive_compress_requires_path".into());
+            } else {
+                state.archive.error = Some("missing_path".into());
             }
         }
         Action::ArchiveOpenText { index: _index } => {
@@ -2102,6 +2142,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "archive_tools_screen",
             requires_file_picker: false,
             description: "list .zip contents",
+        },
+        Feature {
+            id: "archive_compress",
+            name: "📦 ZIP Creator",
+            category: "📁 Files",
+            action: "archive_compress",
+            requires_file_picker: true,
+            description: "compress file or folder",
         },
         Feature {
             id: "pdf_tools",

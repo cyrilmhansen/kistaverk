@@ -8,7 +8,8 @@ use std::fs::{self, File};
 use std::io::{copy, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Component, Path, PathBuf};
-use zip::ZipArchive;
+use zip::write::FileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveEntry {
@@ -73,6 +74,119 @@ pub fn handle_archive_open(
     state.archive.error = None;
     state.replace_current(Screen::ArchiveTools);
     Ok(())
+}
+
+pub fn create_archive(source_path: &str) -> Result<PathBuf, String> {
+    let source = Path::new(source_path);
+    if !source.exists() {
+        return Err("archive_source_missing".into());
+    }
+    if source.is_symlink() {
+        return Err("archive_source_symlink_not_supported".into());
+    }
+
+    let dest_dir = output_dir_for(Some(source_path));
+    fs::create_dir_all(&dest_dir).map_err(|e| format!("archive_dest_create_failed:{e}"))?;
+    let base_name = source
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "archive".to_string());
+    let dest_path = dest_dir.join(format!("{base_name}.zip"));
+
+    let file = File::create(&dest_path).map_err(|e| format!("archive_dest_open_failed:{e}"))?;
+    let mut writer = ZipWriter::new(file);
+    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+
+    let base = source
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(""));
+
+    if source.is_dir() {
+        let rel = rel_path(&base, source)?;
+        let dir_name = if rel.is_empty() {
+            String::new()
+        } else if rel.ends_with('/') {
+            rel
+        } else {
+            format!("{rel}/")
+        };
+        if !dir_name.is_empty() {
+            writer
+                .add_directory(&dir_name, options)
+                .map_err(|e| format!("archive_write_failed:{e}"))?;
+        }
+        write_dir(&mut writer, &base, source, options)?;
+    } else {
+        let rel = rel_path(&base, source)?;
+        write_file(&mut writer, source, &rel, options)?;
+    }
+
+    writer.finish().map_err(|e| format!("archive_write_failed:{e}"))?;
+    Ok(dest_path)
+}
+
+fn write_dir(
+    writer: &mut ZipWriter<File>,
+    base: &Path,
+    dir: &Path,
+    options: FileOptions,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("archive_read_dir_failed:{e}"))? {
+        let entry = entry.map_err(|e| format!("archive_read_dir_failed:{e}"))?;
+        let path = entry.path();
+        let meta = entry
+            .metadata()
+            .map_err(|e| format!("archive_metadata_failed:{e}"))?;
+        if meta.file_type().is_symlink() {
+            return Err("archive_symlink_not_supported".into());
+        }
+        if meta.is_dir() {
+            let rel = rel_path(base, &path)?;
+            let dir_name = if rel.ends_with('/') {
+                rel
+            } else {
+                format!("{rel}/")
+            };
+            writer
+                .add_directory(&dir_name, options)
+                .map_err(|e| format!("archive_write_failed:{e}"))?;
+            write_dir(writer, base, &path, options)?;
+        } else if meta.is_file() {
+            let rel = rel_path(base, &path)?;
+            write_file(writer, &path, &rel, options)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_file(
+    writer: &mut ZipWriter<File>,
+    path: &Path,
+    rel: &str,
+    options: FileOptions,
+) -> Result<(), String> {
+    let mut f = File::open(path).map_err(|e| format!("archive_file_open_failed:{e}"))?;
+    writer
+        .start_file(rel, options)
+        .map_err(|e| format!("archive_write_failed:{e}"))?;
+    copy(&mut f, writer).map_err(|e| format!("archive_write_failed:{e}"))?;
+    Ok(())
+}
+
+fn rel_path(base: &Path, path: &Path) -> Result<String, String> {
+    let rel = path
+        .strip_prefix(base)
+        .map_err(|_| "archive_rel_path_failed".to_string())?;
+    let mut parts = Vec::new();
+    for comp in rel.components() {
+        match comp {
+            Component::Normal(part) => parts.push(part.to_string_lossy()),
+            Component::CurDir => {}
+            _ => return Err("archive_invalid_component".into()),
+        }
+    }
+    Ok(parts.join("/"))
 }
 
 pub fn render_archive_screen(state: &AppState) -> Value {
@@ -386,5 +500,42 @@ mod tests {
         let res = extract_all(zip_path.to_str().unwrap(), &dest);
         assert!(res.is_err());
         assert!(!dest.join("evil.txt").exists());
+    }
+
+    #[test]
+    fn create_archive_preserves_structure() {
+        let dir = tempdir().unwrap();
+        let root = dir.path().join("root");
+        let sub = root.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        fs::write(sub.join("b.txt"), b"b").unwrap();
+
+        let out = create_archive(root.to_str().unwrap()).expect("archive created");
+        let file = File::open(out).unwrap();
+        let mut zip = ZipArchive::new(file).unwrap();
+        let mut names: Vec<String> = (0..zip.len())
+            .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
+            .collect();
+        names.sort();
+        assert!(names.contains(&"root/".to_string()));
+        assert!(names.contains(&"root/a.txt".to_string()));
+        assert!(names.contains(&"root/sub/".to_string()));
+        assert!(names.contains(&"root/sub/b.txt".to_string()));
+    }
+
+    #[test]
+    fn create_archive_from_single_file_uses_flat_name() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("single.txt");
+        fs::write(&file_path, b"hello").unwrap();
+
+        let out = create_archive(file_path.to_str().unwrap()).expect("archive created");
+        let file = File::open(out).unwrap();
+        let mut zip = ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..zip.len())
+            .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
+            .collect();
+        assert_eq!(names, vec!["single.txt".to_string()]);
     }
 }
