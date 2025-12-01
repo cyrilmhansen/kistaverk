@@ -1,45 +1,44 @@
-# Task In Progress: File Inspector
+# Task In Progress: ZIP Extraction
 
 ## Feature Description
-Enhance the existing "File Info" tool into a robust "File Inspector". In addition to basic size and MIME type, it will provide a hex dump preview of the file header and a UTF-8 validation check to determine if the file is text-safe.
+Enhance the "Archive Viewer" (currently read-only) to support extracting files. Users should be able to extract all files or selected individual files to a target directory.
 
 ## Plan
 
-### Step 1: Update Core Logic (`rust/src/features/file_info.rs`)
-*   **Goal:** Extend file analysis capabilities.
+### Step 1: Update Core Logic (`rust/src/features/archive.rs`)
+*   **Goal:** Add extraction logic.
 *   **Actions:**
-    1.  Update `FileInfoResult` struct to include:
-        *   `hex_dump: Option<String>`
-        *   `is_utf8: Option<bool>`
-    2.  Modify `info_from_reader` (or create `inspect_reader`):
-        *   Read the first 512 bytes.
-        *   Generate a hex dump string (Offset | Hex | ASCII).
-        *   Check if the read buffer is valid UTF-8.
-        *   (Optimization) For UTF-8 check, if the file is small (< 64KB), read all and check; if large, checking the head is a good heuristic for "starts with text", or we can scan the whole file efficiently if needed. For now, header check + extension heuristic is a good start for a "preview".
+    1.  Implement `extract_all(archive_path: &str, output_dir: &str) -> Result<String, String>`.
+        *   Iterate over all entries.
+        *   Sanitize paths (zip slip protection).
+        *   Write files to `output_dir`.
+    2.  Implement `extract_entry(archive_path: &str, entry_index: usize, output_dir: &str) -> Result<String, String>`.
+        *   Extract a single file.
 
-### Step 2: Update UI Rendering (`rust/src/features/file_info.rs`)
-*   **Goal:** Display the new detailed info.
+### Step 2: Update UI Rendering (`rust/src/features/archive.rs`)
+*   **Goal:** Add "Extract" controls.
 *   **Actions:**
-    1.  Update `render_file_info_screen`.
-    2.  Add a `UiCodeView` or `UiText` section for the `hex_dump`.
-    3.  Add a status label for `is_utf8` (e.g., "Content: Text (UTF-8)" vs "Content: Binary/Unknown").
-    4.  Organize layout: File Path -> Meta (Size/MIME/Type) -> Preview (Hex).
+    1.  Add a global "Extract All" button to the header.
+    2.  Add "Extract" button next to each file entry (or a context menu equivalent if space permits, for now just a button or rely on "Extract All" for MVP).
+    *   *Decision*: For mobile UI, an "Extract All" button is high value. For individual files, maybe "Open" (view text) vs "Extract" (save) is the distinction.
+    *   Let's add an "Extract" button to each row.
 
 ### Step 3: Integration (`rust/src/lib.rs`)
-*   **Goal:** Expose the new functionality.
+*   **Goal:** Wire up actions.
 *   **Actions:**
-    1.  Rename "File info" to "File Inspector" in `feature_catalog`.
-    2.  Ensure `handle_command` calls the updated logic for `Action::FileInfo`.
+    1.  Add `Action::ArchiveExtractAll { output_dir: Option<String> }`.
+    2.  Add `Action::ArchiveExtractEntry { index: usize, output_dir: Option<String> }`.
+    3.  Handle "Extract" actions by resolving an output directory (using `storage::output_dir_for` or similar) and calling the logic.
 
 ### Step 4: Testing
 *   **Actions:**
-    1.  Unit test the hex dump formatter.
-    2.  Unit test the UTF-8 check with valid text, invalid text, and binary data.
-    3.  Manual test with various file types (images, text scripts, binaries).
+    1.  Unit test the extraction logic (using a temp dir).
+    2.  Test zip slip vulnerability prevention (path traversal).
 
 ---
 
 ## Completed Tasks
+*   **File Inspector**: Done.
 *   **Dithering Tools**: Done.
 *   **Multi-hash view**: Done.
 *   **Refactoring lib.rs**: Done.

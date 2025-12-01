@@ -1,10 +1,13 @@
+use crate::features::storage::output_dir_for;
 use crate::features::text_viewer::read_text_from_reader;
 use crate::state::{AppState, Screen};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fs::File;
+use std::fs::{self, File};
+use std::io::{copy, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
+use std::path::{Component, Path, PathBuf};
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +23,7 @@ pub struct ArchiveState {
     pub entries: Vec<ArchiveEntry>,
     pub error: Option<String>,
     pub truncated: bool,
+    pub last_output: Option<String>,
 }
 
 impl ArchiveState {
@@ -29,6 +33,7 @@ impl ArchiveState {
             entries: Vec::new(),
             error: None,
             truncated: false,
+            last_output: None,
         }
     }
 
@@ -37,6 +42,7 @@ impl ArchiveState {
         self.entries.clear();
         self.error = None;
         self.truncated = false;
+        self.last_output = None;
     }
 }
 
@@ -72,7 +78,7 @@ pub fn handle_archive_open(
 pub fn render_archive_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Archive Viewer").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("View contents of .zip files.").size(14.0)).unwrap(),
+        serde_json::to_value(UiText::new("View contents of .zip files and extract items.").size(14.0)).unwrap(),
         serde_json::to_value(
             UiButton::new("Open Archive", "archive_open")
                 .requires_file_picker(true)
@@ -80,6 +86,16 @@ pub fn render_archive_screen(state: &AppState) -> Value {
         )
         .unwrap(),
     ];
+
+    if state.archive.path.is_some() && !state.archive.entries.is_empty() {
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Extract All", "archive_extract_all")
+                    .content_description("archive_extract_all"),
+            )
+            .unwrap(),
+        );
+    }
 
     if let Some(err) = &state.archive.error {
         children.push(
@@ -97,6 +113,12 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
         );
     }
+    if let Some(msg) = &state.archive.last_output {
+        children.push(
+            serde_json::to_value(UiText::new(msg).size(12.0).content_description("archive_status"))
+                .unwrap(),
+        );
+    }
 
     if !state.archive.entries.is_empty() {
         children.push(serde_json::to_value(UiText::new("Contents:").size(16.0)).unwrap());
@@ -108,21 +130,34 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             } else {
                 format!("({})", human_bytes(entry.size))
             };
-            rows.push(if is_text_entry(entry) {
-                let label = format!("{icon} {} {size_str}", entry.name);
+            let label = format!("{icon} {} {size_str}", entry.name);
+            let mut entry_children = Vec::new();
+            if is_text_entry(entry) {
                 let action = format!("archive_open_text:{idx}");
-                serde_json::to_value(
-                    UiButton::new(&label, &action).content_description("archive_entry_text"),
-                )
-                .unwrap()
+                entry_children.push(
+                    serde_json::to_value(
+                        UiButton::new(&label, &action).content_description("archive_entry_text"),
+                    )
+                    .unwrap(),
+                );
             } else {
+                entry_children.push(
+                    serde_json::to_value(
+                        UiText::new(&label)
+                            .size(14.0)
+                            .content_description("archive_entry"),
+                    )
+                    .unwrap(),
+                );
+            }
+            entry_children.push(
                 serde_json::to_value(
-                    UiText::new(&format!("{icon} {} {size_str}", entry.name))
-                        .size(14.0)
-                        .content_description("archive_entry"),
+                    UiButton::new("Extract", &format!("archive_extract_entry:{idx}"))
+                        .content_description("archive_extract_entry"),
                 )
-                .unwrap()
-            });
+                .unwrap(),
+            );
+            rows.push(serde_json::to_value(UiColumn::new(entry_children).padding(8)).unwrap());
         }
         children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
         if state.archive.truncated {
@@ -230,4 +265,126 @@ pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String
     let text = read_text_from_reader(&mut entry_file)?;
     let label = format!("{} ⟂ {}", entry.name, archive_path);
     Ok((label, text))
+}
+
+pub fn extract_all(archive_path: &str, dest_root: &Path) -> Result<usize, String> {
+    fs::create_dir_all(dest_root).map_err(|e| format!("create_dest_failed:{e}"))?;
+    let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut count = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| format!("archive_entry_open_failed:{e}"))?;
+        let out_path = safe_join(dest_root, entry.name())?;
+        if entry.name().ends_with('/') || entry.is_dir() {
+            fs::create_dir_all(&out_path).map_err(|e| format!("create_dir_failed:{e}"))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| format!("create_dir_failed:{e}"))?;
+            }
+            let mut outfile = File::create(&out_path)
+                .map_err(|e| format!("create_file_failed:{e}"))?;
+            copy(&mut entry, &mut outfile).map_err(|e| format!("extract_failed:{e}"))?;
+            outfile.flush().map_err(|e| format!("flush_failed:{e}"))?;
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
+pub fn extract_entry(
+    archive_path: &str,
+    dest_root: &Path,
+    index: usize,
+) -> Result<PathBuf, String> {
+    fs::create_dir_all(dest_root).map_err(|e| format!("create_dest_failed:{e}"))?;
+    let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
+    if index >= archive.len() {
+        return Err("archive_entry_out_of_range".into());
+    }
+    let mut entry = archive
+        .by_index(index)
+        .map_err(|e| format!("archive_entry_open_failed:{e}"))?;
+    let out_path = safe_join(dest_root, entry.name())?;
+    if entry.name().ends_with('/') || entry.is_dir() {
+        fs::create_dir_all(&out_path).map_err(|e| format!("create_dir_failed:{e}"))?;
+    } else {
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create_dir_failed:{e}"))?;
+        }
+        let mut outfile =
+            File::create(&out_path).map_err(|e| format!("create_file_failed:{e}"))?;
+        copy(&mut entry, &mut outfile).map_err(|e| format!("extract_failed:{e}"))?;
+        outfile.flush().map_err(|e| format!("flush_failed:{e}"))?;
+    }
+    Ok(out_path)
+}
+
+fn safe_join(base: &Path, entry_name: &str) -> Result<PathBuf, String> {
+    let mut out = PathBuf::from(base);
+    let path = Path::new(entry_name);
+    for comp in path.components() {
+        match comp {
+            Component::Normal(part) => out.push(part),
+            Component::CurDir => {}
+            _ => return Err("invalid_entry_path".into()),
+        }
+    }
+    if !out.starts_with(base) {
+        return Err("invalid_entry_path".into());
+    }
+    Ok(out)
+}
+
+pub fn archive_output_root(path: &str) -> PathBuf {
+    let base = output_dir_for(Some(path));
+    let archive_name = Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "archive".to_string());
+    base.join(format!("{}_extracted", archive_name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use zip::write::FileOptions;
+
+    #[test]
+    fn safe_join_rejects_traversal() {
+        let base = Path::new("/tmp/base");
+        assert!(safe_join(base, "../evil").is_err());
+        assert!(safe_join(base, "/abs/path").is_err());
+    }
+
+    #[test]
+    fn safe_join_allows_nested_paths() {
+        let base = Path::new("/tmp/base");
+        let out = safe_join(base, "dir/file.txt").unwrap();
+        assert!(out.starts_with(base));
+        assert!(out.ends_with(Path::new("dir/file.txt")));
+    }
+
+    #[test]
+    fn extract_all_rejects_traversal_entries() {
+        let dir = tempdir().unwrap();
+        let zip_path = dir.path().join("test.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            writer
+                .start_file("../evil.txt", FileOptions::default())
+                .unwrap();
+            writer.write_all(b"bad").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let dest = dir.path().join("out");
+        let res = extract_all(zip_path.to_str().unwrap(), &dest);
+        assert!(res.is_err());
+        assert!(!dest.join("evil.txt").exists());
+    }
 }

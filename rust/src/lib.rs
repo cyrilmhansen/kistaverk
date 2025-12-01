@@ -265,6 +265,10 @@ enum Action {
     ArchiveOpenText {
         index: usize,
     },
+    ArchiveExtractAll,
+    ArchiveExtractEntry {
+        index: usize,
+    },
     MultiHashScreen,
     HashAll {
         path: Option<String>,
@@ -634,6 +638,13 @@ fn parse_action(command: Command) -> Result<Action, String> {
                     .parse::<usize>()
                     .map_err(|_| format!("invalid_archive_index:{idx}"))?;
                 Ok(Action::ArchiveOpenText { index })
+            } else if other == "archive_extract_all" {
+                Ok(Action::ArchiveExtractAll)
+            } else if let Some(idx) = other.strip_prefix("archive_extract_entry:") {
+                let index = idx
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid_archive_index:{idx}"))?;
+                Ok(Action::ArchiveExtractEntry { index })
             } else if other == "multi_hash_screen" {
                 Ok(Action::MultiHashScreen)
             } else if other == "hash_all" {
@@ -833,12 +844,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
             let mut fd_handle = FdHandle::new(fd);
             if let Some(err) = error {
                 state.archive.error = Some(err);
+                state.archive.last_output = None;
             } else if let Some(raw_fd) = fd_handle.take() {
                 if let Err(e) = handle_archive_open(&mut state, raw_fd, path.as_deref()) {
                     state.archive.error = Some(e);
+                    state.archive.last_output = None;
                 }
             } else {
                 state.archive.error = Some("missing_fd".into());
+                state.archive.last_output = None;
             }
         }
         Action::ArchiveOpenText { index: _index } => {
@@ -867,6 +881,48 @@ fn handle_command(command: Command) -> Result<Value, String> {
                             .or_else(|| Some(entry.name.clone()));
                     }
                 }
+            }
+        }
+        Action::ArchiveExtractAll => {
+            state.replace_current(Screen::ArchiveTools);
+            if let Some(path) = state.archive.path.clone() {
+                let dest = features::archive::archive_output_root(&path);
+                match features::archive::extract_all(&path, &dest) {
+                    Ok(count) => {
+                        state.archive.error = None;
+                        state.archive.last_output =
+                            Some(format!("Extracted {count} entries to {}", dest.display()));
+                    }
+                    Err(e) => {
+                        state.archive.error = Some(e);
+                        state.archive.last_output = None;
+                    }
+                }
+            } else {
+                state.archive.error = Some("archive_missing_path".into());
+                state.archive.last_output = None;
+            }
+        }
+        Action::ArchiveExtractEntry { index } => {
+            state.replace_current(Screen::ArchiveTools);
+            if let Some(path) = state.archive.path.clone() {
+                let dest = features::archive::archive_output_root(&path);
+                match features::archive::extract_entry(&path, &dest, index) {
+                    Ok(out) => {
+                        state.archive.error = None;
+                        state.archive.last_output = Some(format!(
+                            "Extracted to {}",
+                            out.display()
+                        ));
+                    }
+                    Err(e) => {
+                        state.archive.error = Some(e);
+                        state.archive.last_output = None;
+                    }
+                }
+            } else {
+                state.archive.error = Some("archive_missing_path".into());
+                state.archive.last_output = None;
             }
         }
         Action::MultiHashScreen => {
