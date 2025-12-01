@@ -19,6 +19,7 @@ pub enum Screen {
     Qr,
     ColorTools,
     PdfTools,
+    PdfPreview,
     About,
     SensorLogger,
     TextViewer,

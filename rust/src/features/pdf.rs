@@ -112,6 +112,7 @@ pub struct PdfState {
     pub selected_pages: Vec<u32>,
     pub last_output: Option<String>,
     pub last_error: Option<String>,
+    pub preview_page: Option<u32>,
     pub current_title: Option<String>,
     pub signature_target_page: Option<u32>,
     pub signature_x_pct: Option<f64>,
@@ -138,6 +139,7 @@ impl PdfState {
             signature_width_pt: None,
             signature_height_pt: None,
             signature_grid_selection: None,
+            preview_page: None,
         }
     }
 
@@ -155,6 +157,7 @@ impl PdfState {
         self.signature_width_pt = None;
         self.signature_height_pt = None;
         self.signature_grid_selection = None;
+        self.preview_page = None;
     }
 }
 
@@ -513,6 +516,77 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     maybe_push_back(&mut children, state);
 
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+}
+
+pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
+    let mut children = vec![serde_json::to_value(UiText::new("PDF viewer").size(20.0)).unwrap()];
+    let pdf = &state.pdf;
+
+    match (&pdf.source_uri, pdf.page_count) {
+        (Some(uri), Some(count)) if count > 0 => {
+            if let Some(page) = pdf.preview_page {
+                children.push(json!({
+                    "type": "PdfSinglePage",
+                    "source_uri": uri,
+                    "page": page
+                }));
+                if page > 1 {
+                    children.push(json!({
+                        "type": "Button",
+                        "text": "Prev",
+                        "action": "pdf_page_open",
+                        "payload": { "page": (page - 1) }
+                    }));
+                }
+                if page < count {
+                    children.push(json!({
+                        "type": "Button",
+                        "text": "Next",
+                        "action": "pdf_page_open",
+                        "payload": { "page": (page + 1) }
+                    }));
+                }
+                children.push(json!({
+                    "type": "Button",
+                    "text": "Grid",
+                    "action": "pdf_page_close"
+                }));
+                children.push(json!({
+                    "type": "Button",
+                    "text": "Back",
+                    "action": "back"
+                }));
+            } else {
+                children.push(json!({
+                    "type": "PdfPreviewGrid",
+                    "source_uri": uri,
+                    "page_count": count,
+                    "action": "pdf_page_open"
+                }));
+                children.push(json!({
+                    "type": "Button",
+                    "text": "Back",
+                    "action": "back"
+                }));
+            }
+        }
+        _ => {
+            children.push(
+                serde_json::to_value(
+                    UiText::new("No PDF selected. Open a PDF from the PDF pages tool first.")
+                        .size(14.0),
+                )
+                .unwrap(),
+            );
+            children.push(json!({
+                "type": "Button",
+                "text": "Back",
+                "action": "back"
+            }));
+        }
+    }
+
+    serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
 }
 
 fn load_document(fd: RawFd) -> Result<Document, String> {
