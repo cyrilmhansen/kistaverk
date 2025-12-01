@@ -20,6 +20,7 @@ use features::misc_screens::{
     render_about_screen, render_barometer_screen, render_compass_screen, render_loading_screen,
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
+use features::pixel_art::{process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd};
 use features::pdf::{
     handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title,
     render_pdf_preview_screen, render_pdf_screen, PdfOperation,
@@ -283,6 +284,18 @@ enum Action {
         magnitude_ut: f64,
         error: Option<String>,
     },
+    PixelArtScreen,
+    PixelArtPick {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    PixelArtSetScale {
+        scale: u32,
+    },
+    PixelArtApply {
+        loading_only: bool,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -387,6 +400,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
             page: parse_u32_binding(&bindings, "page").unwrap_or(1),
         }),
         "pdf_page_close" => Ok(Action::PdfPageClose),
+        "pixel_art_screen" => Ok(Action::PixelArtScreen),
+        "pixel_art_pick" => Ok(Action::PixelArtPick { path, fd, error }),
+        "pixel_art_set_scale" => Ok(Action::PixelArtSetScale {
+            scale: parse_u32_binding(&bindings, "scale").unwrap_or(4),
+        }),
+        "pixel_art_apply" => Ok(Action::PixelArtApply { loading_only }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
@@ -894,6 +913,63 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.magnetometer_error = error;
             if matches!(state.current_screen(), Screen::Magnetometer) {
                 state.replace_current(Screen::Magnetometer);
+            }
+        }
+        Action::PixelArtScreen => {
+            state.push_screen(Screen::PixelArt);
+            reset_pixel_art(&mut state.pixel_art);
+        }
+        Action::PixelArtPick { path, fd, error } => {
+            state.push_screen(Screen::PixelArt);
+            state.pixel_art.error = error.clone();
+            state.pixel_art.result_path = None;
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_none() {
+                if let Some(raw_fd) = fd_handle.take() {
+                    match save_pixel_fd(raw_fd as RawFd, path.as_deref()) {
+                        Ok(saved) => {
+                            state.pixel_art.source_path = Some(saved);
+                            state.pixel_art.error = None;
+                        }
+                        Err(e) => state.pixel_art.error = Some(e),
+                    }
+                } else if let Some(p) = path {
+                    state.pixel_art.source_path = Some(p);
+                    state.pixel_art.error = None;
+                } else {
+                    state.pixel_art.error = Some("missing_source".into());
+                }
+            }
+        }
+        Action::PixelArtSetScale { scale } => {
+            state.pixel_art.scale_factor = scale.max(2);
+            if matches!(state.current_screen(), Screen::PixelArt) {
+                state.replace_current(Screen::PixelArt);
+            }
+        }
+        Action::PixelArtApply { loading_only } => {
+            if loading_only {
+                state.loading_with_spinner = false;
+                state.loading_message = Some("Pixelating...".into());
+                state.replace_current(Screen::Loading);
+                return Ok(render_ui(&state));
+            }
+            state.loading_message = None;
+            state.loading_with_spinner = true;
+            state.replace_current(Screen::PixelArt);
+            if let Some(path) = state.pixel_art.source_path.clone() {
+                match process_pixel_art(&path, state.pixel_art.scale_factor) {
+                    Ok(out) => {
+                        state.pixel_art.result_path = Some(out);
+                        state.pixel_art.error = None;
+                    }
+                    Err(e) => {
+                        state.pixel_art.result_path = None;
+                        state.pixel_art.error = Some(e);
+                    }
+                }
+            } else {
+                state.pixel_art.error = Some("no_image_selected".into());
             }
         }
         Action::PdfToolsScreen => {
@@ -1592,6 +1668,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Barometer => render_barometer_screen(state),
         Screen::Magnetometer => render_magnetometer_screen(state),
         Screen::MultiHash => render_multi_hash_screen(state),
+        Screen::PixelArt => render_pixel_art_screen(state),
     }
 }
 
@@ -1820,6 +1897,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_file_md5",
             requires_file_picker: true,
             description: "legacy hash",
+        },
+        Feature {
+            id: "pixel_art",
+            name: "🟫 Pixel artifier",
+            category: "📸 Media",
+            action: "pixel_art_screen",
+            requires_file_picker: false,
+            description: "downscale+nearest upscale",
         },
         Feature {
             id: "hash_md4",
@@ -2554,6 +2639,60 @@ mod tests {
         let state = STATE.lock().unwrap();
         assert_eq!(state.pdf.preview_page, Some(2));
         assert!(matches!(state.current_screen(), Screen::PdfPreview));
+    }
+
+    fn write_test_image(w: u32, h: u32, color: [u8; 3]) -> NamedTempFile {
+        let mut img = image::RgbaImage::new(w, h);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgba([color[0], color[1], color[2], 255]);
+        }
+        let file = tempfile::Builder::new()
+            .suffix(".png")
+            .tempfile()
+            .unwrap();
+        img.save(file.path()).unwrap();
+        file
+    }
+
+    #[test]
+    fn pixel_art_screen_sets_defaults() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        handle_command(make_command("pixel_art_screen")).expect("screen");
+        let state = STATE.lock().unwrap();
+        assert!(matches!(state.current_screen(), Screen::PixelArt));
+        assert_eq!(state.pixel_art.scale_factor, 4);
+    }
+
+    #[test]
+    fn pixel_art_apply_produces_result() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        let img = write_test_image(8, 8, [10, 20, 30]);
+        {
+            let mut cmd = make_command("pixel_art_pick");
+            cmd.path = Some(img.path().to_string_lossy().into_owned());
+            handle_command(cmd).expect("pick");
+        }
+        let mut apply = make_command("pixel_art_apply");
+        apply.loading_only = Some(false);
+        let ui = handle_command(apply).expect("apply");
+        assert_contains_text(&ui, "Result:");
+        let state = STATE.lock().unwrap();
+        assert!(state.pixel_art.result_path.is_some());
+        assert!(state.pixel_art.error.is_none());
+    }
+
+    #[test]
+    fn pixel_art_set_scale_clamps_and_sets() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        handle_command(make_command("pixel_art_screen")).unwrap();
+        let mut cmd = make_command("pixel_art_set_scale");
+        cmd.bindings = Some(HashMap::from([("scale".into(), "1".into())]));
+        handle_command(cmd).unwrap();
+        let state = STATE.lock().unwrap();
+        assert_eq!(state.pixel_art.scale_factor, 2);
     }
 
     #[test]

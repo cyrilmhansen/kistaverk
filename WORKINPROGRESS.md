@@ -33,8 +33,8 @@ Keep this file short and actionable. Update it at the end of each session.
 - **Regex tester**: Regex compilation and matching with sample text.
 - **UUID/Random**: Generate UUID v4 or random strings.
 - **Dithering tools**: Monochrome (MacPaint) and retro palette dithering. (Done)
-- **Pixel art mode**: Downscale and nearest-neighbor upscale.
-- **PDF grid**: Thumbnail grid and full page preview. (In Progress)
+- **Pixel art mode**: Downscale and nearest-neighbor upscale. (In Progress)
+- **PDF grid**: Thumbnail grid and full page preview. (Rust done, Kotlin pending)
 - **PDF surgery**: Extract/delete pages; merge PDFs.
 - **ZIP tools**: Extract ZIPs; create ZIPs.
 - **GZIP**: Compress/decompress single files.

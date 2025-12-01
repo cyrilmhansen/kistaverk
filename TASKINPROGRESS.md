@@ -1,46 +1,75 @@
-# Task In Progress: PDF Thumbnail Grid & Preview
+# Task In Progress: Pixel Art Mode
 
 ## Feature Description
-Implement a PDF viewer that displays a grid of page thumbnails and allows users to view individual pages in full screen. This leverages the Android `PdfRenderer` API on the Kotlin side, with navigation and state managed by the Rust core.
+Implement a "Pixel Art" tool that processes images to give them a retro, pixelated aesthetic. This is achieved by downscaling the image and then upscaling it back using nearest-neighbor interpolation.
 
 ## Plan
 
-### Step 1: Update Rust State (`rust/src/state.rs`) - **Completed**
-*   **Goal:** Track preview state.
+### Step 1: Update Rust State (`rust/src/state.rs`)
+*   **Goal:** Manage state for the pixel art tool.
 *   **Actions:**
-    1.  Add `Screen::PdfPreview` to `Screen` enum.
-    2.  Add `preview_page: Option<u32>` to `PdfState` struct.
-    3.  Initialize/reset this field in `PdfState::new()` and `PdfState::reset()`.
+    1.  Add `Screen::PixelArt` to the `Screen` enum.
+    2.  Create a `PixelArtState` struct with fields:
+        *   `source_path: Option<String>`
+        *   `result_path: Option<String>`
+        *   `scale_factor: u32` (default to 4 or 8)
+        *   `error: Option<String>`
+    3.  Add `pixel_art: PixelArtState` to `AppState`.
+    4.  Initialize in `AppState::new()` and `reset_runtime()`.
 
-### Step 2: Implement Rust UI Generation (`rust/src/features/pdf.rs`) - **Completed**
-*   **Goal:** Define the JSON UI for the grid and single-page view.
+### Step 2: Implement Core Logic (`rust/src/features/pixel_art.rs`)
+*   **Goal:** Implement the image resizing logic.
 *   **Actions:**
-    1.  Implement `render_pdf_preview_screen`.
-    2.  **Grid View:** If `preview_page` is `None`, render a `PdfPreviewGrid` widget (custom type) containing the `source_uri` and `page_count`.
-    3.  **Page View:** If `preview_page` is `Some(n)`, render a `PdfSinglePage` widget with navigation buttons ("Prev", "Next", "Grid").
+    1.  Create `rust/src/features/pixel_art.rs`.
+    2.  Implement `process_pixel_art(path: &str, factor: u32) -> Result<String, String>`:
+        *   Load image via `image` crate.
+        *   Calculate new dimensions (width/factor, height/factor).
+        *   `resize` to small dimensions using `FilterType::Nearest`.
+        *   `resize` back to original dimensions using `FilterType::Nearest`.
+        *   Save to temp file and return path.
 
-### Step 3: Update JNI Dispatch (`rust/src/lib.rs`) - **Completed**
-*   **Goal:** Handle navigation actions.
+### Step 3: Implement UI Rendering (`rust/src/features/pixel_art.rs`)
+*   **Goal:** Create the user interface.
 *   **Actions:**
-    1.  Add actions: `PdfPreviewScreen`, `PdfPageOpen { page: u32 }`, `PdfPageClose`.
+    1.  Implement `render_pixel_art_screen(state: &AppState) -> Value`.
+    2.  UI Elements:
+        *   Header "Pixel Artifier".
+        *   "Pick Image" button.
+        *   Scale controls (Buttons for 2x, 4x, 8x, 16x).
+        *   "Apply" button.
+        *   Result preview/path.
+        *   "Save" button.
+
+### Step 4: Integrate into JNI Dispatch (`rust/src/lib.rs`)
+*   **Goal:** Connect actions.
+*   **Actions:**
+    1.  Add actions:
+        *   `PixelArtScreen`
+        *   `PixelArtPick { path: Option<String>, fd: Option<i32> }`
+        *   `PixelArtSetScale { scale: u32 }`
+        *   `PixelArtApply`
     2.  Update `parse_action` and `handle_command`.
-    3.  Add "PDF Viewer" to `feature_catalog`.
+        *   `PixelArtApply` should probably use `loading_only: true`.
+    3.  Update `render_ui` map.
+    4.  Add to `feature_catalog`.
 
-### Step 4: Implement Kotlin Renderer Widgets (`app/.../UiRenderer.kt`) - **Pending**
-*   **Goal:** Render the actual PDF bitmaps.
+### Step 5: Testing
 *   **Actions:**
-    1.  **`PdfPreviewGrid`**: A grid layout that uses `PdfRenderer` to generate thumbnails for all pages. Each thumbnail is a clickable button dispatching `pdf_page_open`.
-    2.  **`PdfSinglePage`**: A view rendering a single high-res page from `PdfRenderer`. Supports zooming (basic) or just fits screen.
-
-### Step 5: Testing - **Pending**
-*   **Actions:**
-    1.  Verify grid loads for small and large PDFs.
-    2.  Verify navigation between grid and single page.
-    3.  Check memory usage (PdfRenderer bitmaps can be large; ensure they are recycled or cache is managed).
+    1.  Unit test `process_pixel_art` with various scenarios:
+        *   **Standard image:** Verify output dimensions and visual correctness (e.g., specific pixel colors if possible).
+        *   **Edge cases for `scale_factor`:** Test with `scale_factor = 1` (no change), and cases where `width / factor` or `height / factor` would result in a zero dimension or very small image.
+        *   **Different image types:** Test with PNG, JPEG, WebP, including images with transparency (if supported).
+        *   **Error handling:** Provide non-existent paths, corrupted images, or non-image files to ensure graceful error handling.
+    2.  Manual test on device:
+        *   Verify the full UI flow: picking image, setting scale, applying, previewing, and saving the result.
+        *   **Performance:** Test with large images (e.g., high-resolution photos) to identify potential bottlenecks. Consider adding an automatic pre-resize step in Kotlin for images exceeding a certain dimension (e.g., 2048px on any side) to improve performance and avoid OOM errors.
+        *   Verify output file size and quality.
 
 ---
 
 ## Completed Tasks
-*   **Dithering Tools**: Implemented core logic, UI, and integration.
-*   **Multi-hash view**: Implemented and refactored.
-*   **Refactoring lib.rs**: Completed.
+*   **Dithering Tools**: Done.
+*   **Multi-hash view**: Done.
+*   **Refactoring lib.rs**: Done.
+*   **PDF Thumbnail Grid**: Rust side done (Kotlin pending).
+*   **Pixel Art Mode**: Plan reviewed, pending implementation.
