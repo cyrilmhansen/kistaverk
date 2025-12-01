@@ -31,6 +31,7 @@ use features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
     render_sensor_logger_screen,
 };
+use features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use features::text_viewer::{
     guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
@@ -301,6 +302,11 @@ enum Action {
     RegexTest {
         bindings: HashMap<String, String>,
     },
+    UuidScreen,
+    UuidGenerate,
+    RandomStringGenerate {
+        bindings: HashMap<String, String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -413,6 +419,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "pixel_art_apply" => Ok(Action::PixelArtApply { loading_only }),
         "regex_tester_screen" => Ok(Action::RegexTesterScreen),
         "regex_test" => Ok(Action::RegexTest { bindings }),
+        "uuid_screen" => Ok(Action::UuidScreen),
+        "uuid_generate" => Ok(Action::UuidGenerate),
+        "random_string_generate" => Ok(Action::RandomStringGenerate { bindings }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
@@ -989,6 +998,23 @@ fn handle_command(command: Command) -> Result<Value, String> {
             handle_regex_action(&mut state, &bindings);
             if matches!(state.current_screen(), Screen::RegexTester) {
                 state.replace_current(Screen::RegexTester);
+            }
+        }
+        Action::UuidScreen => {
+            state.push_screen(Screen::UuidGenerator);
+        }
+        Action::UuidGenerate => {
+            state.push_screen(Screen::UuidGenerator);
+            handle_uuid_action(&mut state, "uuid_generate", &HashMap::new());
+            if matches!(state.current_screen(), Screen::UuidGenerator) {
+                state.replace_current(Screen::UuidGenerator);
+            }
+        }
+        Action::RandomStringGenerate { bindings } => {
+            state.push_screen(Screen::UuidGenerator);
+            handle_uuid_action(&mut state, "random_string_generate", &bindings);
+            if matches!(state.current_screen(), Screen::UuidGenerator) {
+                state.replace_current(Screen::UuidGenerator);
             }
         }
         Action::PdfToolsScreen => {
@@ -1689,6 +1715,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::MultiHash => render_multi_hash_screen(state),
         Screen::PixelArt => render_pixel_art_screen(state),
         Screen::RegexTester => render_regex_tester_screen(state),
+        Screen::UuidGenerator => render_uuid_screen(state),
     }
 }
 
@@ -1933,6 +1960,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "regex_tester_screen",
             requires_file_picker: false,
             description: "test patterns & captures",
+        },
+        Feature {
+            id: "uuid_generator",
+            name: "🆔 UUID & random string",
+            category: "🧰 Utilities",
+            action: "uuid_screen",
+            requires_file_picker: false,
+            description: "uuid v4 + configurable strings",
         },
         Feature {
             id: "hash_md4",

@@ -29,6 +29,7 @@ pub enum Screen {
     Magnetometer,
     PixelArt,
     RegexTester,
+    UuidGenerator,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,6 +77,22 @@ pub struct RegexTesterState {
     pub sample_text: String,
     pub match_result: Option<RegexMatchResult>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StringCharset {
+    Alphanumeric,
+    Numeric,
+    Alpha,
+    Hex,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UuidGeneratorState {
+    pub last_uuid: Option<String>,
+    pub last_string: Option<String>,
+    pub string_length: u32,
+    pub string_charset: StringCharset,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +152,7 @@ pub struct AppState {
     pub dithering_output_dir: Option<String>,
     pub pixel_art: PixelArtState,
     pub regex_tester: RegexTesterState,
+    pub uuid_generator: UuidGeneratorState,
 }
 
 impl AppState {
@@ -205,6 +223,12 @@ impl AppState {
                 sample_text: String::new(),
                 match_result: None,
                 error: None,
+            },
+            uuid_generator: UuidGeneratorState {
+                last_uuid: None,
+                last_string: None,
+                string_length: 16,
+                string_charset: StringCharset::Alphanumeric,
             },
         }
     }
@@ -315,5 +339,9 @@ impl AppState {
         self.regex_tester.sample_text.clear();
         self.regex_tester.match_result = None;
         self.regex_tester.error = None;
+        self.uuid_generator.last_uuid = None;
+        self.uuid_generator.last_string = None;
+        self.uuid_generator.string_length = 16;
+        self.uuid_generator.string_charset = StringCharset::Alphanumeric;
     }
 }

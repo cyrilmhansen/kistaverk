@@ -27,6 +27,8 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 time = { version = "0.3", default-features = false, features = ["formatting", "macros", "std"] }
 tempfile = "3"
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl"] }
+uuid = { version = "1", features = ["v4", "fast-rng"], default-features = false }
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
