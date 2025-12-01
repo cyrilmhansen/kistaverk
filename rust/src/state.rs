@@ -9,6 +9,7 @@ pub enum Screen {
     Home,
     ShaderDemo,
     KotlinImage,
+    Dithering,
     HashVerify,
     MultiHash,
     FileInfo,
@@ -25,6 +26,22 @@ pub enum Screen {
     Compass,
     Barometer,
     Magnetometer,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DitheringMode {
+    FloydSteinberg,
+    Bayer4x4,
+    Bayer8x8,
+    Sierra,
+    Atkinson,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DitheringPalette {
+    Monochrome,
+    Cga,
+    GameBoy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +102,12 @@ pub struct AppState {
     pub magnetometer_error: Option<String>,
     pub multi_hash_results: Option<MultiHashResults>,
     pub multi_hash_error: Option<String>,
+    pub dithering_source_path: Option<String>,
+    pub dithering_result_path: Option<String>,
+    pub dithering_mode: DitheringMode,
+    pub dithering_palette: DitheringPalette,
+    pub dithering_error: Option<String>,
+    pub dithering_output_dir: Option<String>,
 }
 
 impl AppState {
@@ -138,6 +161,12 @@ impl AppState {
             magnetometer_error: None,
             multi_hash_results: None,
             multi_hash_error: None,
+            dithering_source_path: None,
+            dithering_result_path: None,
+            dithering_mode: DitheringMode::Atkinson,
+            dithering_palette: DitheringPalette::Monochrome,
+            dithering_error: None,
+            dithering_output_dir: None,
         }
     }
 
@@ -233,5 +262,11 @@ impl AppState {
         self.magnetometer_error = None;
         self.multi_hash_results = None;
         self.multi_hash_error = None;
+        self.dithering_source_path = None;
+        self.dithering_result_path = None;
+        self.dithering_mode = DitheringMode::Atkinson;
+        self.dithering_palette = DitheringPalette::Monochrome;
+        self.dithering_error = None;
+        self.dithering_output_dir = None;
     }
 }

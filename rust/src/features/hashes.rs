@@ -32,6 +32,7 @@ pub fn hash_label(algo: HashAlgo) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct HashVerifyResult {
     pub reference: String,

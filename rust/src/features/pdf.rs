@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
-use std::path::PathBuf;
+use crate::features::storage::{output_dir_for, parse_file_uri_path};
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -50,31 +50,6 @@ fn append_page_content(
     Ok(())
 }
 
-fn preferred_temp_dir() -> PathBuf {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(env_tmp) = std::env::var("TMPDIR") {
-        candidates.push(PathBuf::from(env_tmp));
-    }
-    candidates.push(PathBuf::from("/data/user/0/aeska.kistaverk/cache"));
-    candidates.push(PathBuf::from("/data/data/aeska.kistaverk/cache"));
-    candidates.push(std::env::temp_dir());
-
-    for dir in candidates {
-        if let Ok(meta) = std::fs::metadata(&dir) {
-            if meta.is_dir() {
-                log_pdf_debug(&format!("preferred_temp_dir: using existing {:?}", dir));
-                return dir;
-            }
-        }
-    }
-    let fallback = std::env::temp_dir();
-    log_pdf_debug(&format!(
-        "preferred_temp_dir: falling back to {:?}",
-        fallback
-    ));
-    fallback
-}
-
 fn extract_pdf_title(doc: &Document) -> Option<String> {
     let info_id = doc.trailer.get(b"Info").ok()?.as_reference().ok()?;
     let info_dict = doc.get_object(info_id).ok()?.as_dict().ok()?;
@@ -83,39 +58,6 @@ fn extract_pdf_title(doc: &Document) -> Option<String> {
         Object::Name(name) => Some(String::from_utf8_lossy(name).to_string()),
         _ => None,
     }
-}
-
-fn parse_file_uri_path(uri: &str) -> Option<PathBuf> {
-    if let Some(rest) = uri.strip_prefix("file://") {
-        return Some(PathBuf::from(rest));
-    }
-    if uri.starts_with('/') {
-        return Some(PathBuf::from(uri));
-    }
-    None
-}
-
-fn output_dir_for(source_uri: Option<&str>) -> PathBuf {
-    if let Some(uri) = source_uri {
-        if let Some(path) = parse_file_uri_path(uri) {
-            if let Some(parent) = path.parent() {
-                log_pdf_debug(&format!(
-                    "output_dir_for: using parent of source {:?}",
-                    parent
-                ));
-                return parent.to_path_buf();
-            }
-        }
-        if uri.starts_with("content://") {
-            if let Some(dl) = downloads_dir() {
-                log_pdf_debug(&format!("output_dir_for: using downloads dir {:?}", dl));
-                return dl;
-            } else {
-                log_pdf_debug("output_dir_for: downloads dir unavailable, falling back");
-            }
-        }
-    }
-    preferred_temp_dir()
 }
 
 fn timestamp_suffix() -> String {
@@ -137,24 +79,6 @@ fn output_filename(source_uri: Option<&str>) -> String {
         .trim_end_matches(".PDF")
         .to_string();
     format!("{sanitized}_modified_{suffix}.pdf")
-}
-
-fn downloads_dir() -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Ok(root) = std::env::var("EXTERNAL_STORAGE") {
-        candidates.push(PathBuf::from(root).join("Download"));
-    }
-    candidates.push(PathBuf::from("/storage/emulated/0/Download"));
-    candidates.push(PathBuf::from("/sdcard/Download"));
-
-    for dir in candidates {
-        if let Ok(meta) = std::fs::metadata(&dir) {
-            if meta.is_dir() {
-                return Some(dir);
-            }
-        }
-    }
-    None
 }
 
 use crate::state::{AppState, Screen};

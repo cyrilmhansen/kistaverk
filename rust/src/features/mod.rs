@@ -6,6 +6,8 @@ pub mod kotlin_image;
 pub mod misc_screens;
 pub mod pdf;
 pub mod qr;
+pub mod storage;
 pub mod sensor_logger;
 pub mod text_tools;
 pub mod text_viewer;
+pub mod dithering;
