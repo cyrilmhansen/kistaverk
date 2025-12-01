@@ -33,7 +33,8 @@ Keep this file short and actionable. Update it at the end of each session.
 - **Regex tester**: Regex compilation and matching with sample text.
 - **UUID/Random**: Generate UUID v4 or random strings.
 - **Dithering tools**: Monochrome (MacPaint) and retro palette dithering. (Done)
-- **Regex tester**: Regex compilation and matching with sample text. (In Progress)
+- **UUID/Random**: Generate UUID v4 or random strings. (In Progress)
+- **Regex tester**: Regex compilation and matching with sample text. (Plan reviewed)
 - **Pixel art mode**: Downscale and nearest-neighbor upscale. (Rust Done, Kotlin Pending)
 - **PDF grid**: Thumbnail grid and full page preview. (Rust Done, Kotlin Pending)
 - **PDF surgery**: Extract/delete pages; merge PDFs.
