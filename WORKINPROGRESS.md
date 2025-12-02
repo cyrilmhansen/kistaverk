@@ -2,7 +2,8 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
-## Status (2025-12-01)
+## Status (2025-12-03)
+- **Presets**: Implemented a system to save/load favorite tool settings. Added persistence logic in `presets.rs`, `PresetManager` UI, and integrated with Dithering and Pixel Art tools. Added tests for persistence cycle.
 - **System Panels**: Implemented a dashboard for system information (Storage, Network, Battery, Device). Rust defines the data structures and UI; Kotlin feeds the data via JNI. Includes unit tests for binding parsing.
 - **GZIP Compression**: Implemented GZIP compression and decompression for single files (`gzip_compress`, `gzip_decompress` in `compression.rs`). Includes roundtrip unit tests.
 - **ZIP Creation**: Implemented ZIP creation (`create_archive` in `archive.rs`). Supports compressing both directories (recursively) and single files. UI updated to include "Compress to ZIP" action. Includes unit tests for directory compression.
@@ -34,7 +35,6 @@ Keep this file short and actionable. Update it at the end of each session.
 ## Roadmap (Future Features)
 - **QR transfer**: Data transfer via QR slideshow.
 - **Math/CAS**: Numeric solver and optional symbolic CAS.
-- **Presets**: Save/load favorite tool settings.
 
 ## Immediate Focus
 - Harden input UX: avoid spamming Rust on every character.

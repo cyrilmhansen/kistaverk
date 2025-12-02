@@ -80,6 +80,8 @@ pub struct Button<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requires_file_picker: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
 }
 
@@ -92,6 +94,7 @@ impl<'a> Button<'a> {
             copy_text: None,
             id: None,
             requires_file_picker: None,
+            payload: None,
             content_description: None,
         }
     }
@@ -103,6 +106,11 @@ impl<'a> Button<'a> {
 
     pub fn requires_file_picker(mut self, needs: bool) -> Self {
         self.requires_file_picker = Some(needs);
+        self
+    }
+
+    pub fn payload(mut self, payload: serde_json::Value) -> Self {
+        self.payload = Some(payload);
         self
     }
 

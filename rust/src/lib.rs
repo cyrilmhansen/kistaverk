@@ -10,6 +10,10 @@ use features::hashes::{
     handle_hash_action, handle_hash_verify, handle_multi_hash_action, render_hash_verify_screen,
     HashAlgo,
 };
+use features::presets::{
+    apply_preset_to_state, delete_preset, load_presets, preset_payload_for_tool,
+    render_preset_manager, render_save_preset_dialog, save_preset, tool_id_for_screen,
+};
 use features::kotlin_image::{
     handle_output_dir as handle_kotlin_image_output_dir,
     handle_resize_screen as handle_kotlin_image_resize_screen,
@@ -315,6 +319,21 @@ enum Action {
     MagnetometerSet {
         magnitude_ut: f64,
         error: Option<String>,
+    },
+    PresetsList {
+        tool_id: Option<String>,
+    },
+    PresetSaveDialog {
+        tool_id: Option<String>,
+    },
+    PresetSave {
+        name: Option<String>,
+    },
+    PresetLoad {
+        id: String,
+    },
+    PresetDelete {
+        id: String,
     },
     PixelArtScreen,
     PixelArtPick {
@@ -669,6 +688,25 @@ fn parse_action(command: Command) -> Result<Action, String> {
             magnitude_ut: angle_radians.unwrap_or(0.0),
             error,
         }),
+        "presets_list" => Ok(Action::PresetsList {
+            tool_id: bindings.get("tool_id").cloned(),
+        }),
+        "preset_save_dialog" => Ok(Action::PresetSaveDialog {
+            tool_id: bindings.get("tool_id").cloned(),
+        }),
+        "preset_save" => Ok(Action::PresetSave {
+            name: bindings.get("preset_name").cloned(),
+        }),
+        "preset_load" => bindings
+            .get("id")
+            .cloned()
+            .ok_or_else(|| "missing_preset_id".to_string())
+            .map(|id| Action::PresetLoad { id }),
+        "preset_delete" => bindings
+            .get("id")
+            .cloned()
+            .ok_or_else(|| "missing_preset_id".to_string())
+            .map(|id| Action::PresetDelete { id }),
         other => {
             if let Some(idx) = other.strip_prefix("archive_open_text:") {
                 let index = idx
@@ -1122,6 +1160,163 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.magnetometer_error = error;
             if matches!(state.current_screen(), Screen::Magnetometer) {
                 state.replace_current(Screen::Magnetometer);
+            }
+        }
+        Action::PresetsList { tool_id } => {
+            if matches!(state.current_screen(), Screen::PresetManager) {
+                state.replace_current(Screen::PresetManager);
+            } else {
+                state.push_screen(Screen::PresetManager);
+            }
+            state.preset_state.error = None;
+            state.preset_state.last_message = None;
+            state.preset_state.is_saving = false;
+            if let Some(tool) = tool_id
+                .or_else(|| tool_id_for_screen(state.current_screen()).map(|t| t.to_string()))
+            {
+                state.preset_state.current_tool_id = Some(tool);
+            }
+            match load_presets() {
+                Ok(list) => state.preset_state.presets = list,
+                Err(e) => {
+                    state.preset_state.error = Some(e);
+                    state.preset_state.presets.clear();
+                }
+            }
+        }
+        Action::PresetSaveDialog { tool_id } => {
+            state.preset_state.error = None;
+            state.preset_state.last_message = None;
+            state.preset_state.is_saving = false;
+            if let Some(tool) = tool_id
+                .or_else(|| tool_id_for_screen(state.current_screen()).map(|t| t.to_string()))
+            {
+                state.preset_state.current_tool_id = Some(tool);
+            }
+            state.preset_state.name_input.clear();
+            state.push_screen(Screen::PresetSave);
+        }
+        Action::PresetSave { name } => {
+            state.preset_state.is_saving = true;
+            let tool_id = state
+                .preset_state
+                .current_tool_id
+                .clone()
+                .or_else(|| tool_id_for_screen(state.current_screen()).map(|t| t.to_string()));
+            let Some(tool_id) = tool_id else {
+                state.preset_state.error = Some("preset_missing_tool".into());
+                state.preset_state.is_saving = false;
+                state.replace_current(Screen::PresetSave);
+                return Ok(render_ui(&state));
+            };
+            state.preset_state.current_tool_id = Some(tool_id.clone());
+
+            let provided = name
+                .or_else(|| {
+                    if state.preset_state.name_input.is_empty() {
+                        None
+                    } else {
+                        Some(state.preset_state.name_input.clone())
+                    }
+                })
+                .unwrap_or_default();
+            let trimmed = provided.trim();
+            if trimmed.is_empty() {
+                state.preset_state.error = Some("preset_name_empty".into());
+                state.preset_state.is_saving = false;
+                state.replace_current(Screen::PresetSave);
+                return Ok(render_ui(&state));
+            }
+            state.preset_state.name_input = trimmed.to_string();
+
+            let payload = match preset_payload_for_tool(&state, &tool_id) {
+                Ok(p) => p,
+                Err(e) => {
+                    state.preset_state.error = Some(e);
+                    state.preset_state.is_saving = false;
+                    state.replace_current(Screen::PresetSave);
+                    return Ok(render_ui(&state));
+                }
+            };
+
+            match save_preset(&tool_id, trimmed, payload) {
+                Ok(saved) => {
+                    state.preset_state.is_saving = false;
+                    state.preset_state.error = None;
+                    state.preset_state.last_message =
+                        Some(format!("Saved preset \"{}\"", saved.name));
+                    if !state.preset_state.presets.iter().any(|p| p.id == saved.id) {
+                        state.preset_state.presets.insert(0, saved);
+                        state
+                            .preset_state
+                            .presets
+                            .sort_by(|a, b| b.created_at.cmp(&a.created_at));
+                    }
+                    state.replace_current(Screen::PresetManager);
+                }
+                Err(e) => {
+                    state.preset_state.error = Some(e);
+                    state.preset_state.is_saving = false;
+                    state.replace_current(Screen::PresetSave);
+                }
+            }
+        }
+        Action::PresetLoad { id } => {
+            let preset = state
+                .preset_state
+                .presets
+                .iter()
+                .find(|p| p.id == id)
+                .cloned();
+            let preset = if let Some(p) = preset {
+                Some(p)
+            } else {
+                match load_presets() {
+                    Ok(list) => {
+                        state.preset_state.presets = list;
+                        state
+                            .preset_state
+                            .presets
+                            .iter()
+                            .find(|p| p.id == id)
+                            .cloned()
+                    }
+                    Err(e) => {
+                        state.preset_state.error = Some(e);
+                        None
+                    }
+                }
+            };
+
+            if let Some(preset) = preset {
+                state.preset_state.current_tool_id = Some(preset.tool_id.clone());
+                match apply_preset_to_state(&mut state, &preset) {
+                    Ok(_) => {
+                        state.preset_state.error = None;
+                        state.preset_state.last_message =
+                            Some(format!("Applied \"{}\"", preset.name));
+                    }
+                    Err(e) => {
+                        state.preset_state.error = Some(e);
+                    }
+                }
+            } else if state.preset_state.error.is_none() {
+                state.preset_state.error = Some("preset_not_found".into());
+            }
+
+            if matches!(state.current_screen(), Screen::PresetManager) {
+                state.replace_current(Screen::PresetManager);
+            }
+        }
+        Action::PresetDelete { id } => {
+            if let Err(e) = delete_preset(&id) {
+                state.preset_state.error = Some(e);
+            } else {
+                state.preset_state.presets.retain(|p| p.id != id);
+                state.preset_state.last_message = Some("Preset deleted".into());
+            }
+            if matches!(state.current_screen(), Screen::PresetManager) {
+                state.replace_current(Screen::PresetManager);
             }
         }
         Action::PixelArtScreen => {
@@ -1937,6 +2132,8 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PixelArt => render_pixel_art_screen(state),
         Screen::RegexTester => render_regex_tester_screen(state),
         Screen::UuidGenerator => render_uuid_screen(state),
+        Screen::PresetManager => render_preset_manager(state),
+        Screen::PresetSave => render_save_preset_dialog(state),
     }
 }
 
