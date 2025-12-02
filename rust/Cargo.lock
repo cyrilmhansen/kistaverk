@@ -465,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "kistaverk_core"
-version = "0.1.0"
+version = "0.0.1.1"
 dependencies = [
  "android_log-sys",
  "base64",

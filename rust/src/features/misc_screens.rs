@@ -184,9 +184,10 @@ pub fn render_about_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(UiText::new("Copyright © 2025 Kistaverk").size(14.0)).unwrap(),
-        serde_json::to_value(UiText::new("License: GPLv3").size(14.0)).unwrap(),
+        serde_json::to_value(UiText::new("License: AGPL-3.0-or-later").size(14.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("This app is open-source under GPL-3.0; contributions welcome.").size(12.0),
+            UiText::new("This app is open-source under AGPL-3.0-or-later; contributions welcome.")
+                .size(12.0),
         )
         .unwrap(),
         serde_json::to_value(UiDepsList::new()).unwrap(),
