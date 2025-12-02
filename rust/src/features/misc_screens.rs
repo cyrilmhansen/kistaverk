@@ -192,5 +192,5 @@ pub fn render_about_screen(state: &AppState) -> Value {
         serde_json::to_value(UiDepsList::new()).unwrap(),
     ];
     maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
+    serde_json::to_value(UiColumn::new(children).padding(24).scrollable(false)).unwrap()
 }
