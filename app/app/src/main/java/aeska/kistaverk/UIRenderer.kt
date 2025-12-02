@@ -1142,9 +1142,9 @@ class UiRenderer(
             orientation = LinearLayout.VERTICAL
         }
         container.orientation = LinearLayout.VERTICAL
-        container.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+        container.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
         val scroll = (container.getChildAt(0) as? ScrollView) ?: ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, 240f))
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         }
         val inner = (scroll.getChildAt(0) as? LinearLayout) ?: LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1154,17 +1154,27 @@ class UiRenderer(
         inner.setPadding(pad, pad, pad, pad)
         inner.removeAllViews()
 
-        val deps = readDepsFromAssets()
+        val deps = readDepsGrouped()
         if (deps.isEmpty()) {
             inner.addView(TextView(context).apply {
                 text = "Dependencies unavailable"
                 textSize = 12f
             })
         } else {
-            deps.forEach { item ->
+            deps.keys.sorted().forEach { lic ->
+                val items = deps[lic].orEmpty()
                 inner.addView(TextView(context).apply {
-                    text = item
-                    textSize = 12f
+                    text = "$lic (${items.size})"
+                    textSize = 13f
+                })
+                items.sorted().forEach { item ->
+                    inner.addView(TextView(context).apply {
+                        text = "• $item"
+                        textSize = 12f
+                    })
+                }
+                inner.addView(Space(context).apply {
+                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, 4f))
                 })
             }
         }
@@ -1179,26 +1189,27 @@ class UiRenderer(
         return container
     }
 
-    private fun readDepsFromAssets(): List<String> {
+    private fun readDepsGrouped(): Map<String, List<String>> {
         return try {
             val input = context.assets.open("deps.json")
             val text = input.bufferedReader().use { it.readText() }
             val root = JSONObject(text)
-            val arr: JSONArray = root.optJSONArray("packages") ?: return emptyList()
-            val out = mutableListOf<String>()
+            val arr: JSONArray = root.optJSONArray("packages") ?: return emptyMap()
+            val grouped = mutableMapOf<String, MutableList<String>>()
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
                 val name = obj.optString("name", "")
-                val ver = obj.optString("version", "")
-                val lic = obj.optString("license", "")
-                val link = obj.optString("repository", obj.optString("homepage", "https://lib.rs"))
-                if (name.isNotEmpty()) {
-                    out.add("$name $ver (${lic.ifEmpty { "unknown license" }}): $link")
+                if (name.isEmpty()) {
+                    continue
                 }
+                val ver = obj.optString("version", "")
+                val lic = obj.optString("license", "").ifEmpty { "unknown" }
+                val entry = if (ver.isNotEmpty()) "$name $ver" else name
+                grouped.getOrPut(lic) { mutableListOf() }.add(entry)
             }
-            out
+            grouped
         } catch (_: Exception) {
-            emptyList()
+            emptyMap()
         }
     }
 
