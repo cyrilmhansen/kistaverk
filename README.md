@@ -1,117 +1,118 @@
 # Kistaverk
 
-**A tiny offline Swiss-knife for your files.**
+**The Offline Digital Swiss Army Knife.**
 
-Kistaverk is a lightweight, privacy-friendly Android toolbox for everyday “power user” tasks:
-file hashes, PDF surgery, image conversion, and other small utilities – all in a single,
-minimal app that runs entirely on your device.
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Platform](https://img.shields.io/badge/platform-Android-green)
+![Stack](https://img.shields.io/badge/stack-Rust%20%2B%20Kotlin-orange)
 
-No accounts, no cloud, no tracking. Just tools.
+**Kistaverk** (Icelandic for *"Chest of works"*) is a privacy-first, lightweight Android toolbox for power users. It provides essential file and data utilities—hashing, PDF manipulation, image conversion, sensor logging—without the bloat, ads, or cloud dependency of typical "free" apps.
 
----
-
-## Goals
-
-- **All-in-one, but small**  
-  One APK, multiple utilities (hashing, PDF, images, text tools…), with a strong size budget
-  (target: < 5 MB).
-
-- **Local-only & auditable**  
-  No unsolicited network access. Logic implemented in Rust, open source, reviewable.
-
-- **Long-term maintainable**  
-  Clear separation between a thin Android UI layer and a Rust “core” with a simple JSON DSL.
+**Target Size:** < 5 MB.  
+**Philosophy:** 100% Local. No Internet Permission.
 
 ---
 
-## Features (planned)
+## 🛠 Features
 
-Early scope (subject to change):
+Everything runs locally on your device using a high-performance Rust core.
 
-- **File integrity**
-  - Compute and verify hashes (SHA-256, SHA-512, etc.).
-  - Compare with a reference hash (clipboard / pasted / scanned via QR).
+### 🔐 File Security & Integrity
+- **Hash Calculator:** Compute MD5, SHA-1, SHA-256, SHA-512, BLAKE3, and CRC32.
+- **Integrity Check:** Paste a hash from your clipboard to verify a file's integrity instantly.
 
-- **PDF utilities**
-  - Extract a subset of pages into a new PDF.
-  - Concatenate multiple PDFs (simple merge).
-  - Remove selected pages.
+### 📄 PDF Tools
+- **PDF Splitter:** Extract specific pages to a new file.
+- **PDF Merge:** Concatenate multiple PDF files.
+- **PDF Signing:** Sign documents with a visual overlay for signature placement.
+- **Page Removal:** Delete unwanted pages.
 
-- **Image utilities**
-  - Resize images for mail / messaging size limits (e.g. “< 200 kB”).
-  - Format conversion (JPEG / PNG / WebP, where supported).
-  - Basic quality / size trade-off presets.
+### 🖼 Image & Media
+- **Converter:** Convert images between JPEG, PNG, and WebP.
+- **Compression:** Resize and compress images for email/messaging (bypass attachment limits).
+- **QR Code Generator:** Create QR codes for text or URLs.
 
-- **Sharing & export**
-  - Copy results to clipboard.
-  - Share via Android’s share sheet.
-  - Optional QR code display for hashes or short text.
+### 📊 System & Sensors
+- **Sensor Logger:** Log accelerometer, gyroscope, magnetometer, GPS, and barometer data to CSV files.
+- **System Info:** View basic device details (model, architecture).
 
-- **Sensor logger**
-  - Configurable sampling interval and sensor selection (accelerometer, gyroscope, magnetometer, barometer, GPS, battery stats).
-  - Logs to CSV in the user-visible Documents directory when available (falls back to app-private) with FileProvider sharing; GPS requires location permission.
-  - UI status updates are throttled to stay responsive while logging high-rate sensors.
-
-- **Text viewer**
-  - Open and preview text/CSV files (256 KB cap) from the file picker with text-friendly MIME filters.
-  - Can be invoked from Android’s Files app via text/plain or text/csv "Open with" (intent filter); detached FD goes to Rust viewer.
+### 📝 Text & Dev Tools
+- **Text Viewer:** Syntax highlighting for JSON, Markdown, Rust, TOML, etc. (via PrismJS). Supports large logs via windowed loading.
+- **Regex Tester:** Test regular expressions against text input.
+- **Archive Viewer:** Peek inside ZIP files without extracting them.
 
 ---
 
-## Architecture (high-level)
+## 🏗 Architecture
 
-Kistaverk uses a **local backend-driven UI**:
+Kistaverk uses a unique **Local Backend-Driven UI** architecture to maximize performance and maintainability while keeping the APK size tiny.
 
-- **Core (Rust)**
-  - Holds all application state.
-  - Implements business logic (crypto, PDF, image processing).
-  - Exposes a single `dispatch(json)` entry point via JNI.
-  - Returns full screen descriptions as JSON (a small UI DSL).
+- **Core (Rust):** The "Brain". Handles all business logic, state management, and IO. It dictates the UI by sending a JSON DSL to the Android layer.
+- **Renderer (Kotlin):** The "Dumb Terminal". A thin layer that renders standard Android Views (LinearLayout, Button, TextView) based on the JSON instructions from Rust.
 
-- **UI (Android / Kotlin)**
-  - Very thin “renderer” on top of the standard Android SDK.
-  - Parses JSON from Rust and instantiates native Views (`LinearLayout`, `TextView`, `Button`, etc.).
-  - Forwards user actions back to Rust as JSON commands.
+This approach allows:
+1.  **Cross-platform logic:** 95% of the code is in Rust.
+2.  **Native Performance:** No webviews (except for syntax highlighting), no heavy UI frameworks like Flutter/React Native. Just raw native Android views.
+3.  **Security:** Complex parsing (PDF, Zip) happens in memory-safe Rust.
 
-This keeps the logic safe and explicit in Rust, while preserving native Android ergonomics
-and accessibility.
-
-For more details, see:
-
-- `VISION.md` – project philosophy and goals.  
-- `ARCHITECTURE.md` – technical architecture and module layout.  
-- `METHODOLOGY.md` – rules for AI-assisted and human development.  
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep dive.
 
 ---
 
-## Project layout
+## 🚀 Building from Source
 
-Planned structure:
+### Prerequisites
+- **Rust:** Stable toolchain (`rustup install stable`).
+- **Android SDK:** API 36 (Command-line tools + NDK).
+- **cargo-ndk:** `cargo install cargo-ndk`.
+- **JDK:** Version 17 or higher.
+
+### Build Steps
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/aeska/kistaverk.git
+    cd kistaverk
+    ```
+
+2.  **Build the APK:**
+    ```bash
+    # This will compile the Rust core and the Android app
+    cd app
+    ./gradlew :app:assembleRelease
+    ```
+
+    *Note: The build is currently configured for `arm64-v8a` only to optimize iteration speed and size.*
+
+3.  **Install:**
+    ```bash
+    adb install app/build/outputs/apk/release/app-release.apk
+    ```
+
+---
+
+## 📂 Project Structure
 
 ```text
 /
-├── app/                   # Android frontend (Kotlin)
-│   └── src/main/java/com/kistaverk/toolnest/
-│       ├── ui/            # JSON -> View renderer
-│       └── core/          # JNI bridge and app shell
-├── rust/                  # Rust core (Cargo project)
-│   ├── src/
-│   │   ├── lib.rs         # JNI entry + dispatch
-│   │   ├── state.rs       # application state machine
-│   │   ├── ui_gen.rs      # JSON DSL builders
-│   │   └── modules/       # crypto, pdf, image, etc.
-│   └── Cargo.toml
-├── VISION.md
-├── ARCHITECTURE.md
-├── METHODOLOGY.md
-├── CONTRIBUTING.md
-└── WORKINPROGRESS.md
+├── app/                   # Android Application Project
+│   ├── app/src/main/java  # Kotlin UI Renderer & JNI Bridge
+│   └── build.gradle.kts   # Gradle build with Cargo hooks
+├── rust/                  # Rust Core Logic
+│   ├── src/               # Source code (State, Features, UI DSL)
+│   └── Cargo.toml         # Rust dependencies
+├── scripts/               # Utility scripts (size reports, metadata)
+└── ...                    # Documentation
+```
 
 ---
 
-## Build & Packaging
+## 🤝 Contributing
 
-- Release builds are shrunk/obfuscated (R8 + resource shrinking) with stripped Rust libs and size-focused Rust profile flags.  
-- ABI outputs: arm64-v8a only (APK/AAB). Per-ABI splits are enabled; no density splits (Play handles density).  
-- Build release APKs/AAB: from `app/`, run `./gradlew clean :app:assembleRelease` or `./gradlew :app:bundleRelease`.  
-- Size audit: run `./scripts/size_report.sh <apk-or-aab>` to break down dex/lib/res and per-ABI .so sizes.
+Contributions are welcome! Whether it's a new Rust feature or a UI renderer improvement.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [VISION.md](VISION.md) before starting.
+
+## 📄 License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** - see the [LICENSE](LICENSE) file for details.
