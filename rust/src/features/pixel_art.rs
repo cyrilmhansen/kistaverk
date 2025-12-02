@@ -17,6 +17,20 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
                 .size(14.0),
         )
         .unwrap(),
+        json!({
+            "type": "Button",
+            "text": "Presets",
+            "action": "presets_list",
+            "id": "pixel_art_presets",
+            "payload": { "tool_id": "pixel_art" }
+        }),
+        json!({
+            "type": "Button",
+            "text": "Save preset",
+            "action": "preset_save_dialog",
+            "id": "pixel_art_preset_save",
+            "payload": { "tool_id": "pixel_art" }
+        }),
         serde_json::to_value(
             UiButton::new("Pick image", "pixel_art_pick")
                 .requires_file_picker(true)

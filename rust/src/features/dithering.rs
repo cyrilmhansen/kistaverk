@@ -276,6 +276,20 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
             "requires_file_picker": true,
             "content_description": "Pick source image for dithering"
         }),
+        json!({
+            "type": "Button",
+            "text": "Presets",
+            "action": "presets_list",
+            "id": "dithering_presets",
+            "payload": { "tool_id": "dithering" }
+        }),
+        json!({
+            "type": "Button",
+            "text": "Save preset",
+            "action": "preset_save_dialog",
+            "id": "dithering_preset_save",
+            "payload": { "tool_id": "dithering" }
+        }),
     ];
 
     if let Some(path) = &state.dithering_source_path {
