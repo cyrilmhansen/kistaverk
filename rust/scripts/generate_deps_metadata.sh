@@ -21,6 +21,7 @@ EOF
   echo "Wrote deps metadata to $OUT_FILE"
 }
 
+metadata=""
 if cargo metadata --format-version 1 --locked -q >/dev/null 2>&1; then
   metadata="$(cargo metadata --format-version 1 --locked)"
 elif cargo metadata --format-version 1 --locked --offline -q >/dev/null 2>&1; then
@@ -31,7 +32,7 @@ if [[ -n "$metadata" ]]; then
   if command -v jq >/dev/null 2>&1; then
     echo "$metadata" | jq '
       .packages
-      | map(if .name == "kistaverk_core" and (.license == null or .license == "") then .license = "LGPL-2.0" else . end)
+      | map(if .name == "kistaverk_core" and (.license == null or .license == "") then .license = "AGPL-3.0-or-later" else . end)
       | {packages: [.[] | {name, version, license, repository, homepage}]}
     ' > "$OUT_FILE"
     echo "Wrote deps metadata to $OUT_FILE (cargo metadata + jq)"
@@ -40,7 +41,7 @@ if [[ -n "$metadata" ]]; then
     # basic parse without jq: take first package as fallback
     pkg_name="$(echo "$metadata" | sed -n 's/.*"name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
     pkg_ver="$(echo "$metadata" | sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-    write_json "    { \"name\": \"${pkg_name:-kistaverk_core}\", \"version\": \"${pkg_ver:-0.0.0}\", \"license\": \"LGPL-2.0\", \"repository\": \"\", \"homepage\": \"\" }"
+    write_json "    { \"name\": \"${pkg_name:-kistaverk_core}\", \"version\": \"${pkg_ver:-0.0.0}\", \"license\": \"AGPL-3.0-or-later\", \"repository\": \"\", \"homepage\": \"\" }"
     exit 0
   fi
 fi
@@ -49,36 +50,30 @@ echo "cargo metadata unavailable; falling back to Cargo.lock parse"
 lock_file="$ROOT_DIR/Cargo.lock"
 if [[ ! -f "$lock_file" ]]; then
   echo "Cargo.lock missing; writing minimal deps.json"
-  write_json "    { \"name\": \"kistaverk_core\", \"version\": \"0.0.0\", \"license\": \"\", \"repository\": \"\", \"homepage\": \"\" }"
+  write_json "    { \"name\": \"kistaverk_core\", \"version\": \"0.0.0\", \"license\": \"AGPL-3.0-or-later\", \"repository\": \"\", \"homepage\": \"\" }"
   exit 0
 fi
 
-packages=$(awk '
-  /^\[\[package\]\]/ {name=""; version=""; next}
-  /^name = / {name=$3; gsub(/"/, "", name)}
-  /^version = / {version=$3; gsub(/"/, "", version)}
-  /^source = / { if (name != "" && version != "") { print name " " version; name=""; version="" } }
-  END { if (name != "" && version != "") print name " " version }
-' "$lock_file" | sort -u)
-
-entries=""
-first=true
-while read -r line; do
-  [[ -z "$line" ]] && continue
-  name=$(echo "$line" | awk '{print $1}')
-  ver=$(echo "$line" | awk '{print $2}')
-  prefix=""
-  if [ "$first" = false ]; then
-    prefix=",\n"
-  else
-    first=false
-  fi
-  license=""; if [ "$name" = "kistaverk_core" ]; then license="MIT OR Apache-2.0"; fi
-  entries+="${prefix}    { \"name\": \"${name}\", \"version\": \"${ver}\", \"license\": \"${license}\", \"repository\": \"\", \"homepage\": \"\" }"
-done <<< "$packages"
-
-if [[ -z "$entries" ]]; then
-  entries="    { \"name\": \"kistaverk_core\", \"version\": \"0.0.0\", \"license\": \"\", \"repository\": \"\", \"homepage\": \"\" }"
-fi
-
-write_json "$entries"
+python3 - <<'PY' "$lock_file" "$OUT_FILE"
+import json, sys, tomllib
+lock_path, out_path = sys.argv[1:]
+data = tomllib.load(open(lock_path, "rb"))
+packages = []
+for pkg in data.get("package", []):
+    name = pkg.get("name")
+    ver = pkg.get("version")
+    if not name:
+        continue
+    license = "AGPL-3.0-or-later" if name == "kistaverk_core" else pkg.get("license", "") or ""
+    packages.append({
+        "name": name,
+        "version": ver or "",
+        "license": license,
+        "repository": "",
+        "homepage": "",
+    })
+packages.sort(key=lambda p: (p["name"], p["version"]))
+with open(out_path, "w", encoding="utf-8") as f:
+    json.dump({"packages": packages}, f, ensure_ascii=False, indent=2)
+print(f"Wrote deps metadata to {out_path} (Cargo.lock parse)")
+PY
