@@ -24,11 +24,13 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.OnBackPressedCallback
-import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
@@ -106,6 +108,14 @@ class MainActivity : ComponentActivity() {
     private var magnetometerSensor: Sensor? = null
     private var lastMagnetometerDispatch: Long = 0L
     private var autoRefreshJob: Job? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var cameraPreviewView: PreviewView? = null
+    private var imageAnalyzer: ImageAnalysis? = null
+    private var isQrScanActive = false
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var cameraPreviewView: PreviewView? = null
+    private var imageAnalyzer: ImageAnalysis? = null
+    private var isQrScanActive = false
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -669,6 +679,7 @@ class MainActivity : ComponentActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     stopSensorLogging()
+                    stopQrScanner() // Stop QR scanner when back is pressed
                     refreshUi("back")
                 }
             }
@@ -693,6 +704,26 @@ class MainActivity : ComponentActivity() {
         stopCompass()
         stopBarometer()
         stopMagnetometer()
+        stopQrScanner() // Stop QR scanner on destroy
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopQrScanner() // Stop scanner when activity is not in foreground
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // If current screen is QrReceive and permission is granted, restart scanner
+        lifecycleScope.launch(Dispatchers.IO) { // Dispatch to IO thread for Rust call
+            val currentScreenJson = dispatch(JSONObject().apply { put("action", "snapshot_screen_only") }.toString())
+            withContext(Dispatchers.Main) {
+                val currentScreenId = JSONObject(currentScreenJson).optString("id")
+                if (currentScreenId == "QrReceiveScreen" && hasCameraPermission) {
+                    startQrScanner()
+                }
+            }
+        }
     }
 
     @Deprecated("Android is migrating to ActivityResult APIs; kept for legacy permission callback")
@@ -715,6 +746,14 @@ class MainActivity : ComponentActivity() {
                 bindings["sensor_status"] = "location permission denied"
                 pendingSensorBindings = null
                 refreshUi("sensor_logger_status", bindings = bindings)
+            }
+        } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                hasCameraPermission = true
+                startQrScanner()
+            } else {
+                hasCameraPermission = false
+                refreshUi("qr_receive_screen", extras = mapOf("error" to "camera_permission_denied"))
             }
         }
     }
@@ -882,6 +921,24 @@ class MainActivity : ComponentActivity() {
                 cacheLastResult(newUiJson)
                 updateSensorSubscriptions(newUiJson)
                 scheduleAutoRefresh(newUiJson)
+
+                // Check current screen from newUiJson and manage QR scanner lifecycle
+                val currentScreen = JSONObject(newUiJson).optJSONObject("layout")?.optString("id")
+                if (currentScreen == "QrReceiveScreen") { // Assuming Rust sets screen ID
+                    // Lazily add the PreviewView if not already there
+                    if (cameraPreviewView == null) {
+                        cameraPreviewView = PreviewView(this@MainActivity).apply {
+                            layoutParams = FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT
+                            )
+                        }
+                        contentHolder?.addView(cameraPreviewView, 0)
+                    }
+                    startQrScanner()
+                } else {
+                    stopQrScanner()
+                }
             }
         } else {
             lifecycleScope.launch {
@@ -921,6 +978,24 @@ class MainActivity : ComponentActivity() {
                         cacheLastResult(newUiJson)
                         updateSensorSubscriptions(newUiJson)
                         scheduleAutoRefresh(newUiJson)
+
+                        // Check current screen from newUiJson and manage QR scanner lifecycle
+                        val currentScreen = JSONObject(newUiJson).optJSONObject("layout")?.optString("id")
+                        if (currentScreen == "QrReceiveScreen") { // Assuming Rust sets screen ID
+                             // Lazily add the PreviewView if not already there
+                            if (cameraPreviewView == null) {
+                                cameraPreviewView = PreviewView(this@MainActivity).apply {
+                                    layoutParams = FrameLayout.LayoutParams(
+                                        FrameLayout.LayoutParams.MATCH_PARENT,
+                                        FrameLayout.LayoutParams.MATCH_PARENT
+                                    )
+                                }
+                                contentHolder?.addView(cameraPreviewView, 0)
+                            }
+                            startQrScanner()
+                        } else {
+                            stopQrScanner()
+                        }
                     }
                 }
             }
@@ -996,6 +1071,115 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Placeholder for a future CameraX analyzer -> Rust decoder bridge.
+    // Expected flow: capture Y plane + strides + rotation, call JNI decode, and dispatch qr_receive_scan on success.
+        private val PERMISSION_CAMERA = 1002
+        private var hasCameraPermission = false
+    
+        private fun startQrScanner() {
+            if (hasCameraPermission) {
+                startCameraX()
+            } else {
+                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), PERMISSION_CAMERA)
+            }
+        }
+    
+        private fun startCameraX() {
+            if (isQrScanActive) return
+            isQrScanActive = true
+    
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+            cameraProviderFuture.addListener({
+                cameraProvider = cameraProviderFuture.get()
+                bindCameraUseCases()
+            }, ContextCompat.getMainExecutor(this))
+        }
+    
+        private fun bindCameraUseCases() {
+            val provider = cameraProvider ?: return
+            val previewView = cameraPreviewView ?: return
+    
+            provider.unbindAll()
+    
+            val cameraSelector = CameraSelector.Builder()
+                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                .build()
+    
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+    
+            imageAnalyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_LATEST)
+                .build()
+                .also {
+                    it.setAnalyzer(ContextCompat.getMainExecutor(this), QrCodeAnalyzer(::processQrCameraFrame) { qrResult ->
+                        if (qrResult != null) {
+                            isQrScanActive = false // Stop further scanning
+                            provider.unbindAll()
+                            dispatchWithOptionalLoading(
+                                "qr_receive_scan",
+                                bindings = mapOf("qr_scan_input" to qrResult)
+                            )
+                        }
+                    })
+                }
+    
+            try {
+                provider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
+            } catch (exc: Exception) {
+                isQrScanActive = false
+                refreshUi("qr_receive_screen", extras = mapOf("error" to "camera_bind_failed"))
+            }
+        }
+    
+        private fun stopQrScanner() {
+            isQrScanActive = false
+            cameraProvider?.unbindAll()
+            imageAnalyzer?.clearAnalyzer()
+            cameraProvider = null
+            imageAnalyzer = null
+            cameraPreviewView = null
+        }
+    
+        private class QrCodeAnalyzer(
+        private val jniProcessor: (ByteArray, Int, Int, Int, Int) -> String?,
+        private val listener: (String?) -> Unit
+    ) : ImageAnalysis.Analyzer {
+            private var lastAnalyzedTimestamp = 0L
+    
+            override fun analyze(image: ImageProxy) {
+                val currentTimestamp = System.currentTimeMillis()
+                if (currentTimestamp - lastAnalyzedTimestamp < 100) { // Throttle analysis
+                    image.close()
+                    return
+                }
+                lastAnalyzedTimestamp = currentTimestamp
+    
+                val yBuffer = image.planes[0].buffer
+                val yBytes = ByteArray(yBuffer.remaining())
+                yBuffer.get(yBytes)
+    
+                val width = image.width
+                val height = image.height
+                val rowStride = image.planes[0].rowStride
+                val rotationDeg = image.imageInfo.rotationDegrees
+    
+                // Call JNI on a background thread
+                // MainActivity.processQrCameraFrame is external.
+                // We need to pass the JNI call to the main activity.
+                // For now, let's just make it a direct call and assume
+                // the JNI call is fast enough or offloads itself.
+                // (The Rust side is already doing the heavy lifting)
+    
+                val result = jniProcessor(yBytes, width, height, rowStride, rotationDeg)
+                
+                image.close()
+                if (result != null) {
+                    listener(result)
+                }
+            }
+        }
     private fun resolveEntry(intent: Intent?): String? {
         if (intent == null) return null
         val explicit = intent.getStringExtra("entry")
@@ -1493,6 +1677,13 @@ class MainActivity : ComponentActivity() {
     }
 
     external fun dispatch(input: String): String
+    external fun processQrCameraFrame(
+        lumaData: ByteArray,
+        width: Int,
+        height: Int,
+        rowStride: Int,
+        rotationDeg: Int
+    ): String?
 
     companion object {
         init {

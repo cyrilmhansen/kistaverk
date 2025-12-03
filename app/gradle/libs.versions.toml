@@ -11,9 +11,14 @@ activity = "1.8.0"
 documentfile = "1.0.1"
 robolectric = "4.12.1"
 androidxTestCore = "1.5.0"
+cameraXVersion = "1.4.0-alpha06" # Latest stable for now is 1.3.1, but alpha06 has some improvements.
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraXVersion" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraXVersion" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraXVersion" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraXVersion" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }

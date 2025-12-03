@@ -3,6 +3,8 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-03)
+- **Camera Scanning (Rust-Driven)**: Implemented robust QR code scanning for Receiver using `rxing` pure-Rust decoder. JNI bridge passes camera frames (Y-plane) to Rust, and CameraX manages the camera lifecycle and frame acquisition on the Android side.
+- **QR Data Transfer (Receiver)**: Implemented protocol logic for parsing and reassembling split files (`QRTX` header). Added manual entry UI for verification. Logic verified via unit tests.
 - **QR Data Transfer (Sender)**: Implemented "QR Slideshow" to broadcast files. Features chunking (512B), adjustable speed, and play/pause controls. Protocol: `QRTX|i/n|base64`. Verified via Rust unit tests.
 - **Presets**: Implemented a system to save/load favorite tool settings. Added persistence logic in `presets.rs`, `PresetManager` UI, and integrated with Dithering and Pixel Art tools. Added tests for persistence cycle.
 - **System Panels**: Implemented a dashboard for system information (Storage, Network, Battery, Device). Rust defines the data structures and UI; Kotlin feeds the data via JNI. Includes unit tests for binding parsing.
