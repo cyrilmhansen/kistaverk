@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-03)
+- **QR Data Transfer (Sender)**: Implemented "QR Slideshow" to broadcast files. Features chunking (512B), adjustable speed, and play/pause controls. Protocol: `QRTX|i/n|base64`. Verified via Rust unit tests.
 - **Presets**: Implemented a system to save/load favorite tool settings. Added persistence logic in `presets.rs`, `PresetManager` UI, and integrated with Dithering and Pixel Art tools. Added tests for persistence cycle.
 - **System Panels**: Implemented a dashboard for system information (Storage, Network, Battery, Device). Rust defines the data structures and UI; Kotlin feeds the data via JNI. Includes unit tests for binding parsing.
 - **GZIP Compression**: Implemented GZIP compression and decompression for single files (`gzip_compress`, `gzip_decompress` in `compression.rs`). Includes roundtrip unit tests.
@@ -33,7 +34,6 @@ Keep this file short and actionable. Update it at the end of each session.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 
 ## Roadmap (Future Features)
-- **QR transfer**: Data transfer via QR slideshow.
 - **Math/CAS**: Numeric solver and optional symbolic CAS.
 
 ## Immediate Focus
