@@ -21,9 +21,14 @@ import android.os.HandlerThread
 import android.os.StatFs
 import android.os.BatteryManager
 import android.content.pm.PackageManager
+import android.Manifest
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import androidx.annotation.VisibleForTesting
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -108,10 +113,6 @@ class MainActivity : ComponentActivity() {
     private var magnetometerSensor: Sensor? = null
     private var lastMagnetometerDispatch: Long = 0L
     private var autoRefreshJob: Job? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var cameraPreviewView: PreviewView? = null
-    private var imageAnalyzer: ImageAnalysis? = null
-    private var isQrScanActive = false
     private var cameraProvider: ProcessCameraProvider? = null
     private var cameraPreviewView: PreviewView? = null
     private var imageAnalyzer: ImageAnalysis? = null
@@ -753,6 +754,7 @@ class MainActivity : ComponentActivity() {
                 startQrScanner()
             } else {
                 hasCameraPermission = false
+                Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show()
                 refreshUi("qr_receive_screen", extras = mapOf("error" to "camera_permission_denied"))
             }
         }
@@ -1071,29 +1073,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Placeholder for a future CameraX analyzer -> Rust decoder bridge.
-    // Expected flow: capture Y plane + strides + rotation, call JNI decode, and dispatch qr_receive_scan on success.
-        private val PERMISSION_CAMERA = 1002
-        private var hasCameraPermission = false
-    
-        private fun startQrScanner() {
-            if (hasCameraPermission) {
-                startCameraX()
-            } else {
-                requestPermissions(arrayOf(android.Manifest.permission.CAMERA), PERMISSION_CAMERA)
-            }
+    // CameraX analyzer -> Rust decoder bridge.
+    // Captures Y plane + strides + rotation, calls JNI decode, and dispatches qr_receive_scan on success.
+    private var hasCameraPermission = false
+
+    private fun startQrScanner() {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        hasCameraPermission = granted
+        if (granted) {
+            startCameraX()
+        } else {
+            Toast.makeText(this, "Camera permission required for QR scanning", Toast.LENGTH_SHORT).show()
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
         }
-    
-        private fun startCameraX() {
-            if (isQrScanActive) return
-            isQrScanActive = true
-    
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-            cameraProviderFuture.addListener({
-                cameraProvider = cameraProviderFuture.get()
-                bindCameraUseCases()
-            }, ContextCompat.getMainExecutor(this))
-        }
+    }
+
+    private fun startCameraX() {
+        if (isQrScanActive) return
+        isQrScanActive = true
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            cameraProvider = cameraProviderFuture.get()
+            bindCameraUseCases()
+        }, ContextCompat.getMainExecutor(this))
+    }
     
         private fun bindCameraUseCases() {
             val provider = cameraProvider ?: return
@@ -1110,7 +1114,7 @@ class MainActivity : ComponentActivity() {
             }
     
             imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_LATEST)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
                 .also {
                     it.setAnalyzer(ContextCompat.getMainExecutor(this), QrCodeAnalyzer(::processQrCameraFrame) { qrResult ->
@@ -1694,5 +1698,6 @@ class MainActivity : ComponentActivity() {
 
         // Arbitrary request code for location permission prompts
         private const val PERMISSION_LOCATION = 1001
+        private const val CAMERA_PERMISSION_REQUEST_CODE = 2001
     }
 }
