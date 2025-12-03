@@ -451,8 +451,9 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("QR Transfer (Receiver)").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Paste scanned frames to reconstruct the file. Camera integration is pending.")
-                .size(14.0),
+            UiText::new("Paste scanned frames or use the camera. Grant permission and keep the QRs in view; the preview runs behind this panel.")
+                .size(14.0)
+                .content_description("qr_receive_subtitle"),
         )
         .unwrap(),
         serde_json::to_value(
@@ -463,6 +464,8 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
         .unwrap(),
         serde_json::to_value(UiButton::new("Submit chunk", "qr_receive_scan").id("qr_receive_scan_btn")).unwrap(),
         serde_json::to_value(UiButton::new("Paste from clipboard", "qr_receive_paste").id("qr_receive_paste")).unwrap(),
+        // Re-rendering the screen is enough to (re)start the camera preview via MainActivity.
+        serde_json::to_value(UiButton::new("Resume camera", "qr_receive_screen").id("qr_receive_camera_resume")).unwrap(),
     ];
 
     if let Some(status) = &state.qr_receive.status {
