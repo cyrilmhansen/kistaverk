@@ -17,3 +17,4 @@ pub mod uuid_gen;
 pub mod compression;
 pub mod system_info;
 pub mod presets;
+pub mod qr_transfer;

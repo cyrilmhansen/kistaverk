@@ -40,6 +40,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
@@ -103,6 +105,7 @@ class MainActivity : ComponentActivity() {
     private var magnetometerListener: SensorEventListener? = null
     private var magnetometerSensor: Sensor? = null
     private var lastMagnetometerDispatch: Long = 0L
+    private var autoRefreshJob: Job? = null
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -878,6 +881,7 @@ class MainActivity : ComponentActivity() {
                 hideOverlay()
                 cacheLastResult(newUiJson)
                 updateSensorSubscriptions(newUiJson)
+                scheduleAutoRefresh(newUiJson)
             }
         } else {
             lifecycleScope.launch {
@@ -916,9 +920,22 @@ class MainActivity : ComponentActivity() {
                         hideOverlay()
                         cacheLastResult(newUiJson)
                         updateSensorSubscriptions(newUiJson)
+                        scheduleAutoRefresh(newUiJson)
                     }
                 }
             }
+        }
+    }
+
+    private fun scheduleAutoRefresh(json: String) {
+        val obj = runCatching { JSONObject(json) }.getOrNull() ?: return
+        val interval = obj.optLong("auto_refresh_ms", 0L)
+        val action = obj.optString("auto_refresh_action", "")
+        autoRefreshJob?.cancel()
+        if (interval <= 0 || action.isBlank()) return
+        autoRefreshJob = lifecycleScope.launch {
+            delay(interval)
+            dispatchWithOptionalLoading(action)
         }
     }
 

@@ -32,6 +32,10 @@ use features::pdf::{
     render_pdf_preview_screen, render_pdf_screen, PdfOperation,
 };
 use features::qr::{handle_qr_action, render_qr_screen};
+use features::qr_transfer::{
+    advance_frame as qr_slideshow_advance, load_slideshow_from_fd, load_slideshow_from_path,
+    render_qr_slideshow_screen,
+};
 use features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
     render_sensor_logger_screen,
@@ -147,6 +151,19 @@ enum Action {
         input: Option<String>,
     },
     ColorCopyClipboard,
+    QrSlideshowScreen,
+    QrSlideshowPick {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    QrSlideshowPlay,
+    QrSlideshowNext,
+    QrSlideshowPrev,
+    QrSlideshowTick,
+    QrSlideshowSetSpeed {
+        interval_ms: u64,
+    },
     Hash {
         algo: HashAlgo,
         path: Option<String>,
@@ -665,6 +682,15 @@ fn parse_action(command: Command) -> Result<Action, String> {
                 .or_else(|| path.clone()),
         }),
         "color_copy_clipboard" => Ok(Action::ColorCopyClipboard),
+        "qr_slideshow_screen" => Ok(Action::QrSlideshowScreen),
+        "qr_slideshow_pick" => Ok(Action::QrSlideshowPick { path, fd, error }),
+        "qr_slideshow_play" => Ok(Action::QrSlideshowPlay),
+        "qr_slideshow_next" => Ok(Action::QrSlideshowNext),
+        "qr_slideshow_prev" => Ok(Action::QrSlideshowPrev),
+        "qr_slideshow_tick" => Ok(Action::QrSlideshowTick),
+        "qr_slideshow_set_speed" => Ok(Action::QrSlideshowSetSpeed {
+            interval_ms: parse_u64_binding(&bindings, "interval_ms").unwrap_or(200),
+        }),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
         "archive_compress" => Ok(Action::ArchiveCompress { path, fd, error }),
@@ -1954,6 +1980,66 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.dithering_error = Some("no_image_selected".into());
             }
         }
+        Action::QrSlideshowScreen => {
+            state.push_screen(Screen::QrSlideshow);
+            state.qr_slideshow.error = None;
+        }
+        Action::QrSlideshowPick { path, fd, error } => {
+            state.push_screen(Screen::QrSlideshow);
+            state.qr_slideshow.error = error.clone();
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_none() {
+                if let Some(raw_fd) = fd_handle.take() {
+                    if let Err(e) = load_slideshow_from_fd(&mut state, raw_fd as RawFd, path.as_deref()) {
+                        state.qr_slideshow.error = Some(e);
+                    }
+                } else if let Some(p) = path.as_deref() {
+                    if let Err(e) = load_slideshow_from_path(&mut state, p) {
+                        state.qr_slideshow.error = Some(e);
+                    }
+                } else {
+                    state.qr_slideshow.error = Some("missing_source".into());
+                }
+            }
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowPlay => {
+            if !state.qr_slideshow.chunks.is_empty() {
+                state.qr_slideshow.is_playing = !state.qr_slideshow.is_playing;
+            }
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowNext => {
+            let _ = qr_slideshow_advance(&mut state, 1);
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowPrev => {
+            let _ = qr_slideshow_advance(&mut state, -1);
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowTick => {
+            if state.qr_slideshow.is_playing && !state.qr_slideshow.chunks.is_empty() {
+                let _ = qr_slideshow_advance(&mut state, 1);
+            }
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowSetSpeed { interval_ms } => {
+            let clamped = interval_ms.clamp(50, 2_000);
+            state.qr_slideshow.interval_ms = clamped;
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
         Action::QrGenerate { input } => {
             state.push_screen(Screen::Qr);
             let text = input.unwrap_or_default();
@@ -2134,6 +2220,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::UuidGenerator => render_uuid_screen(state),
         Screen::PresetManager => render_preset_manager(state),
         Screen::PresetSave => render_save_preset_dialog(state),
+        Screen::QrSlideshow => render_qr_slideshow_screen(state),
     }
 }
 
@@ -2394,6 +2481,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_file_md4",
             requires_file_picker: true,
             description: "legacy hash",
+        },
+        Feature {
+            id: "qr_transfer_sender",
+            name: "📡 QR Transfer (sender)",
+            category: "🧰 Utilities",
+            action: "qr_slideshow_screen",
+            requires_file_picker: false,
+            description: "slideshow of QR chunks",
         },
         Feature {
             id: "file_info",

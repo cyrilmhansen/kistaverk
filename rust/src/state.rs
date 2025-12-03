@@ -2,6 +2,7 @@ use crate::features::archive::ArchiveState;
 use crate::features::system_info::SystemInfoState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
+use crate::features::qr_transfer::QrSlideshowState;
 use crate::features::presets::PresetState;
 use crate::features::sensor_logger::SensorSelection;
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,7 @@ pub enum Screen {
     UuidGenerator,
     PresetManager,
     PresetSave,
+    QrSlideshow,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -163,6 +165,7 @@ pub struct AppState {
     pub uuid_generator: UuidGeneratorState,
     pub system_info: SystemInfoState,
     pub preset_state: PresetState,
+    pub qr_slideshow: QrSlideshowState,
 }
 
 impl AppState {
@@ -244,6 +247,7 @@ impl AppState {
             },
             system_info: SystemInfoState::new(),
             preset_state: PresetState::new(),
+            qr_slideshow: QrSlideshowState::new(),
         }
     }
 
@@ -361,5 +365,6 @@ impl AppState {
         self.uuid_generator.string_charset = StringCharset::Alphanumeric;
         self.system_info = SystemInfoState::new();
         self.preset_state.reset();
+        self.qr_slideshow.reset();
     }
 }
