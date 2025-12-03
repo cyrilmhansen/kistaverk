@@ -136,6 +136,8 @@ pub struct Column<'a> {
     pub scrollable: Option<bool>,
     pub children: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
 }
 
@@ -146,6 +148,7 @@ impl<'a> Column<'a> {
             padding: None,
             scrollable: None,
             children,
+            id: None,
             content_description: None,
         }
     }
@@ -157,6 +160,11 @@ impl<'a> Column<'a> {
 
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = Some(scrollable);
+        self
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
         self
     }
 

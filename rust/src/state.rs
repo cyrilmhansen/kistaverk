@@ -2,7 +2,7 @@ use crate::features::archive::ArchiveState;
 use crate::features::system_info::SystemInfoState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
-use crate::features::qr_transfer::QrSlideshowState;
+use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::presets::PresetState;
 use crate::features::sensor_logger::SensorSelection;
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,7 @@ pub enum Screen {
     PresetManager,
     PresetSave,
     QrSlideshow,
+    QrReceive,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,6 +167,7 @@ pub struct AppState {
     pub system_info: SystemInfoState,
     pub preset_state: PresetState,
     pub qr_slideshow: QrSlideshowState,
+    pub qr_receive: QrReceiveState,
 }
 
 impl AppState {
@@ -248,6 +250,7 @@ impl AppState {
             system_info: SystemInfoState::new(),
             preset_state: PresetState::new(),
             qr_slideshow: QrSlideshowState::new(),
+            qr_receive: QrReceiveState::new(),
         }
     }
 
@@ -366,5 +369,6 @@ impl AppState {
         self.system_info = SystemInfoState::new();
         self.preset_state.reset();
         self.qr_slideshow.reset();
+        self.qr_receive.reset();
     }
 }

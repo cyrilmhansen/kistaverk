@@ -33,8 +33,9 @@ use features::pdf::{
 };
 use features::qr::{handle_qr_action, render_qr_screen};
 use features::qr_transfer::{
-    advance_frame as qr_slideshow_advance, load_slideshow_from_fd, load_slideshow_from_path,
-    render_qr_slideshow_screen,
+    advance_frame as qr_slideshow_advance, handle_receive_scan, load_slideshow_from_fd,
+    load_slideshow_from_path, render_qr_receive_screen, render_qr_slideshow_screen,
+    save_received_file, decode_qr_frame_luma,
 };
 use features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
@@ -164,6 +165,11 @@ enum Action {
     QrSlideshowSetSpeed {
         interval_ms: u64,
     },
+    QrReceiveScreen,
+    QrReceiveScan {
+        data: Option<String>,
+    },
+    QrReceiveSave,
     Hash {
         algo: HashAlgo,
         path: Option<String>,
@@ -514,11 +520,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "text_viewer_find_next" => Ok(Action::TextViewerFind {
             query: bindings.get("find_query").cloned(),
-            direction: Some("next".into()),
+            direction: Some("next".into())
         }),
         "text_viewer_find_prev" => Ok(Action::TextViewerFind {
             query: bindings.get("find_query").cloned(),
-            direction: Some("prev".into()),
+            direction: Some("prev".into())
         }),
         "text_viewer_find_clear" => Ok(Action::TextViewerFind {
             query: Some(String::new()),
@@ -691,6 +697,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "qr_slideshow_set_speed" => Ok(Action::QrSlideshowSetSpeed {
             interval_ms: parse_u64_binding(&bindings, "interval_ms").unwrap_or(200),
         }),
+        "qr_receive_screen" => Ok(Action::QrReceiveScreen),
+        "qr_receive_scan" => Ok(Action::QrReceiveScan {
+            data: bindings.get("qr_scan_input").cloned().or_else(|| bindings.get("clipboard").cloned()),
+        }),
+        "qr_receive_save" => Ok(Action::QrReceiveSave),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
         "archive_compress" => Ok(Action::ArchiveCompress { path, fd, error }),
@@ -891,6 +902,45 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
     }
 }
 
+// JNI function to decode QR code from camera frame
+#[no_mangle]
+pub extern "system" fn Java_aeska_kistaverk_MainActivity_processQrCameraFrame(
+    env: JNIEnv,
+    _class: JClass,
+    luma_array: jni::objects::JByteArray,
+    width: jni::sys::jint,
+    height: jni::sys::jint,
+    row_stride: jni::sys::jint,
+    rotation_deg: jni::sys::jint,
+) -> jstring {
+    let response = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let luma_data = env.convert_byte_array(&luma_array).map_err(|e| format!("jni_luma_array_err:{e}"))?;
+        let width_u = width as u32;
+        let height_u = height as u32;
+        let row_stride_u = row_stride as u32;
+        let rotation_u = rotation_deg as u16;
+
+        match decode_qr_frame_luma(&luma_data, width_u, height_u, row_stride_u, rotation_u) {
+            Ok(Some(decoded_text)) => {
+                env.new_string(decoded_text)
+                    .map(|s| s.into_raw())
+                    .map_err(|e| format!("jni_new_string_err:{e}"))
+            },
+            Ok(None) => Ok(ptr::null_mut()), // No QR code found
+            Err(e) => {
+                // Log the error and return null, or potentially a special error string
+                eprintln!("QR decoding error: {}", e);
+                Ok(ptr::null_mut())
+            }
+        }
+    }));
+
+    match response {
+        Ok(Ok(res)) => res,
+        Ok(Err(_)) | Err(_) => ptr::null_mut(), // Return null on any error or panic
+    }
+}
+
 fn handle_command(command: Command) -> Result<Value, String> {
     let mut lock_poisoned = false;
     let mut state = match STATE.lock() {
@@ -1080,7 +1130,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::SystemInfoUpdate { bindings } => {
             state.push_screen(Screen::SystemInfo);
             match features::system_info::apply_system_info_bindings(&mut state, &bindings) {
-                Ok(_) => {}
+                Ok(_) => {} // No-op
                 Err(e) => state.system_info.error = Some(e),
             }
         }
@@ -1431,6 +1481,87 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.replace_current(Screen::UuidGenerator);
             }
         }
+        Action::QrSlideshowScreen => {
+            state.push_screen(Screen::QrSlideshow);
+            state.qr_slideshow.error = None;
+        }
+        Action::QrSlideshowPick { path, fd, error } => {
+            state.push_screen(Screen::QrSlideshow);
+            state.qr_slideshow.error = error.clone();
+            let mut fd_handle = FdHandle::new(fd);
+            if error.is_none() {
+                if let Some(raw_fd) = fd_handle.take() {
+                    if let Err(e) = load_slideshow_from_fd(&mut state, raw_fd as RawFd, path.as_deref()) {
+                        state.qr_slideshow.error = Some(e);
+                    }
+                } else if let Some(p) = path.as_deref() {
+                    if let Err(e) = load_slideshow_from_path(&mut state, p) {
+                        state.qr_slideshow.error = Some(e);
+                    }
+                } else {
+                    state.qr_slideshow.error = Some("missing_source".into());
+                }
+            }
+        }
+        Action::QrSlideshowPlay => {
+            state.qr_slideshow.is_playing = !state.qr_slideshow.is_playing;
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowNext => {
+            state.qr_slideshow.is_playing = false;
+            qr_slideshow_advance(&mut state, 1).unwrap_or(());
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowPrev => {
+            state.qr_slideshow.is_playing = false;
+            qr_slideshow_advance(&mut state, -1).unwrap_or(());
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrSlideshowTick => {
+            if state.qr_slideshow.is_playing {
+                qr_slideshow_advance(&mut state, 1).unwrap_or(());
+                if matches!(state.current_screen(), Screen::QrSlideshow) {
+                    state.replace_current(Screen::QrSlideshow);
+                }
+            }
+        }
+        Action::QrSlideshowSetSpeed { interval_ms } => {
+            state.qr_slideshow.interval_ms = interval_ms.max(50);
+            if matches!(state.current_screen(), Screen::QrSlideshow) {
+                state.replace_current(Screen::QrSlideshow);
+            }
+        }
+        Action::QrReceiveScreen => {
+            state.push_screen(Screen::QrReceive);
+            state.qr_receive.reset();
+        }
+        Action::QrReceiveScan { data } => {
+            if let Some(payload) = data {
+                if !payload.trim().is_empty() {
+                    if let Err(e) = handle_receive_scan(&mut state, &payload) {
+                        state.qr_receive.error = Some(e);
+                    }
+                }
+            }
+            if matches!(state.current_screen(), Screen::QrReceive) {
+                state.replace_current(Screen::QrReceive);
+            }
+        }
+        Action::QrReceiveSave => {
+            match save_received_file(&mut state) {
+                Ok(_) => state.qr_receive.error = None,
+                Err(e) => state.qr_receive.error = Some(e),
+            }
+            if matches!(state.current_screen(), Screen::QrReceive) {
+                state.replace_current(Screen::QrReceive);
+            }
+        }
         Action::PdfToolsScreen => {
             state.push_screen(Screen::PdfTools);
             state.pdf.last_error = None;
@@ -1466,7 +1597,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     None,
                     &selection,
                 ) {
-                    Ok(_) => {}
+                    Ok(_) => {} // No-op
                     Err(e) => state.pdf.last_error = Some(e),
                 }
             } else {
@@ -1488,7 +1619,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     None,
                     &selection,
                 ) {
-                    Ok(_) => {}
+                    Ok(_) => {} // No-op
                     Err(e) => state.pdf.last_error = Some(e),
                 }
             } else {
@@ -1510,7 +1641,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     None,
                     &order,
                 ) {
-                    Ok(_) => {}
+                    Ok(_) => {} // No-op
                     Err(e) => state.pdf.last_error = Some(e),
                 }
             } else {
@@ -1536,7 +1667,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     secondary_uri.as_deref(),
                     &[],
                 ) {
-                    Ok(_) => {}
+                    Ok(_) => {} // No-op
                     Err(e) => state.pdf.last_error = Some(e),
                 }
             } else {
@@ -1621,7 +1752,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                         img_height_px,
                         img_dpi,
                     ) {
-                        Ok(_) => {}
+                        Ok(_) => {} // No-op
                         Err(e) => state.pdf.last_error = Some(e),
                     }
                 } else {
@@ -1980,66 +2111,6 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.dithering_error = Some("no_image_selected".into());
             }
         }
-        Action::QrSlideshowScreen => {
-            state.push_screen(Screen::QrSlideshow);
-            state.qr_slideshow.error = None;
-        }
-        Action::QrSlideshowPick { path, fd, error } => {
-            state.push_screen(Screen::QrSlideshow);
-            state.qr_slideshow.error = error.clone();
-            let mut fd_handle = FdHandle::new(fd);
-            if error.is_none() {
-                if let Some(raw_fd) = fd_handle.take() {
-                    if let Err(e) = load_slideshow_from_fd(&mut state, raw_fd as RawFd, path.as_deref()) {
-                        state.qr_slideshow.error = Some(e);
-                    }
-                } else if let Some(p) = path.as_deref() {
-                    if let Err(e) = load_slideshow_from_path(&mut state, p) {
-                        state.qr_slideshow.error = Some(e);
-                    }
-                } else {
-                    state.qr_slideshow.error = Some("missing_source".into());
-                }
-            }
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
-        Action::QrSlideshowPlay => {
-            if !state.qr_slideshow.chunks.is_empty() {
-                state.qr_slideshow.is_playing = !state.qr_slideshow.is_playing;
-            }
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
-        Action::QrSlideshowNext => {
-            let _ = qr_slideshow_advance(&mut state, 1);
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
-        Action::QrSlideshowPrev => {
-            let _ = qr_slideshow_advance(&mut state, -1);
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
-        Action::QrSlideshowTick => {
-            if state.qr_slideshow.is_playing && !state.qr_slideshow.chunks.is_empty() {
-                let _ = qr_slideshow_advance(&mut state, 1);
-            }
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
-        Action::QrSlideshowSetSpeed { interval_ms } => {
-            let clamped = interval_ms.clamp(50, 2_000);
-            state.qr_slideshow.interval_ms = clamped;
-            if matches!(state.current_screen(), Screen::QrSlideshow) {
-                state.replace_current(Screen::QrSlideshow);
-            }
-        }
         Action::QrGenerate { input } => {
             state.push_screen(Screen::Qr);
             let text = input.unwrap_or_default();
@@ -2084,6 +2155,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             }
             state.reset_navigation();
             state.last_hash_algo = Some(hash_label(algo).into());
+            // If there's an error from the command, display it.
             if let Some(err) = error {
                 state.last_error = Some(err);
                 state.last_hash = None;
@@ -2221,6 +2293,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PresetManager => render_preset_manager(state),
         Screen::PresetSave => render_save_preset_dialog(state),
         Screen::QrSlideshow => render_qr_slideshow_screen(state),
+        Screen::QrReceive => render_qr_receive_screen(state),
     }
 }
 
@@ -2237,7 +2310,10 @@ pub struct Feature {
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     use crate::ui::{
-        Button as UiButton, Card as UiCard, Column as UiColumn, Section as UiSection,
+        Button as UiButton,
+        Card as UiCard,
+        Column as UiColumn,
+        Section as UiSection,
         Text as UiText,
     };
 
@@ -2489,6 +2565,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "qr_slideshow_screen",
             requires_file_picker: false,
             description: "slideshow of QR chunks",
+        },
+        Feature {
+            id: "qr_transfer_receiver",
+            name: "📥 QR Transfer (receiver)",
+            category: "🧰 Utilities",
+            action: "qr_receive_screen",
+            requires_file_picker: false,
+            description: "reassemble pasted QR chunks",
         },
         Feature {
             id: "file_info",
@@ -2767,14 +2851,8 @@ mod tests {
         let card = UiCard::new(body).title("⚡ Quick access").padding(6);
 
         let section_val = serde_json::to_value(section).expect("section should serialize");
-        assert_eq!(
-            section_val.get("type"),
-            Some(&Value::String("Section".into()))
-        );
-        assert_eq!(
-            section_val.get("title"),
-            Some(&Value::String("📁 Files".into()))
-        );
+        assert_eq!(section_val.get("type"), Some(&Value::String("Section".into())));
+        assert_eq!(section_val.get("title"), Some(&Value::String("📁 Files".into())));
         assert_eq!(section_val.get("icon"), Some(&Value::String("📁".into())));
         assert!(section_val
             .get("children")
