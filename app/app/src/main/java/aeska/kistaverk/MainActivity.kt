@@ -12,29 +12,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.Context
 import android.util.Base64
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import android.os.Handler
-import android.os.HandlerThread
 import android.os.StatFs
 import android.os.BatteryManager
-import android.content.pm.PackageManager
-import android.Manifest
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import androidx.annotation.VisibleForTesting
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import aeska.kistaverk.features.ConversionResult
@@ -68,17 +51,8 @@ class MainActivity : ComponentActivity() {
 
     private val maxSnapshotSize = 200_000 // guard against TransactionTooLarge
     private lateinit var renderer: UiRenderer
-    private var sensorManager: SensorManager? = null
-    private var sensorThread: HandlerThread? = null
-    private var sensorHandler: Handler? = null
-    private var sensorListener: SensorEventListener? = null
-    private var logFile: File? = null
-    private var logWriter: OutputStreamWriter? = null
-    @Volatile private var isLogging = false
-    private var locationManager: LocationManager? = null
-    private var locationListener: LocationListener? = null
-    private var pendingSensorStart = false
-    private var pendingSensorBindings: Map<String, String>? = null
+    private lateinit var sensors: AppSensorManager
+    private lateinit var cameraManager: CameraManager
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
     private var selectedOutputDir: Uri? = null
@@ -89,34 +63,7 @@ class MainActivity : ComponentActivity() {
     private var lastResult: String? = null
     private var lastFileOutputPath: String? = null
     private var lastFileOutputMime: String? = null
-    private var lastSensorLogPath: String? = null
-    private var lastSensorUiTs: Long = 0L
-    private var compassThread: HandlerThread? = null
-    private var compassHandler: Handler? = null
-    private var compassListener: SensorEventListener? = null
-    private var compassSensorManager: SensorManager? = null
-    private var compassRotationSensor: Sensor? = null
-    private var compassAccel: FloatArray? = null
-    private var compassMag: FloatArray? = null
-    private var lastCompassRadians: Float? = null
-    private var lastCompassDispatchTs: Long = 0L
-    private var compassActive = false
-    private var compassUnavailable = false
-    private var barometerThread: HandlerThread? = null
-    private var barometerHandler: Handler? = null
-    private var barometerListener: SensorEventListener? = null
-    private var barometerSensor: Sensor? = null
-    private var lastBarometerDispatch: Long = 0L
-    private var magnetometerThread: HandlerThread? = null
-    private var magnetometerHandler: Handler? = null
-    private var magnetometerListener: SensorEventListener? = null
-    private var magnetometerSensor: Sensor? = null
-    private var lastMagnetometerDispatch: Long = 0L
     private var autoRefreshJob: Job? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var cameraPreviewView: PreviewView? = null
-    private var imageAnalyzer: ImageAnalysis? = null
-    private var isQrScanActive = false
     private val snapshotKey = "rust_snapshot"
 
     private val pickFileLauncher = registerForActivityResult(
@@ -170,14 +117,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateSensorSubscriptions(json: String) {
-        val wantsCompass = jsonHasWidget(json, "Compass")
-        if (wantsCompass) startCompass() else stopCompass()
-
-        val wantsBaro = jsonHasWidget(json, "Barometer")
-        if (wantsBaro) startBarometer() else stopBarometer()
-
-        val wantsMag = jsonHasWidget(json, "Magnetometer")
-        if (wantsMag) startMagnetometer() else stopMagnetometer()
+        sensors.updateSubscriptions(json)
     }
 
     private fun guessMimeFromPath(path: String): String? {
@@ -276,220 +216,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startCompass() {
-        if (compassActive) return
-        compassUnavailable = false
-        if (compassSensorManager == null) {
-            compassSensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
-        }
-        val mgr = compassSensorManager ?: return
-        val rotationSensor = mgr.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        val accelSensor = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val magSensor = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        if (rotationSensor == null && (accelSensor == null || magSensor == null)) {
-            if (!compassUnavailable) {
-                compassUnavailable = true
-                sendSensorUpdate("compass_set", extras = mapOf("angle_radians" to 0.0, "error" to "Compass sensors unavailable"))
-            }
-            return
-        }
-        val thread = HandlerThread("CompassListener")
-        thread.start()
-        compassThread = thread
-        compassHandler = Handler(thread.looper)
-        compassRotationSensor = rotationSensor
-        compassListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                when (event.sensor.type) {
-                    Sensor.TYPE_ROTATION_VECTOR -> {
-                        val rotMatrix = FloatArray(9)
-                        SensorManager.getRotationMatrixFromVector(rotMatrix, event.values)
-                        val orientation = FloatArray(3)
-                        SensorManager.getOrientation(rotMatrix, orientation)
-                        notifyCompassAngle(orientation[0])
-                    }
-                    Sensor.TYPE_ACCELEROMETER -> {
-                        compassAccel = event.values.clone()
-                        maybeComputeAccelMag()
-                    }
-                    Sensor.TYPE_MAGNETIC_FIELD -> {
-                        compassMag = event.values.clone()
-                        maybeComputeAccelMag()
-                    }
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-
-            private fun maybeComputeAccelMag() {
-                val accel = compassAccel
-                val mag = compassMag
-                if (accel != null && mag != null) {
-                    val r = FloatArray(9)
-                    val i = FloatArray(9)
-                    if (SensorManager.getRotationMatrix(r, i, accel, mag)) {
-                        val orientation = FloatArray(3)
-                        SensorManager.getOrientation(r, orientation)
-                        notifyCompassAngle(orientation[0])
-                    }
-                }
-            }
-        }
-        compassListener?.let { listener ->
-            if (rotationSensor != null) {
-                mgr.registerListener(listener, rotationSensor, SensorManager.SENSOR_DELAY_UI, compassHandler)
-            } else {
-                accelSensor?.let { mgr.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI, compassHandler) }
-                magSensor?.let { mgr.registerListener(listener, it, SensorManager.SENSOR_DELAY_UI, compassHandler) }
-            }
-        }
-        compassActive = true
-    }
-
-    private fun notifyCompassAngle(raw: Float) {
-        val now = android.os.SystemClock.elapsedRealtime()
-        val tau = (2 * Math.PI).toFloat()
-        val normalized = ((raw % tau) + tau) % tau
-        val prev = lastCompassRadians
-        val minDelta = Math.toRadians(1.0).toFloat()
-        val minIntervalMs = 300L
-        if (prev != null && kotlin.math.abs(prev - normalized) < minDelta && now - lastCompassDispatchTs < minIntervalMs) {
-            return
-        }
-        lastCompassRadians = normalized
-        // Update the on-screen dial immediately by reusing the last rendered JSON (lightweight)
-        sendSensorUpdate(
-            "compass_set",
-            extras = mapOf("angle_radians" to normalized.toDouble(), "error" to JSONObject.NULL)
-        )
-        lastCompassDispatchTs = now
-    }
-
-    private fun stopCompass() {
-        if (!compassActive) return
-        compassActive = false
-        compassUnavailable = false
-        val mgr = compassSensorManager
-        val listener = compassListener
-        if (mgr != null && listener != null) {
-            mgr.unregisterListener(listener)
-        }
-        compassListener = null
-        compassAccel = null
-        compassMag = null
-        compassRotationSensor = null
-        compassHandler = null
-        compassThread?.quitSafely()
-        compassThread = null
-    }
-
-    private fun startBarometer() {
-        if (barometerListener != null) return
-        if (barometerSensor == null) {
-            barometerSensor = (getSystemService(SENSOR_SERVICE) as? SensorManager)
-                ?.getDefaultSensor(Sensor.TYPE_PRESSURE)
-        }
-        val sensor = barometerSensor ?: run {
-            sendSensorUpdate("barometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Barometer unavailable"))
-            return
-        }
-        val thread = HandlerThread("BarometerListener")
-        thread.start()
-        barometerThread = thread
-        barometerHandler = Handler(thread.looper)
-        barometerListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val hpa = event.values.firstOrNull()?.toDouble() ?: return
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (now - lastBarometerDispatch < 300) return
-                lastBarometerDispatch = now
-                sendSensorUpdate("barometer_set", extras = mapOf("angle_radians" to hpa, "error" to JSONObject.NULL))
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-        barometerListener?.let { listener ->
-            (getSystemService(SENSOR_SERVICE) as? SensorManager)
-                ?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, barometerHandler)
-        }
-    }
-
-    private fun stopBarometer() {
-        val mgr = getSystemService(SENSOR_SERVICE) as? SensorManager
-        barometerListener?.let { mgr?.unregisterListener(it) }
-        barometerListener = null
-        barometerHandler = null
-        barometerThread?.quitSafely()
-        barometerThread = null
-    }
-
-    private fun startMagnetometer() {
-        if (magnetometerListener != null) return
-        if (magnetometerSensor == null) {
-            magnetometerSensor = (getSystemService(SENSOR_SERVICE) as? SensorManager)
-                ?.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-        }
-        val sensor = magnetometerSensor ?: run {
-            sendSensorUpdate("magnetometer_set", extras = mapOf("angle_radians" to 0.0, "error" to "Magnetometer unavailable"))
-            return
-        }
-        val thread = HandlerThread("MagnetometerListener")
-        thread.start()
-        magnetometerThread = thread
-        magnetometerHandler = Handler(thread.looper)
-        magnetometerListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val vals = event.values
-                if (vals.size < 3) return
-                val mag = kotlin.math.sqrt((vals[0] * vals[0] + vals[1] * vals[1] + vals[2] * vals[2]).toDouble())
-                val now = android.os.SystemClock.elapsedRealtime()
-                if (now - lastMagnetometerDispatch < 300) return
-                lastMagnetometerDispatch = now
-                sendSensorUpdate("magnetometer_set", extras = mapOf("angle_radians" to mag, "error" to JSONObject.NULL))
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-        magnetometerListener?.let { listener ->
-            (getSystemService(SENSOR_SERVICE) as? SensorManager)
-                ?.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI, magnetometerHandler)
-        }
-    }
-
-    private fun stopMagnetometer() {
-        val mgr = getSystemService(SENSOR_SERVICE) as? SensorManager
-        magnetometerListener?.let { mgr?.unregisterListener(it) }
-        magnetometerListener = null
-        magnetometerHandler = null
-        magnetometerThread?.quitSafely()
-        magnetometerThread = null
-    }
-
-    private fun jsonHasWidget(json: String, widgetType: String): Boolean {
-        val root = runCatching { JSONObject(json) }.getOrNull() ?: return false
-        fun walk(obj: JSONObject): Boolean {
-            if (obj.optString("type") == widgetType) return true
-            val children = obj.optJSONArray("children") ?: return false
-            for (i in 0 until children.length()) {
-                val child = children.optJSONObject(i) ?: continue
-                if (walk(child)) return true
-            }
-            return false
-        }
-        return walk(root)
-    }
-
-    private fun sendSensorUpdate(action: String, extras: Map<String, Any?>) {
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                val command = JSONObject().apply {
-                    put("action", action)
-                    extras.forEach { (k, v) -> put(k, v) }
-                }
-                dispatch(command.toString())
-            }
-        }
-    }
+    private fun startCompass() = sensors.startCompass()
+    private fun stopCompass() = sensors.stopCompass()
+    private fun startBarometer() = sensors.startBarometer()
+    private fun stopBarometer() = sensors.stopBarometer()
+    private fun startMagnetometer() = sensors.startMagnetometer()
+    private fun stopMagnetometer() = sensors.stopMagnetometer()
 
     private fun handleTextFind(action: String, bindings: Map<String, String>) {
         val direction = when (action) {
@@ -557,6 +289,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val entry = resolveEntry(intent)
+
+        sensors = AppSensorManager(
+            activity = this,
+            scope = lifecycleScope,
+            refreshUi = { action, bindings -> refreshUi(action, bindings = bindings) },
+            dispatchRaw = { command -> dispatch(command) }
+        )
+        cameraManager = CameraManager(
+            activity = this,
+            processFrame = ::processQrCameraFrame,
+            dispatchAction = { action, bindings -> dispatchWithOptionalLoading(action, bindings = bindings) }
+        )
 
         renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
             if (action == "kotlin_image_pick_dir") {
@@ -699,18 +443,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        pendingSensorStart = false
-        pendingSensorBindings = null
-        stopSensorLogging()
-        stopCompass()
-        stopBarometer()
-        stopMagnetometer()
-        stopQrScanner() // Stop QR scanner on destroy
+        sensors.onDestroy()
+        cameraManager.stopQrScanner()
     }
 
     override fun onPause() {
         super.onPause()
-        stopQrScanner() // Stop scanner when activity is not in foreground
+        cameraManager.stopQrScanner()
     }
 
     override fun onResume() {
@@ -720,8 +459,8 @@ class MainActivity : ComponentActivity() {
             val currentScreenJson = dispatch(JSONObject().apply { put("action", "snapshot_screen_only") }.toString())
             withContext(Dispatchers.Main) {
                 val currentScreenId = JSONObject(currentScreenJson).optString("id")
-                if (currentScreenId == "QrReceiveScreen" && hasCameraPermission) {
-                    startQrScanner()
+                if (currentScreenId == "QrReceiveScreen") {
+                    cameraManager.onScreenChanged(true, contentHolder)
                 }
             }
         }
@@ -736,27 +475,9 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_LOCATION) {
-            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            if (granted && pendingSensorStart) {
-                pendingSensorStart = false
-                val bindings = pendingSensorBindings ?: emptyMap()
-                pendingSensorBindings = null
-                startSensorLogging(bindings)
-            } else {
-                val bindings = mutableMapOf<String, String>()
-                bindings["sensor_status"] = "location permission denied"
-                pendingSensorBindings = null
-                refreshUi("sensor_logger_status", bindings = bindings)
-            }
+            sensors.onPermissionResult(requestCode, grantResults, emptyMap())
         } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                hasCameraPermission = true
-                startQrScanner()
-            } else {
-                hasCameraPermission = false
-                Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show()
-                refreshUi("qr_receive_screen", extras = mapOf("error" to "camera_permission_denied"))
-            }
+            cameraManager.onPermissionResult(grantResults)
         }
     }
 
@@ -884,7 +605,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun refreshUi(
+    internal fun refreshUi(
         action: String,
         extras: Map<String, Any?> = emptyMap(),
         bindings: Map<String, String> = emptyMap(),
@@ -924,23 +645,8 @@ class MainActivity : ComponentActivity() {
                 updateSensorSubscriptions(newUiJson)
                 scheduleAutoRefresh(newUiJson)
 
-                // Check current screen from newUiJson and manage QR scanner lifecycle
                 val currentScreen = JSONObject(newUiJson).optJSONObject("layout")?.optString("id")
-                if (currentScreen == "QrReceiveScreen") { // Assuming Rust sets screen ID
-                    // Lazily add the PreviewView if not already there
-                    if (cameraPreviewView == null) {
-                        cameraPreviewView = PreviewView(this@MainActivity).apply {
-                            layoutParams = FrameLayout.LayoutParams(
-                                FrameLayout.LayoutParams.MATCH_PARENT,
-                                FrameLayout.LayoutParams.MATCH_PARENT
-                            )
-                        }
-                        contentHolder?.addView(cameraPreviewView, 0)
-                    }
-                    startQrScanner()
-                } else {
-                    stopQrScanner()
-                }
+                cameraManager.onScreenChanged(currentScreen == "QrReceiveScreen", contentHolder)
             }
         } else {
             lifecycleScope.launch {
@@ -985,18 +691,9 @@ class MainActivity : ComponentActivity() {
                         val currentScreen = JSONObject(newUiJson).optJSONObject("layout")?.optString("id")
                         if (currentScreen == "QrReceiveScreen") { // Assuming Rust sets screen ID
                              // Lazily add the PreviewView if not already there
-                            if (cameraPreviewView == null) {
-                                cameraPreviewView = PreviewView(this@MainActivity).apply {
-                                    layoutParams = FrameLayout.LayoutParams(
-                                        FrameLayout.LayoutParams.MATCH_PARENT,
-                                        FrameLayout.LayoutParams.MATCH_PARENT
-                                    )
-                                }
-                                contentHolder?.addView(cameraPreviewView, 0)
-                            }
-                            startQrScanner()
+                            cameraManager.onScreenChanged(true, contentHolder)
                         } else {
-                            stopQrScanner()
+                            cameraManager.onScreenChanged(false, contentHolder)
                         }
                     }
                 }
@@ -1073,117 +770,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // CameraX analyzer -> Rust decoder bridge.
-    // Captures Y plane + strides + rotation, calls JNI decode, and dispatches qr_receive_scan on success.
-    private var hasCameraPermission = false
-
-    private fun startQrScanner() {
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        hasCameraPermission = granted
-        if (granted) {
-            startCameraX()
-        } else {
-            Toast.makeText(this, "Camera permission required for QR scanning", Toast.LENGTH_SHORT).show()
-            requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
-        }
-    }
-
-    private fun startCameraX() {
-        if (isQrScanActive) return
-        isQrScanActive = true
-
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            cameraProvider = cameraProviderFuture.get()
-            bindCameraUseCases()
-        }, ContextCompat.getMainExecutor(this))
-    }
-    
-        private fun bindCameraUseCases() {
-            val provider = cameraProvider ?: return
-            val previewView = cameraPreviewView ?: return
-    
-            provider.unbindAll()
-    
-            val cameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-                .build()
-    
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
-    
-            imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(ContextCompat.getMainExecutor(this), QrCodeAnalyzer(::processQrCameraFrame) { qrResult ->
-                        if (qrResult != null) {
-                            isQrScanActive = false // Stop further scanning
-                            provider.unbindAll()
-                            dispatchWithOptionalLoading(
-                                "qr_receive_scan",
-                                bindings = mapOf("qr_scan_input" to qrResult)
-                            )
-                        }
-                    })
-                }
-    
-            try {
-                provider.bindToLifecycle(this, cameraSelector, preview, imageAnalyzer)
-            } catch (exc: Exception) {
-                isQrScanActive = false
-                refreshUi("qr_receive_screen", extras = mapOf("error" to "camera_bind_failed"))
-            }
-        }
-    
-        private fun stopQrScanner() {
-            isQrScanActive = false
-            cameraProvider?.unbindAll()
-            imageAnalyzer?.clearAnalyzer()
-            cameraProvider = null
-            imageAnalyzer = null
-            cameraPreviewView = null
-        }
-    
-        private class QrCodeAnalyzer(
-        private val jniProcessor: (ByteArray, Int, Int, Int, Int) -> String?,
-        private val listener: (String?) -> Unit
-    ) : ImageAnalysis.Analyzer {
-            private var lastAnalyzedTimestamp = 0L
-    
-            override fun analyze(image: ImageProxy) {
-                val currentTimestamp = System.currentTimeMillis()
-                if (currentTimestamp - lastAnalyzedTimestamp < 100) { // Throttle analysis
-                    image.close()
-                    return
-                }
-                lastAnalyzedTimestamp = currentTimestamp
-    
-                val yBuffer = image.planes[0].buffer
-                val yBytes = ByteArray(yBuffer.remaining())
-                yBuffer.get(yBytes)
-    
-                val width = image.width
-                val height = image.height
-                val rowStride = image.planes[0].rowStride
-                val rotationDeg = image.imageInfo.rotationDegrees
-    
-                // Call JNI on a background thread
-                // MainActivity.processQrCameraFrame is external.
-                // We need to pass the JNI call to the main activity.
-                // For now, let's just make it a direct call and assume
-                // the JNI call is fast enough or offloads itself.
-                // (The Rust side is already doing the heavy lifting)
-    
-                val result = jniProcessor(yBytes, width, height, rowStride, rotationDeg)
-                
-                image.close()
-                if (result != null) {
-                    listener(result)
-                }
-            }
-        }
+    private fun startQrScanner() = cameraManager.startQrScanner()
+    private fun stopQrScanner() = cameraManager.stopQrScanner()
     private fun resolveEntry(intent: Intent?): String? {
         if (intent == null) return null
         val explicit = intent.getStringExtra("entry")
@@ -1284,234 +872,9 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private data class SensorSelectionCfg(
-        val accel: Boolean,
-        val gyro: Boolean,
-        val mag: Boolean,
-        val pressure: Boolean,
-        val gps: Boolean,
-        val battery: Boolean
-    ) {
-        fun any(): Boolean = accel || gyro || mag || pressure || gps || battery
-    }
-
-    private data class SensorConfig(
-        val selection: SensorSelectionCfg,
-        val intervalMs: Long
-    )
-
-    private fun buildSensorConfig(bindings: Map<String, String>): SensorConfig {
-        fun flag(key: String, default: Boolean) = bindings[key]?.toBooleanStrictOrNull() ?: default
-        val selection = SensorSelectionCfg(
-            accel = flag("sensor_accel", true),
-            gyro = flag("sensor_gyro", true),
-            mag = flag("sensor_mag", true),
-            pressure = flag("sensor_pressure", false),
-            gps = flag("sensor_gps", false),
-            battery = flag("sensor_battery", true)
-        )
-        val intervalMs = bindings["sensor_interval_ms"]
-            ?.toLongOrNull()
-            ?.coerceIn(50, 10_000)
-            ?: 200L
-        return SensorConfig(selection, intervalMs)
-    }
-
-    private fun startSensorLogging(bindings: Map<String, String>) {
-        val config = buildSensorConfig(bindings)
-        if (!config.selection.any()) {
-            refreshUi("sensor_logger_status", bindings = mapOf("sensor_status" to "no sensors selected"))
-            return
-        }
-
-        val gpsSelected = config.selection.gps
-        if (sensorManager == null) {
-            sensorManager = getSystemService(SENSOR_SERVICE) as? SensorManager
-        }
-        val mgr = sensorManager ?: return
-        if (gpsSelected && !hasLocationPermission()) {
-            pendingSensorStart = true
-            pendingSensorBindings = bindings
-            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), PERMISSION_LOCATION)
-            return
-        }
-
-        stopSensorLogging()
-
-        val thread = HandlerThread("SensorLogger")
-        thread.start()
-        sensorThread = thread
-        sensorHandler = Handler(thread.looper)
-
-        val fmt = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-        val fname = "sensors_${fmt.format(Date())}.csv"
-        val publicDocs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-        val targetDir = publicDocs?.takeIf { it.exists() || it.mkdirs() } ?: (getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: filesDir)
-        logFile = File(targetDir, fname)
-        val fos = FileOutputStream(logFile!!)
-        logWriter = OutputStreamWriter(fos)
-        logWriter?.write("timestamp_ms,type,v1,v2,v3,battery_level,battery_voltage\n")
-        lastSensorLogPath = logFile?.absolutePath
-
-        isLogging = true
-
-        val batteryStatus = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-
-        val samplingPeriodUs = config.intervalMs.coerceIn(50, 10_000).toInt() * 1000
-
-        sensorListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                if (!isLogging) return
-                val writer = logWriter ?: return
-                val ts = System.currentTimeMillis()
-                val nowMono = android.os.SystemClock.elapsedRealtime()
-                val type = when (event.sensor.type) {
-                    Sensor.TYPE_ACCELEROMETER -> if (config.selection.accel) "ACCEL" else return
-                    Sensor.TYPE_GYROSCOPE -> if (config.selection.gyro) "GYRO" else return
-                    Sensor.TYPE_MAGNETIC_FIELD -> if (config.selection.mag) "MAG" else return
-                    Sensor.TYPE_PRESSURE -> if (config.selection.pressure) "PRESSURE" else return
-                    else -> return
-                }
-                val v1 = event.values.getOrNull(0) ?: 0f
-                val v2 = event.values.getOrNull(1) ?: 0f
-                val v3 = event.values.getOrNull(2) ?: 0f
-                val level = if (config.selection.battery) {
-                    batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
-                } else -1
-                val voltage = if (config.selection.battery) {
-                    batteryStatus?.getIntExtra(android.os.BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
-                } else -1
-                try {
-                    writer.write("$ts,$type,$v1,$v2,$v3,$level,$voltage\n")
-                    writer.flush()
-                    lastSensorLogPath = logFile?.absolutePath
-                    // Throttle UI refresh to avoid flooding the main thread.
-                    if (nowMono - lastSensorUiTs > 500) {
-                        lastSensorUiTs = nowMono
-                        val statusBindings = mutableMapOf<String, String>()
-                        statusBindings["sensor_status"] = "logging"
-                        logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
-                        refreshUi("sensor_logger_status", bindings = statusBindings)
-                    }
-                } catch (_: Exception) {
-                }
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-
-        val types = listOf(
-            Sensor.TYPE_ACCELEROMETER to config.selection.accel,
-            Sensor.TYPE_GYROSCOPE to config.selection.gyro,
-            Sensor.TYPE_MAGNETIC_FIELD to config.selection.mag,
-            Sensor.TYPE_PRESSURE to config.selection.pressure
-        )
-        types.forEach { (t, enabled) ->
-            if (!enabled) return@forEach
-            mgr.getDefaultSensor(t)?.let { sensor ->
-                mgr.registerListener(sensorListener, sensor, samplingPeriodUs, sensorHandler)
-            }
-        }
-        if (config.selection.gps) {
-            startLocationLogging(config)
-        }
-        val statusBindings = mutableMapOf<String, String>()
-        statusBindings["sensor_status"] = "logging"
-        logFile?.absolutePath?.let { statusBindings["sensor_path"] = it }
-        refreshUi("sensor_logger_start", bindings = bindings)
-        refreshUi("sensor_logger_status", bindings = statusBindings)
-        SensorLoggerService.start(this, logFile?.name)
-    }
-
-    private fun stopSensorLogging() {
-        isLogging = false
-        pendingSensorStart = false
-        pendingSensorBindings = null
-        sensorManager?.unregisterListener(sensorListener)
-        sensorListener = null
-        sensorHandler = null
-        sensorThread?.quitSafely()
-        sensorThread = null
-        stopLocationLogging()
-        try {
-            logWriter?.close()
-        } catch (_: Exception) {
-        }
-        logWriter = null
-        val bindings = mutableMapOf<String, String>()
-        bindings["sensor_status"] = "stopped"
-        logFile?.absolutePath?.let { bindings["sensor_path"] = it }
-        refreshUi("sensor_logger_status", bindings = bindings)
-        SensorLoggerService.stop(this)
-    }
-
-    private fun shareLastLog() {
-        val path = lastSensorLogPath ?: return
-        val file = File(path)
-        if (!file.exists()) return
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            this,
-            "$packageName.fileprovider",
-            file
-        )
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/csv"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(Intent.createChooser(intent, "Share sensor log"))
-    }
-
-    private fun startLocationLogging(config: SensorConfig) {
-        if (locationManager == null) {
-            locationManager = getSystemService(LOCATION_SERVICE) as? LocationManager
-        }
-        val mgr = locationManager ?: return
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                if (!isLogging) return
-                val ts = System.currentTimeMillis()
-                val nowMono = android.os.SystemClock.elapsedRealtime()
-                val lat = location.latitude
-                val lon = location.longitude
-                val acc = location.accuracy.toDouble()
-                val writer = logWriter ?: return
-                val bindings = mutableMapOf<String, String>()
-                bindings["sensor_status"] = "logging"
-                logFile?.absolutePath?.let { bindings["sensor_path"] = it }
-                try {
-                    writer.write("$ts,GPS,$lat,$lon,$acc,-1,-1\n")
-                    writer.flush()
-                    lastSensorLogPath = logFile?.absolutePath
-                    if (nowMono - lastSensorUiTs > 500) {
-                        lastSensorUiTs = nowMono
-                        refreshUi("sensor_logger_status", bindings = bindings)
-                    }
-                } catch (_: Exception) {
-                }
-            }
-
-            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
-            override fun onProviderEnabled(provider: String) = Unit
-            override fun onProviderDisabled(provider: String) = Unit
-        }
-        locationListener = listener
-        try {
-            val interval = config.intervalMs.coerceIn(1000, 10_000)
-            mgr.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0f, listener, sensorHandler?.looper)
-        } catch (_: SecurityException) {
-            // permission denied, status already handled elsewhere
-        }
-    }
-
-    private fun stopLocationLogging() {
-        locationManager?.removeUpdates(locationListener ?: return)
-        locationListener = null
-    }
-
-    private fun hasLocationPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    }
+    private fun startSensorLogging(bindings: Map<String, String>) = sensors.startLogging(bindings)
+    private fun stopSensorLogging() = sensors.stopLogging()
+    private fun shareLastLog() = sensors.shareLastLog()
 
     private fun dispatchPdfAction(action: String, bindings: Map<String, String>) {
         val uri = pdfSourceUri
@@ -1697,7 +1060,7 @@ class MainActivity : ComponentActivity() {
         }
 
         // Arbitrary request code for location permission prompts
-        private const val PERMISSION_LOCATION = 1001
-        private const val CAMERA_PERMISSION_REQUEST_CODE = 2001
+        internal const val PERMISSION_LOCATION = 1001
+        internal const val CAMERA_PERMISSION_REQUEST_CODE = 2001
     }
 }
