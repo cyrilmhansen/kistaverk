@@ -1,5 +1,8 @@
 use crate::state::AppState;
-use crate::ui::{Card as UiCard, Column as UiColumn, Section as UiSection, Text as UiText, maybe_push_back, format_bytes};
+use crate::ui::{
+    format_bytes, maybe_push_back, Card as UiCard, Column as UiColumn, Section as UiSection,
+    Text as UiText,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -95,12 +98,12 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("System Panels").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Device snapshot: storage, network, battery, device info.")
-                .size(14.0),
+            UiText::new("Device snapshot: storage, network, battery, device info.").size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
-            crate::ui::Button::new("Refresh", "system_info_update").content_description("system_info_refresh"),
+            crate::ui::Button::new("Refresh", "system_info_update")
+                .content_description("system_info_refresh"),
         )
         .unwrap(),
     ];
@@ -135,7 +138,9 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
             items.push(json!({"type":"Text","text":format!("Total: {}", format_bytes(total)), "size": 12.0}));
         }
         if let Some(free) = storage.free_bytes {
-            items.push(json!({"type":"Text","text":format!("Free: {}", format_bytes(free)), "size": 12.0}));
+            items.push(
+                json!({"type":"Text","text":format!("Free: {}", format_bytes(free)), "size": 12.0}),
+            );
             if let Some(total) = storage.total_bytes {
                 if total > 0 {
                     let used_pct = 100.0 - (free as f64 / total as f64 * 100.0);
@@ -145,8 +150,11 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
         }
         cards.push(
             serde_json::to_value(
-                UiCard::new(vec![serde_json::to_value(UiSection::new(items).title("Storage")).unwrap()])
-                    .padding(12),
+                UiCard::new(vec![serde_json::to_value(
+                    UiSection::new(items).title("Storage"),
+                )
+                .unwrap()])
+                .padding(12),
             )
             .unwrap(),
         );
@@ -165,8 +173,11 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
         }
         cards.push(
             serde_json::to_value(
-                UiCard::new(vec![serde_json::to_value(UiSection::new(items).title("Network")).unwrap()])
-                    .padding(12),
+                UiCard::new(vec![serde_json::to_value(
+                    UiSection::new(items).title("Network"),
+                )
+                .unwrap()])
+                .padding(12),
             )
             .unwrap(),
         );
@@ -182,8 +193,11 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
         }
         cards.push(
             serde_json::to_value(
-                UiCard::new(vec![serde_json::to_value(UiSection::new(items).title("Battery")).unwrap()])
-                    .padding(12),
+                UiCard::new(vec![serde_json::to_value(
+                    UiSection::new(items).title("Battery"),
+                )
+                .unwrap()])
+                .padding(12),
             )
             .unwrap(),
         );
@@ -202,8 +216,11 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
         }
         cards.push(
             serde_json::to_value(
-                UiCard::new(vec![serde_json::to_value(UiSection::new(items).title("Device")).unwrap()])
-                    .padding(12),
+                UiCard::new(vec![serde_json::to_value(
+                    UiSection::new(items).title("Device"),
+                )
+                .unwrap()])
+                .padding(12),
             )
             .unwrap(),
         );
@@ -243,8 +260,14 @@ mod tests {
         let sys = &state.system_info;
         assert_eq!(sys.storage.as_ref().unwrap().total_bytes, Some(1024));
         assert_eq!(sys.storage.as_ref().unwrap().free_bytes, Some(512));
-        assert_eq!(sys.network.as_ref().unwrap().ssid.as_deref(), Some("MyWiFi"));
-        assert_eq!(sys.network.as_ref().unwrap().ip.as_deref(), Some("192.168.1.10"));
+        assert_eq!(
+            sys.network.as_ref().unwrap().ssid.as_deref(),
+            Some("MyWiFi")
+        );
+        assert_eq!(
+            sys.network.as_ref().unwrap().ip.as_deref(),
+            Some("192.168.1.10")
+        );
         assert_eq!(sys.battery.as_ref().unwrap().level_pct, Some(87));
         assert_eq!(sys.device.as_ref().unwrap().model.as_deref(), Some("X1"));
         assert_eq!(sys.last_updated.as_deref(), Some("2024-01-01T00:00:00Z"));

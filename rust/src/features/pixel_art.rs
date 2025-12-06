@@ -1,9 +1,9 @@
 use crate::features::storage::preferred_temp_dir;
 use crate::state::{AppState, PixelArtState};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, maybe_push_back};
-use image::GenericImageView;
+use crate::ui::{maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText};
 use image::imageops::FilterType;
 use image::DynamicImage;
+use image::GenericImageView;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
@@ -13,8 +13,7 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("Pixel Artifier").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Downscale + nearest upscale to get chunky pixel vibes.")
-                .size(14.0),
+            UiText::new("Downscale + nearest upscale to get chunky pixel vibes.").size(14.0),
         )
         .unwrap(),
         json!({
@@ -40,7 +39,9 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
     ];
 
     if let Some(path) = &state.pixel_art.source_path {
-        children.push(serde_json::to_value(UiText::new(&format!("Source: {path}")).size(12.0)).unwrap());
+        children.push(
+            serde_json::to_value(UiText::new(&format!("Source: {path}")).size(12.0)).unwrap(),
+        );
     }
 
     let scales = [2u32, 4, 8, 16];
@@ -56,11 +57,15 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
     }
 
     if let Some(err) = &state.pixel_art.error {
-        children.push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
+        children
+            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     }
 
     if state.pixel_art.source_path.is_some() {
-        children.push(serde_json::to_value(UiButton::new("Apply", "pixel_art_apply").id("pixel_art_apply")).unwrap());
+        children.push(
+            serde_json::to_value(UiButton::new("Apply", "pixel_art_apply").id("pixel_art_apply"))
+                .unwrap(),
+        );
     }
 
     if let Some(out) = &state.pixel_art.result_path {
@@ -73,7 +78,10 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
             .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy result path", "copy_clipboard").copy_text(out)).unwrap(),
+            serde_json::to_value(
+                UiButton::new("Copy result path", "copy_clipboard").copy_text(out),
+            )
+            .unwrap(),
         );
     }
 
@@ -94,8 +102,7 @@ pub fn process_pixel_art(path: &str, factor: u32) -> Result<String, String> {
     let up = small.resize_exact(w, h, FilterType::Nearest);
 
     let tmp = new_temp_file("pixel_art_", ".png")?;
-    up.save(&tmp)
-        .map_err(|e| format!("save_failed:{e}"))?;
+    up.save(&tmp).map_err(|e| format!("save_failed:{e}"))?;
     let path = tmp
         .into_temp_path()
         .keep()

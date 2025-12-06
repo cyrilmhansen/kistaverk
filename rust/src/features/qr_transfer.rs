@@ -1,3 +1,4 @@
+use crate::features::storage::preferred_temp_dir;
 use crate::state::AppState;
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
 use base64::Engine;
@@ -7,7 +8,6 @@ use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::{FromRawFd, RawFd};
-use crate::features::storage::preferred_temp_dir;
 
 const CHUNK_BYTES: usize = 512;
 const HEADER_PREFIX: &str = "QRTX";
@@ -18,8 +18,11 @@ const HEADER_PREFIX: &str = "QRTX";
 /// clockwise rotation degrees (0/90/180/270), and the Y plane buffer.
 /// This is intentionally separated so a future rxing-based decoder can drop in without touching JNI.
 use rxing::common::HybridBinarizer;
-use rxing::{BarcodeFormat, BinaryBitmap, DecodeHintValue, DecodeHints, Luma8LuminanceSource, MultiFormatReader, Reader};
 use rxing::Exceptions;
+use rxing::{
+    BarcodeFormat, BinaryBitmap, DecodeHintValue, DecodeHints, Luma8LuminanceSource,
+    MultiFormatReader, Reader,
+};
 use std::collections::HashSet;
 
 pub fn decode_qr_frame_luma(
@@ -31,16 +34,19 @@ pub fn decode_qr_frame_luma(
 ) -> Result<Option<String>, String> {
     let hints = DecodeHints::default()
         .with(DecodeHintValue::TryHarder(true))
-        .with(DecodeHintValue::PossibleFormats(HashSet::from([BarcodeFormat::QR_CODE])));
+        .with(DecodeHintValue::PossibleFormats(HashSet::from([
+            BarcodeFormat::QR_CODE,
+        ])));
 
     let luma_source = Luma8LuminanceSource::new(luma_data.to_vec(), width, height);
     let binarizer = HybridBinarizer::new(luma_source);
     let mut binary_bitmap = BinaryBitmap::new(binarizer);
 
     let mut reader = MultiFormatReader::default();
-    
+
     // hints are passed directly in the decode method
-    reader.decode_with_hints(&mut binary_bitmap, &hints)
+    reader
+        .decode_with_hints(&mut binary_bitmap, &hints)
         .map(|result| Some(result.getText().to_string()))
         .map_err(|e| {
             // Treat NotFound as not an error, just no QR code found.
@@ -175,15 +181,8 @@ pub fn refresh_current_qr(state: &mut AppState) -> Result<(), String> {
         state.qr_slideshow.current_qr_base64 = None;
         return Ok(());
     }
-    let max_index = state
-        .qr_slideshow
-        .chunks
-        .len()
-        .saturating_sub(1) as u32;
-    let idx = state
-        .qr_slideshow
-        .current_index
-        .min(max_index);
+    let max_index = state.qr_slideshow.chunks.len().saturating_sub(1) as u32;
+    let idx = state.qr_slideshow.current_index.min(max_index);
     let payload = &state.qr_slideshow.chunks[idx as usize];
     let image_b64 = qr_png_base64(payload)?;
     state.qr_slideshow.current_index = idx;
@@ -240,7 +239,13 @@ pub(crate) fn chunk_bytes(bytes: &[u8]) -> Vec<String> {
     let total_chunks = ((bytes.len() + CHUNK_BYTES - 1) / CHUNK_BYTES) as u32;
     for (i, chunk) in bytes.chunks(CHUNK_BYTES).enumerate() {
         let encoded = base64::engine::general_purpose::STANDARD.encode(chunk);
-        let payload = format!("{}|{}/{}|{}", HEADER_PREFIX, i as u32 + 1, total_chunks, encoded);
+        let payload = format!(
+            "{}|{}/{}|{}",
+            HEADER_PREFIX,
+            i as u32 + 1,
+            total_chunks,
+            encoded
+        );
         chunks.push(payload);
     }
     chunks
@@ -248,13 +253,13 @@ pub(crate) fn chunk_bytes(bytes: &[u8]) -> Vec<String> {
 
 fn parse_qr_payload(payload: &str) -> Result<(u32, u32, Vec<u8>), String> {
     let mut parts = payload.splitn(3, '|');
-    let prefix = parts.next().ok_or_else(|| "qr_invalid_header".to_string())?;
+    let prefix = parts
+        .next()
+        .ok_or_else(|| "qr_invalid_header".to_string())?;
     if prefix != HEADER_PREFIX {
         return Err("qr_invalid_prefix".into());
     }
-    let order = parts
-        .next()
-        .ok_or_else(|| "qr_missing_order".to_string())?;
+    let order = parts.next().ok_or_else(|| "qr_missing_order".to_string())?;
     let mut order_split = order.split('/');
     let index = order_split
         .next()
@@ -269,8 +274,9 @@ fn parse_qr_payload(payload: &str) -> Result<(u32, u32, Vec<u8>), String> {
     let data_b64 = parts
         .next()
         .ok_or_else(|| "qr_missing_payload".to_string())?;
-    let data =
-        base64::engine::general_purpose::STANDARD.decode(data_b64.as_bytes()).map_err(|_| "qr_b64_decode_failed".to_string())?;
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(data_b64.as_bytes())
+        .map_err(|_| "qr_b64_decode_failed".to_string())?;
     Ok((index, total, data))
 }
 
@@ -299,13 +305,9 @@ pub fn handle_receive_scan(state: &mut AppState, payload: &str) -> Result<(), St
         .iter()
         .filter(|c| c.is_some())
         .count() as u32;
-    state.qr_receive.status = Some(format!(
-        "Received {}/{}",
-        received, total,
-    ));
+    state.qr_receive.status = Some(format!("Received {}/{}", received, total,));
     state.qr_receive.error = None;
-    if received as usize == total as usize
-    {
+    if received as usize == total as usize {
         match finalize_receive(state) {
             Ok(bytes) => {
                 state.qr_receive.status = Some(format!("Complete ({} bytes)", bytes.len()));
@@ -344,7 +346,10 @@ pub fn finalize_receive(state: &mut AppState) -> Result<Vec<u8>, String> {
 pub fn save_received_file(state: &mut AppState) -> Result<String, String> {
     let bytes = finalize_receive(state)?;
     let mut path = preferred_temp_dir();
-    path.push(format!("qr_receive_{}.bin", time::OffsetDateTime::now_utc().unix_timestamp()));
+    path.push(format!(
+        "qr_receive_{}.bin",
+        time::OffsetDateTime::now_utc().unix_timestamp()
+    ));
     std::fs::write(&path, &bytes).map_err(|e| format!("qr_save_failed:{e}"))?;
     let path_str = path
         .to_str()
@@ -358,8 +363,7 @@ pub fn render_qr_slideshow_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("QR Transfer (Sender)").size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Pick a file to broadcast via a sequence of QR codes.")
-                .size(14.0),
+            UiText::new("Pick a file to broadcast via a sequence of QR codes.").size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
@@ -377,26 +381,26 @@ pub fn render_qr_slideshow_screen(state: &AppState) -> Value {
     }
 
     if let Some(err) = &state.qr_slideshow.error {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap(),
-        );
+        children
+            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     }
 
     if !state.qr_slideshow.chunks.is_empty() {
         let total = state.qr_slideshow.chunks.len() as u32;
         let idx = state.qr_slideshow.current_index.saturating_add(1);
         children.push(
-            serde_json::to_value(
-                UiText::new(&format!("Frame {idx}/{total}")).size(14.0),
-            )
-            .unwrap(),
+            serde_json::to_value(UiText::new(&format!("Frame {idx}/{total}")).size(14.0)).unwrap(),
         );
         children.push(
             serde_json::to_value(
                 UiText::new(&format!(
                     "Interval: {} ms (playing: {})",
                     state.qr_slideshow.interval_ms,
-                    if state.qr_slideshow.is_playing { "yes" } else { "no" }
+                    if state.qr_slideshow.is_playing {
+                        "yes"
+                    } else {
+                        "no"
+                    }
                 ))
                 .size(12.0),
             )
@@ -405,7 +409,11 @@ pub fn render_qr_slideshow_screen(state: &AppState) -> Value {
         children.push(
             serde_json::to_value(
                 UiButton::new(
-                    if state.qr_slideshow.is_playing { "Pause" } else { "Play" },
+                    if state.qr_slideshow.is_playing {
+                        "Pause"
+                    } else {
+                        "Play"
+                    },
                     "qr_slideshow_play",
                 )
                 .id("qr_slideshow_play"),
@@ -482,7 +490,8 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
         children.push(serde_json::to_value(UiText::new(status).size(12.0)).unwrap());
     }
     if let Some(err) = &state.qr_receive.error {
-        children.push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
+        children
+            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     }
     if let Some(total) = state.qr_receive.total_chunks {
         let received = state
@@ -493,11 +502,7 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
             .count() as u32;
         children.push(
             serde_json::to_value(
-                UiText::new(&format!(
-                    "Progress: {}/{}",
-                    received, total
-                ))
-                .size(12.0),
+                UiText::new(&format!("Progress: {}/{}", received, total)).size(12.0),
             )
             .unwrap(),
         );
@@ -522,7 +527,8 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
             .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy path", "copy_clipboard").copy_text(path)).unwrap(),
+            serde_json::to_value(UiButton::new("Copy path", "copy_clipboard").copy_text(path))
+                .unwrap(),
         );
     } else if state
         .qr_receive
@@ -539,8 +545,10 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
         .unwrap_or(false)
     {
         children.push(
-            serde_json::to_value(UiButton::new("Save file", "qr_receive_save").id("qr_receive_save"))
-                .unwrap(),
+            serde_json::to_value(
+                UiButton::new("Save file", "qr_receive_save").id("qr_receive_save"),
+            )
+            .unwrap(),
         );
     }
 

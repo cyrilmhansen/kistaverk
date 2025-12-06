@@ -122,7 +122,9 @@ pub fn create_archive(source_path: &str) -> Result<PathBuf, String> {
         write_file(&mut writer, source, &rel, options)?;
     }
 
-    writer.finish().map_err(|e| format!("archive_write_failed:{e}"))?;
+    writer
+        .finish()
+        .map_err(|e| format!("archive_write_failed:{e}"))?;
     Ok(dest_path)
 }
 
@@ -205,42 +207,42 @@ pub fn render_archive_screen(state: &AppState) -> Value {
     ];
 
     if state.archive.path.is_some() && !state.archive.entries.is_empty() {
-        children.push(
-            to_value_or_text(
-                UiButton::new("Extract All", "archive_extract_all")
-                    .content_description("archive_extract_all"),
-                "archive_extract_all",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiButton::new("Extract All", "archive_extract_all")
+                .content_description("archive_extract_all"),
+            "archive_extract_all",
+        ));
     }
 
     if let Some(err) = &state.archive.error {
-        children.push(
-            to_value_or_text(
-                UiText::new(&format!("Error: {}", err))
-                    .size(14.0)
-                    .content_description("archive_error"),
-                "archive_error",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiText::new(&format!("Error: {}", err))
+                .size(14.0)
+                .content_description("archive_error"),
+            "archive_error",
+        ));
     }
 
     if let Some(path) = &state.archive.path {
-        children.push(
-            to_value_or_text(UiText::new(&format!("File: {}", path)).size(12.0), "archive_path"),
-        );
+        children.push(to_value_or_text(
+            UiText::new(&format!("File: {}", path)).size(12.0),
+            "archive_path",
+        ));
     }
     if let Some(msg) = &state.archive.last_output {
-        children.push(
-            to_value_or_text(
-                UiText::new(msg).size(12.0).content_description("archive_status"),
-                "archive_status",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiText::new(msg)
+                .size(12.0)
+                .content_description("archive_status"),
+            "archive_status",
+        ));
     }
 
     if !state.archive.entries.is_empty() {
-        children.push(to_value_or_text(UiText::new("Contents:").size(16.0), "archive_contents"));
+        children.push(to_value_or_text(
+            UiText::new("Contents:").size(16.0),
+            "archive_contents",
+        ));
         let mut rows = Vec::new();
         for (idx, entry) in state.archive.entries.iter().enumerate() {
             let icon = if entry.is_dir { "📁" } else { "📄" };
@@ -253,21 +255,17 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             let mut entry_children = Vec::new();
             if is_text_entry(entry) {
                 let action = format!("archive_open_text:{idx}");
-                entry_children.push(
-                    to_value_or_text(
-                        UiButton::new(&label, &action).content_description("archive_entry_text"),
-                        "archive_entry_text",
-                    ),
-                );
+                entry_children.push(to_value_or_text(
+                    UiButton::new(&label, &action).content_description("archive_entry_text"),
+                    "archive_entry_text",
+                ));
             } else {
-                entry_children.push(
-                    to_value_or_text(
-                        UiText::new(&label)
-                            .size(14.0)
-                            .content_description("archive_entry"),
-                        "archive_entry_label",
-                    ),
-                );
+                entry_children.push(to_value_or_text(
+                    UiText::new(&label)
+                        .size(14.0)
+                        .content_description("archive_entry"),
+                    "archive_entry_label",
+                ));
             }
             entry_children.push(to_value_or_text(
                 UiButton::new("Extract", &format!("archive_extract_entry:{idx}"))
@@ -279,30 +277,32 @@ pub fn render_archive_screen(state: &AppState) -> Value {
                 "archive_entry_row",
             ));
         }
-        children.push(to_value_or_text(UiColumn::new(rows).padding(8), "archive_entry_list"));
+        children.push(to_value_or_text(
+            UiColumn::new(rows).padding(8),
+            "archive_entry_list",
+        ));
         if state.archive.truncated {
-            children.push(
-                to_value_or_text(
-                    UiText::new("Showing first 500 entries (truncated)")
-                        .size(12.0)
-                        .content_description("archive_truncated"),
-                    "archive_truncated",
-                ),
-            );
+            children.push(to_value_or_text(
+                UiText::new("Showing first 500 entries (truncated)")
+                    .size(12.0)
+                    .content_description("archive_truncated"),
+                "archive_truncated",
+            ));
         }
     } else if state.archive.error.is_none() && state.archive.path.is_some() {
-        children.push(
-            to_value_or_text(
-                UiText::new("No entries found or archive empty.")
-                    .size(12.0)
-                    .content_description("archive_empty"),
-                "archive_empty",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiText::new("No entries found or archive empty.")
+                .size(12.0)
+                .content_description("archive_empty"),
+            "archive_empty",
+        ));
     }
 
     if state.nav_depth() > 1 {
-        children.push(to_value_or_text(UiButton::new("Back", "back"), "archive_back"));
+        children.push(to_value_or_text(
+            UiButton::new("Back", "back"),
+            "archive_back",
+        ));
     }
 
     to_value_or_text(UiColumn::new(children).padding(24), "archive_root")
@@ -412,8 +412,8 @@ pub fn extract_all(archive_path: &str, dest_root: &Path) -> Result<usize, String
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| format!("create_dir_failed:{e}"))?;
             }
-            let mut outfile = File::create(&out_path)
-                .map_err(|e| format!("create_file_failed:{e}"))?;
+            let mut outfile =
+                File::create(&out_path).map_err(|e| format!("create_file_failed:{e}"))?;
             copy(&mut entry, &mut outfile).map_err(|e| format!("extract_failed:{e}"))?;
             outfile.flush().map_err(|e| format!("flush_failed:{e}"))?;
         }
@@ -422,11 +422,7 @@ pub fn extract_all(archive_path: &str, dest_root: &Path) -> Result<usize, String
     Ok(count)
 }
 
-pub fn extract_entry(
-    archive_path: &str,
-    dest_root: &Path,
-    index: u32,
-) -> Result<PathBuf, String> {
+pub fn extract_entry(archive_path: &str, dest_root: &Path, index: u32) -> Result<PathBuf, String> {
     fs::create_dir_all(dest_root).map_err(|e| format!("create_dest_failed:{e}"))?;
     let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
@@ -444,8 +440,7 @@ pub fn extract_entry(
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create_dir_failed:{e}"))?;
         }
-        let mut outfile =
-            File::create(&out_path).map_err(|e| format!("create_file_failed:{e}"))?;
+        let mut outfile = File::create(&out_path).map_err(|e| format!("create_file_failed:{e}"))?;
         copy(&mut entry, &mut outfile).map_err(|e| format!("extract_failed:{e}"))?;
         outfile.flush().map_err(|e| format!("flush_failed:{e}"))?;
     }

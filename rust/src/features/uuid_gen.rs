@@ -1,5 +1,8 @@
 use crate::state::{AppState, StringCharset};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput, maybe_push_back};
+use crate::ui::{
+    maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
+    TextInput as UiTextInput,
+};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde_json::{json, Value};
@@ -8,25 +11,19 @@ use uuid::Uuid;
 pub fn render_uuid_screen(state: &AppState) -> Value {
     let mut children = vec![
         serde_json::to_value(UiText::new("UUID & Random String").size(20.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("Generate UUID v4 or custom random strings.")
-                .size(14.0),
-        )
-        .unwrap(),
+        serde_json::to_value(UiText::new("Generate UUID v4 or custom random strings.").size(14.0))
+            .unwrap(),
         serde_json::to_value(UiButton::new("Generate UUID v4", "uuid_generate")).unwrap(),
     ];
 
     if let Some(u) = &state.uuid_generator.last_uuid {
         children.push(
-            serde_json::to_value(
-                UiText::new(u)
-                    .size(14.0)
-                    .content_description("uuid_value"),
-            )
-            .unwrap(),
+            serde_json::to_value(UiText::new(u).size(14.0).content_description("uuid_value"))
+                .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy UUID", "copy_clipboard").copy_text(u)).unwrap(),
+            serde_json::to_value(UiButton::new("Copy UUID", "copy_clipboard").copy_text(u))
+                .unwrap(),
         );
     }
 
@@ -57,7 +54,9 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
         }));
     }
 
-    children.push(serde_json::to_value(UiButton::new("Generate string", "random_string_generate")).unwrap());
+    children.push(
+        serde_json::to_value(UiButton::new("Generate string", "random_string_generate")).unwrap(),
+    );
 
     if let Some(s) = &state.uuid_generator.last_string {
         children.push(
@@ -78,7 +77,11 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
-pub fn handle_uuid_action(state: &mut AppState, action: &str, bindings: &std::collections::HashMap<String, String>) {
+pub fn handle_uuid_action(
+    state: &mut AppState,
+    action: &str,
+    bindings: &std::collections::HashMap<String, String>,
+) {
     match action {
         "uuid_generate" => {
             state.uuid_generator.last_uuid = Some(generate_uuid());

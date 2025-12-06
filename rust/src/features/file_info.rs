@@ -1,12 +1,12 @@
+use crate::state::AppState;
+use crate::ui::{maybe_push_back, CodeView as UiCodeView, Text as UiText};
 use infer::Infer;
 use serde::Serialize;
+use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::{FromRawFd, RawFd};
-use crate::state::AppState;
-use serde_json::{json, Value};
-use crate::ui::{CodeView as UiCodeView, Text as UiText, maybe_push_back};
 
 const HEX_PREVIEW_BYTES: usize = 512;
 
@@ -202,12 +202,8 @@ pub fn render_file_info_screen(state: &AppState) -> Value {
                         "size": 14.0
                     }));
                     children.push(
-                        serde_json::to_value(
-                            UiCodeView::new(hex)
-                                .wrap(false)
-                                .line_numbers(false),
-                        )
-                        .unwrap(),
+                        serde_json::to_value(UiCodeView::new(hex).wrap(false).line_numbers(false))
+                            .unwrap(),
                     );
                 }
             }

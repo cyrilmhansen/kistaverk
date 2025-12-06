@@ -1,9 +1,12 @@
 use crate::state::AppState;
 
+use crate::ui::{
+    self, maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
+    Warning as UiWarning,
+};
 /// Represents which sensors the user wants to capture.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use crate::ui::{self, Button as UiButton, Column as UiColumn, Text as UiText, Warning as UiWarning, maybe_push_back};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SensorSelection {

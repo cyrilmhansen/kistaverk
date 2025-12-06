@@ -1,6 +1,6 @@
+use crate::state::AppState;
 use serde::Serialize;
 use serde_json::{json, Value};
-use crate::state::AppState;
 
 #[derive(Serialize)]
 pub struct Text<'a> {
@@ -747,7 +747,10 @@ pub fn format_bytes(bytes: u64) -> String {
 
 pub fn render_multi_hash_screen(state: &AppState) -> Value {
     let mut children = vec![
-        to_value_or_text(Text::new("Multi-Hash Calculator").size(20.0), "multi_hash_title"),
+        to_value_or_text(
+            Text::new("Multi-Hash Calculator").size(20.0),
+            "multi_hash_title",
+        ),
         to_value_or_text(
             Text::new("Select a file to compute MD5, SHA-1, SHA-256, and BLAKE3 hashes.")
                 .size(14.0),
@@ -764,18 +767,17 @@ pub fn render_multi_hash_screen(state: &AppState) -> Value {
     ];
 
     if let Some(err) = &state.multi_hash_error {
-        children.push(
-            to_value_or_text(Text::new(&format!("Error: {}", err)).size(14.0), "multi_hash_error"),
-        );
+        children.push(to_value_or_text(
+            Text::new(&format!("Error: {}", err)).size(14.0),
+            "multi_hash_error",
+        ));
     }
 
     if let Some(results) = &state.multi_hash_results {
-        children.push(
-            to_value_or_text(
-                Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0),
-                "multi_hash_path",
-            ),
-        );
+        children.push(to_value_or_text(
+            Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0),
+            "multi_hash_path",
+        ));
 
         let hash_display = |label: &str, value: &str| {
             json!({

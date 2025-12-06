@@ -1,7 +1,5 @@
 use crate::state::AppState;
-use crate::ui::{
-    maybe_push_back, Button, Checkbox, Column, Grid, Text, TextInput,
-};
+use crate::ui::{maybe_push_back, Button, Checkbox, Column, Grid, Text, TextInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -85,10 +83,7 @@ pub fn handle_resize_screen(state: &mut AppState) {
     state.image.result = None;
 }
 
-pub fn handle_resize_sync(
-    state: &mut AppState,
-    bindings: &HashMap<String, String>,
-) {
+pub fn handle_resize_sync(state: &mut AppState, bindings: &HashMap<String, String>) {
     if let Some(val) = bindings.get("resize_scale_pct") {
         if let Ok(v) = val.parse::<u32>() {
             state.image.resize_scale_pct = v.clamp(5, 100);
@@ -118,7 +113,7 @@ pub fn handle_result(
     bindings: Option<&HashMap<String, String>>,
 ) {
     state.image.result = Some(result);
-    
+
     if let Some(b) = bindings {
         handle_resize_sync(state, b);
     }
@@ -152,7 +147,10 @@ pub fn render_kotlin_image_screen(state: &AppState) -> Value {
 fn render_menu(_state: &AppState) -> Value {
     let children = vec![
         to_value_or_text(Text::new("Image Tools").size(24.0), "title"),
-        to_value_or_text(Text::new("Select a tool to continue.").size(14.0), "subtitle"),
+        to_value_or_text(
+            Text::new("Select a tool to continue.").size(14.0),
+            "subtitle",
+        ),
         to_value_or_text(
             Button::new("Format Converter", "kotlin_image_screen_webp")
                 .content_description("open_converter"),
@@ -171,8 +169,7 @@ fn render_converter(state: &AppState) -> Value {
     let mut children = vec![
         to_value_or_text(Text::new("Format Converter").size(20.0), "title"),
         to_value_or_text(
-            Button::new("Select Image", "kotlin_image_pick")
-                .requires_file_picker(true),
+            Button::new("Select Image", "kotlin_image_pick").requires_file_picker(true),
             "picker",
         ),
     ];
@@ -182,23 +179,29 @@ fn render_converter(state: &AppState) -> Value {
             Text::new(&format!("Selected: {}", path)).size(12.0),
             "selected_path",
         ));
-        
+
         // Hidden input to pass path to Kotlin
         children.push(to_value_or_text(
-             TextInput::new("image_source_path") // bind_key
-                 .text(path)
-                 .content_description("hidden_source_path"),
-             "input_source_path",
+            TextInput::new("image_source_path") // bind_key
+                .text(path)
+                .content_description("hidden_source_path"),
+            "input_source_path",
         ));
-        
-        children.push(to_value_or_text(Text::new("Convert to:").size(16.0), "label_convert"));
-        
+
+        children.push(to_value_or_text(
+            Text::new("Convert to:").size(16.0),
+            "label_convert",
+        ));
+
         let grid_children = vec![
             to_value_or_text(Button::new("WebP", "kotlin_image_convert_webp"), "btn_webp"),
             to_value_or_text(Button::new("PNG", "kotlin_image_convert_png"), "btn_png"),
             to_value_or_text(Button::new("JPEG", "kotlin_image_convert_jpeg"), "btn_jpeg"),
         ];
-        children.push(to_value_or_text(Grid::new(grid_children).columns(3), "grid_convert"));
+        children.push(to_value_or_text(
+            Grid::new(grid_children).columns(3),
+            "grid_convert",
+        ));
     }
 
     render_result_area(&mut children, state);
@@ -211,23 +214,22 @@ fn render_resizer(state: &AppState) -> Value {
     let mut children = vec![
         to_value_or_text(Text::new("Resize & Compress").size(20.0), "title"),
         to_value_or_text(
-            Button::new("Select Image", "kotlin_image_pick")
-                .requires_file_picker(true),
+            Button::new("Select Image", "kotlin_image_pick").requires_file_picker(true),
             "picker",
         ),
     ];
 
     if let Some(path) = &state.image.source_path {
-         children.push(to_value_or_text(
+        children.push(to_value_or_text(
             Text::new(&format!("Selected: {}", path)).size(12.0),
             "selected_path",
         ));
-        
-         children.push(to_value_or_text(
-             TextInput::new("image_source_path")
-                 .text(path)
-                 .content_description("hidden_source_path"),
-             "input_source_path",
+
+        children.push(to_value_or_text(
+            TextInput::new("image_source_path")
+                .text(path)
+                .content_description("hidden_source_path"),
+            "input_source_path",
         ));
 
         // Scale
@@ -240,7 +242,10 @@ fn render_resizer(state: &AppState) -> Value {
         ));
 
         // Quality
-        children.push(to_value_or_text(Text::new("Quality (10-100)"), "lbl_quality"));
+        children.push(to_value_or_text(
+            Text::new("Quality (10-100)"),
+            "lbl_quality",
+        ));
         children.push(to_value_or_text(
             TextInput::new("resize_quality")
                 .text(&state.image.resize_quality.to_string())
@@ -249,8 +254,15 @@ fn render_resizer(state: &AppState) -> Value {
         ));
 
         // Target Size
-        children.push(to_value_or_text(Text::new("Max Size (KB) - Optional"), "lbl_target"));
-        let target_val = state.image.resize_target_kb.map(|v| v.to_string()).unwrap_or_default();
+        children.push(to_value_or_text(
+            Text::new("Max Size (KB) - Optional"),
+            "lbl_target",
+        ));
+        let target_val = state
+            .image
+            .resize_target_kb
+            .map(|v| v.to_string())
+            .unwrap_or_default();
         children.push(to_value_or_text(
             TextInput::new("resize_target_kb")
                 .text(&target_val)
@@ -283,9 +295,9 @@ fn render_result_area(children: &mut Vec<Value>, state: &AppState) {
     if let Some(res) = &state.image.result {
         // Divider
         children.push(to_value_or_text(Text::new("---").size(12.0), "div_res"));
-        
+
         if let Some(err) = &res.error {
-             children.push(to_value_or_text(
+            children.push(to_value_or_text(
                 Text::new(&format!("Error: {}", err)),
                 "err_msg",
             ));
@@ -294,23 +306,23 @@ fn render_result_area(children: &mut Vec<Value>, state: &AppState) {
                 Text::new("Success!").size(18.0),
                 "success_title",
             ));
-             children.push(to_value_or_text(
+            children.push(to_value_or_text(
                 Text::new(&format!("Saved to: {}", dest)).size(12.0),
                 "success_path",
             ));
             if let Some(sz) = &res.size {
-                 children.push(to_value_or_text(
+                children.push(to_value_or_text(
                     Text::new(&format!("Size: {}", sz)).size(12.0),
                     "success_size",
                 ));
             }
-             if let Some(fmt) = &res.format {
-                 children.push(to_value_or_text(
+            if let Some(fmt) = &res.format {
+                children.push(to_value_or_text(
                     Text::new(&format!("Format: {}", fmt)).size(12.0),
                     "success_fmt",
                 ));
             }
-            
+
             children.push(to_value_or_text(
                 Button::new("Save As...", "kotlin_image_save_as"),
                 "btn_save_as",
@@ -323,7 +335,7 @@ fn render_result_area(children: &mut Vec<Value>, state: &AppState) {
 // ui.rs doesn't have input_type. But usually specialized inputs are handled via specific kinds or just generic text.
 // Since I can't add methods to TextInput defined in ui.rs easily from here without trait.
 // I'll just ignore input_type for now, user has to type numbers.
-// Or I can verify if `ui::TextInput` has `input_type` field I missed. 
+// Or I can verify if `ui::TextInput` has `input_type` field I missed.
 // Checked ui.rs: TextInput has `kind`, `bind_key`, `text`, `hint`, `action_on_submit`, `content_description`, `single_line`, `max_lines`. NO input_type.
 // So I remove `.input_type(...)`.
 
@@ -349,7 +361,8 @@ mod tests {
         state.resize_scale_pct = 50;
 
         let json = serde_json::to_string(&state).expect("serialize failed");
-        let deserialized: KotlinImageState = serde_json::from_str(&json).expect("deserialize failed");
+        let deserialized: KotlinImageState =
+            serde_json::from_str(&json).expect("deserialize failed");
 
         assert_eq!(deserialized.active_tool, Some(ImageTool::Resize));
         assert_eq!(deserialized.source_path, Some("/tmp/test.png".into()));
@@ -363,7 +376,10 @@ mod tests {
         app_state.image.source_path = Some("/path/to/image.jpg".into());
 
         let ui = render_kotlin_image_screen(&app_state);
-        let children = ui.get("children").and_then(|v| v.as_array()).expect("no children");
+        let children = ui
+            .get("children")
+            .and_then(|v| v.as_array())
+            .expect("no children");
 
         // Search for the hidden input in the children
         let hidden_input = children.iter().find(|child| {
@@ -371,8 +387,14 @@ mod tests {
                 && child.get("bind_key").and_then(|k| k.as_str()) == Some("image_source_path")
         });
 
-        assert!(hidden_input.is_some(), "Hidden input for image_source_path not found");
+        assert!(
+            hidden_input.is_some(),
+            "Hidden input for image_source_path not found"
+        );
         let input = hidden_input.unwrap();
-        assert_eq!(input.get("text").and_then(|t| t.as_str()), Some("/path/to/image.jpg"));
+        assert_eq!(
+            input.get("text").and_then(|t| t.as_str()),
+            Some("/path/to/image.jpg")
+        );
     }
 }

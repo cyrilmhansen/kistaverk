@@ -1,14 +1,8 @@
 use crate::state::AppState;
 use crate::ui::{
-    Barometer as UiBarometer,
-    Button as UiButton,
-    Column as UiColumn,
-    Compass as UiCompass,
-    DepsList as UiDepsList,
-    Magnetometer as UiMagnetometer,
-    Progress as UiProgress,
-    Text as UiText,
-    maybe_push_back,
+    maybe_push_back, Barometer as UiBarometer, Button as UiButton, Column as UiColumn,
+    Compass as UiCompass, DepsList as UiDepsList, Magnetometer as UiMagnetometer,
+    Progress as UiProgress, Text as UiText,
 };
 use serde_json::{json, Value};
 

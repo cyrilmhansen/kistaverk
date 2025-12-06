@@ -1,12 +1,15 @@
 use crate::state::AppState;
+use crate::ui::{
+    format_bytes, maybe_push_back, Button as UiButton, CodeView as UiCodeView, Column as UiColumn,
+    Text as UiText,
+};
+use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
-use serde_json::{json, Value};
-use crate::ui::{Button as UiButton, CodeView as UiCodeView, Column as UiColumn, Text as UiText, maybe_push_back, format_bytes};
 
 const MAX_BYTES: usize = 256 * 1024; // 256 KiB cap to avoid memory bloat for generic reads
 pub const CHUNK_BYTES: usize = 128 * 1024; // chunk size for incremental loads
@@ -27,8 +30,7 @@ fn is_binary_sample(bytes: &[u8]) -> bool {
         return false;
     }
     bytes.iter().any(|b| *b == 0)
-        ||
-        bytes
+        || bytes
             .iter()
             .any(|b| *b < 0x09 && *b != b'\n' && *b != b'\r')
 }

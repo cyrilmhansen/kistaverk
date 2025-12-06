@@ -1,15 +1,11 @@
 use crate::features;
 use crate::features::archive::{handle_archive_open, render_archive_screen};
-use crate::features::compression::{gzip_compress, gzip_decompress, render_compression_screen};
 use crate::features::color_tools::{handle_color_action, render_color_screen};
+use crate::features::compression::{gzip_compress, gzip_decompress, render_compression_screen};
 use crate::features::dithering::{process_dithering, render_dithering_screen, save_fd_to_temp};
 use crate::features::file_info::{file_info_from_fd, file_info_from_path, render_file_info_screen};
 use crate::features::hashes::{
-    compute_all_hashes, compute_hash, handle_hash_verify, render_hash_verify_screen, HashAlgo,
-};
-use crate::features::presets::{
-    apply_preset_to_state, delete_preset, load_presets, preset_payload_for_tool,
-    render_preset_manager, render_save_preset_dialog, save_preset, tool_id_for_screen,
+    compute_all_hashes, compute_hash, render_hash_verify_screen, HashAlgo,
 };
 use crate::features::kotlin_image::{
     handle_output_dir as handle_kotlin_image_output_dir,
@@ -22,44 +18,56 @@ use crate::features::misc_screens::{
     render_about_screen, render_barometer_screen, render_compass_screen, render_loading_screen,
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
-use crate::features::pixel_art::{process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd};
-use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::pdf::{
-    handle_pdf_operation, handle_pdf_select, handle_pdf_sign, handle_pdf_title,
+    handle_pdf_select, handle_pdf_sign, handle_pdf_title, perform_pdf_operation,
     render_pdf_preview_screen, render_pdf_screen, PdfOperation,
+};
+use crate::features::pixel_art::{
+    process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd,
+};
+use crate::features::presets::{
+    apply_preset_to_state, delete_preset, load_presets, preset_payload_for_tool,
+    render_preset_manager, render_save_preset_dialog, save_preset, tool_id_for_screen,
 };
 use crate::features::qr::{handle_qr_action, render_qr_screen};
 use crate::features::qr_transfer::{
-    advance_frame as qr_slideshow_advance, handle_receive_scan, load_slideshow_from_fd,
-    load_slideshow_from_path, render_qr_receive_screen, render_qr_slideshow_screen,
-    save_received_file, decode_qr_frame_luma,
+    advance_frame as qr_slideshow_advance, decode_qr_frame_luma, handle_receive_scan,
+    load_slideshow_from_fd, load_slideshow_from_path, render_qr_receive_screen,
+    render_qr_slideshow_screen, save_received_file,
 };
+use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
     render_sensor_logger_screen,
 };
-use crate::features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use crate::features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
 use crate::features::text_viewer::{
     guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
     load_text_from_path, load_text_from_path_at_offset, render_text_viewer_screen,
 };
+use crate::features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use crate::ui::render_multi_hash_screen;
 
+use crate::state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, Screen};
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use crate::state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, Screen};
 use std::{
-    collections::{HashMap, BTreeMap},
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::Read,
     os::unix::io::{FromRawFd, RawFd},
     ptr,
     sync::{mpsc, Mutex, MutexGuard, OnceLock},
     thread,
+};
+
+#[cfg(test)]
+use std::{
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    time::Duration,
 };
 
 struct GlobalState {
@@ -134,9 +142,15 @@ impl WorkerRuntime {
 
     #[cfg(test)]
     fn enqueue(&self, job: WorkerJob) -> Result<(), String> {
-        let result = run_worker_job(job);
-        STATE.push_worker_result(result);
-        Ok(())
+        if TEST_FORCE_ASYNC_WORKER.load(Ordering::SeqCst) {
+            self.sender
+                .send(job)
+                .map_err(|e| format!("worker_send_failed:{e}"))
+        } else {
+            let result = run_worker_job(job);
+            STATE.push_worker_result(result);
+            Ok(())
+        }
     }
 }
 
@@ -144,6 +158,45 @@ impl WorkerRuntime {
 enum HashSourceInput {
     Fd(i32),
     Path(String),
+}
+
+#[derive(Clone, Copy)]
+enum CompressionOp {
+    Compress,
+    Decompress,
+}
+
+#[derive(Clone)]
+struct PdfWorkerArgs {
+    op: PdfOperation,
+    primary_fd: i32,
+    secondary_fd: Option<i32>,
+    primary_uri: Option<String>,
+    secondary_uri: Option<String>,
+    selected_pages: Vec<u32>,
+}
+
+#[derive(Clone)]
+struct HashVerifyJob {
+    source: HashSourceInput,
+    reference: String,
+    algo: HashAlgo,
+}
+
+#[derive(Clone)]
+struct HashVerifyResult {
+    computed: String,
+    reference: String,
+    algo: HashAlgo,
+}
+
+#[derive(Clone)]
+struct PdfWorkerResult {
+    out_path: String,
+    page_count: u32,
+    title: Option<String>,
+    selected_pages: Vec<u32>,
+    source_uri: Option<String>,
 }
 
 enum WorkerJob {
@@ -155,6 +208,22 @@ enum WorkerJob {
         source: HashSourceInput,
         display_path: String,
     },
+    HashVerify(HashVerifyJob),
+    Compression {
+        op: CompressionOp,
+        path: String,
+    },
+    Dithering {
+        source_path: String,
+        mode: DitheringMode,
+        palette: DitheringPalette,
+        output_dir: Option<String>,
+    },
+    PixelArt {
+        source_path: String,
+        scale: u32,
+    },
+    PdfOperation(PdfWorkerArgs),
 }
 
 enum WorkerResult {
@@ -164,35 +233,138 @@ enum WorkerResult {
     MultiHash {
         value: Result<MultiHashResults, String>,
     },
+    HashVerify {
+        value: Result<HashVerifyResult, String>,
+    },
+    Compression {
+        value: Result<String, String>,
+    },
+    Dithering {
+        value: Result<String, String>,
+    },
+    PixelArt {
+        value: Result<String, String>,
+    },
+    PdfOperation {
+        value: Result<PdfWorkerResult, String>,
+    },
 }
 
 fn run_worker_job(job: WorkerJob) -> WorkerResult {
     match job {
         WorkerJob::Hash { source, algo } => {
+            test_worker_delay();
             let value = match source {
                 HashSourceInput::Fd(fd) => {
                     compute_hash(features::hashes::HashSource::RawFd(fd as RawFd), algo)
                 }
-                HashSourceInput::Path(p) => compute_hash(features::hashes::HashSource::Path(&p), algo),
+                HashSourceInput::Path(p) => {
+                    compute_hash(features::hashes::HashSource::Path(&p), algo)
+                }
             };
             WorkerResult::Hash { value }
         }
-        WorkerJob::MultiHash { source, display_path } => {
+        WorkerJob::MultiHash {
+            source,
+            display_path,
+        } => {
+            test_worker_delay();
             let value = match source {
-                HashSourceInput::Fd(fd) => {
-                    compute_all_hashes(features::hashes::HashSource::RawFd(fd as RawFd), display_path)
-                }
+                HashSourceInput::Fd(fd) => compute_all_hashes(
+                    features::hashes::HashSource::RawFd(fd as RawFd),
+                    display_path,
+                ),
                 HashSourceInput::Path(p) => {
                     compute_all_hashes(features::hashes::HashSource::Path(&p), display_path)
                 }
             };
             WorkerResult::MultiHash { value }
         }
+        WorkerJob::HashVerify(job) => {
+            test_worker_delay();
+            let value = match job.source {
+                HashSourceInput::Fd(fd) => {
+                    compute_hash(features::hashes::HashSource::RawFd(fd as RawFd), job.algo)
+                }
+                HashSourceInput::Path(p) => {
+                    compute_hash(features::hashes::HashSource::Path(&p), job.algo)
+                }
+            }
+            .map(|computed| HashVerifyResult {
+                computed,
+                reference: job.reference,
+                algo: job.algo,
+            });
+            WorkerResult::HashVerify { value }
+        }
+        WorkerJob::Compression { op, path } => {
+            test_worker_delay();
+            let value = match op {
+                CompressionOp::Compress => {
+                    gzip_compress(&path).map(|out| format!("Compressed to {}", out.display()))
+                }
+                CompressionOp::Decompress => {
+                    gzip_decompress(&path).map(|out| format!("Decompressed to {}", out.display()))
+                }
+            };
+            WorkerResult::Compression { value }
+        }
+        WorkerJob::Dithering {
+            source_path,
+            mode,
+            palette,
+            output_dir,
+        } => {
+            test_worker_delay();
+            let value = process_dithering(&source_path, mode, palette, output_dir.as_deref());
+            WorkerResult::Dithering { value }
+        }
+        WorkerJob::PixelArt { source_path, scale } => {
+            test_worker_delay();
+            let value = process_pixel_art(&source_path, scale);
+            WorkerResult::PixelArt { value }
+        }
+        WorkerJob::PdfOperation(args) => {
+            test_worker_delay();
+            let value = perform_pdf_operation(
+                args.op,
+                args.primary_fd,
+                args.secondary_fd,
+                args.primary_uri.as_deref(),
+                args.secondary_uri.as_deref(),
+                &args.selected_pages,
+            )
+            .map(|pdf_out| PdfWorkerResult {
+                out_path: pdf_out.out_path,
+                page_count: pdf_out.page_count,
+                title: pdf_out.title,
+                selected_pages: args.selected_pages.clone(),
+                source_uri: args.primary_uri.clone(),
+            });
+            WorkerResult::PdfOperation { value }
+        }
     }
 }
 
 static STATE: GlobalState = GlobalState::new();
 // TODO: reduce lock hold time or move to a channel/queue; consider parking_lot with timeouts to avoid long UI pauses.
+
+#[cfg(test)]
+static TEST_FORCE_ASYNC_WORKER: AtomicBool = AtomicBool::new(false);
+
+#[cfg(test)]
+static TEST_WORKER_DELAY_MS: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+fn test_worker_delay() {
+    let delay = TEST_WORKER_DELAY_MS.load(Ordering::SeqCst);
+    if delay > 0 {
+        thread::sleep(Duration::from_millis(delay));
+    }
+}
+
+#[cfg(not(test))]
+fn test_worker_delay() {}
 
 #[derive(Deserialize)]
 struct Command {
@@ -652,11 +824,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "text_viewer_find_next" => Ok(Action::TextViewerFind {
             query: bindings.get("find_query").cloned(),
-            direction: Some("next".into())
+            direction: Some("next".into()),
         }),
         "text_viewer_find_prev" => Ok(Action::TextViewerFind {
             query: bindings.get("find_query").cloned(),
-            direction: Some("prev".into())
+            direction: Some("prev".into()),
         }),
         "text_viewer_find_clear" => Ok(Action::TextViewerFind {
             query: Some(String::new()),
@@ -832,7 +1004,10 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "qr_receive_screen" => Ok(Action::QrReceiveScreen),
         "qr_receive_scan" => Ok(Action::QrReceiveScan {
-            data: bindings.get("qr_scan_input").cloned().or_else(|| bindings.get("clipboard").cloned()),
+            data: bindings
+                .get("qr_scan_input")
+                .cloned()
+                .or_else(|| bindings.get("clipboard").cloned()),
         }),
         "qr_receive_save" => Ok(Action::QrReceiveSave),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
@@ -893,9 +1068,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
             } else if other == "multi_hash_screen" {
                 Ok(Action::MultiHashScreen)
             } else if other == "hash_all" {
-                Ok(Action::HashAll { path, fd, loading_only })
-            }
-            else if let Some(text_action) = parse_text_action(other) {
+                Ok(Action::HashAll {
+                    path,
+                    fd,
+                    loading_only,
+                })
+            } else if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
                     action: text_action,
                     bindings,
@@ -1047,18 +1225,19 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_processQrCameraFrame(
     rotation_deg: jni::sys::jint,
 ) -> jstring {
     let response = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let luma_data = env.convert_byte_array(&luma_array).map_err(|e| format!("jni_luma_array_err:{e}"))?;
+        let luma_data = env
+            .convert_byte_array(&luma_array)
+            .map_err(|e| format!("jni_luma_array_err:{e}"))?;
         let width_u = width as u32;
         let height_u = height as u32;
         let row_stride_u = row_stride as u32;
         let rotation_u = rotation_deg as u16;
 
         match decode_qr_frame_luma(&luma_data, width_u, height_u, row_stride_u, rotation_u) {
-            Ok(Some(decoded_text)) => {
-                env.new_string(decoded_text)
-                    .map(|s| s.into_raw())
-                    .map_err(|e| format!("jni_new_string_err:{e}"))
-            },
+            Ok(Some(decoded_text)) => env
+                .new_string(decoded_text)
+                .map(|s| s.into_raw())
+                .map_err(|e| format!("jni_new_string_err:{e}")),
             Ok(None) => Ok(ptr::null_mut()), // No QR code found
             Err(e) => {
                 // Log the error and return null, or potentially a special error string
@@ -1140,7 +1319,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 return Ok(ui);
             }
         }
-        a @ Action::CompressionScreen | a @ Action::GzipCompress { .. } | a @ Action::GzipDecompress { .. } => {
+        a @ Action::CompressionScreen
+        | a @ Action::GzipCompress { .. }
+        | a @ Action::GzipDecompress { .. } => {
             handle_compression_actions(&mut state, a);
         }
         Action::SystemInfoScreen => {
@@ -1159,7 +1340,11 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 return Ok(ui);
             }
         }
-        Action::HashAll { path, fd, loading_only } => {
+        Action::HashAll {
+            path,
+            fd,
+            loading_only,
+        } => {
             return handle_multi_hash_job(state, path, fd, loading_only);
         }
         Action::PresetsList { tool_id } => {
@@ -1583,8 +1768,7 @@ fn handle_qr_actions(state: &mut AppState, action: Action) {
             let mut fd_handle = FdHandle::new(fd);
             if error.is_none() {
                 if let Some(raw_fd) = fd_handle.take() {
-                    if let Err(e) =
-                        load_slideshow_from_fd(state, raw_fd as RawFd, path.as_deref())
+                    if let Err(e) = load_slideshow_from_fd(state, raw_fd as RawFd, path.as_deref())
                     {
                         state.qr_slideshow.error = Some(e);
                     }
@@ -1697,9 +1881,11 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                             Some(format!("Archive created at {}", out.display()));
                         if let Ok(file) = File::open(&out) {
                             let raw_fd = std::os::unix::io::IntoRawFd::into_raw_fd(file);
-                            if let Err(e) =
-                                handle_archive_open(state, raw_fd, Some(out.to_string_lossy().as_ref()))
-                            {
+                            if let Err(e) = handle_archive_open(
+                                state,
+                                raw_fd,
+                                Some(out.to_string_lossy().as_ref()),
+                            ) {
                                 state.archive.error = Some(e);
                             }
                         } else {
@@ -1773,8 +1959,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                 match features::archive::extract_entry(&path, &dest, index) {
                     Ok(out) => {
                         state.archive.error = None;
-                        state.archive.last_output =
-                            Some(format!("Extracted to {}", out.display()));
+                        state.archive.last_output = Some(format!("Extracted to {}", out.display()));
                     }
                     Err(e) => {
                         state.archive.error = Some(e);
@@ -1805,11 +1990,22 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
             if let Some(err) = error {
                 state.compression_error = Some(err);
             } else if let Some(p) = path {
-                match gzip_compress(&p) {
-                    Ok(out) => {
-                        state.compression_status = Some(format!("Compressed to {}", out.display()));
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Compressing...".into());
+                if fd.is_some() {
+                    state.compression_error = Some("gzip_requires_path".into());
+                } else {
+                    let job = WorkerJob::Compression {
+                        op: CompressionOp::Compress,
+                        path: p,
+                    };
+                    if let Err(e) = STATE.worker().enqueue(job) {
+                        state.compression_error = Some(e);
                     }
-                    Err(e) => state.compression_error = Some(e),
+                    #[cfg(test)]
+                    {
+                        apply_worker_results(state);
+                    }
                 }
             } else if fd.is_some() {
                 state.compression_error = Some("gzip_requires_path".into());
@@ -1824,12 +2020,22 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
             if let Some(err) = error {
                 state.compression_error = Some(err);
             } else if let Some(p) = path {
-                match gzip_decompress(&p) {
-                    Ok(out) => {
-                        state.compression_status =
-                            Some(format!("Decompressed to {}", out.display()));
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Decompressing...".into());
+                if fd.is_some() {
+                    state.compression_error = Some("gzip_requires_path".into());
+                } else {
+                    let job = WorkerJob::Compression {
+                        op: CompressionOp::Decompress,
+                        path: p,
+                    };
+                    if let Err(e) = STATE.worker().enqueue(job) {
+                        state.compression_error = Some(e);
                     }
-                    Err(e) => state.compression_error = Some(e),
+                    #[cfg(test)]
+                    {
+                        apply_worker_results(state);
+                    }
                 }
             } else if fd.is_some() {
                 state.compression_error = Some("gzip_requires_path".into());
@@ -1863,7 +2069,11 @@ fn handle_hash_actions(state: &mut AppState, action: Action) -> Option<Value> {
             state.last_hash_algo = Some("SHA-256".into());
             None
         }
-        Action::HashVerify { path, fd, reference } => {
+        Action::HashVerify {
+            path,
+            fd,
+            reference,
+        } => {
             let mut fd_handle = FdHandle::new(fd);
             state.push_screen(Screen::HashVerify);
             if let Some(err) = reference
@@ -1875,16 +2085,40 @@ fn handle_hash_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 state.hash_match = None;
             } else {
                 let algo = HashAlgo::Sha256;
-                if let Some(err) = reference.clone().is_none().then(|| "missing_reference".to_string()) {
+                if let Some(err) = reference
+                    .clone()
+                    .is_none()
+                    .then(|| "missing_reference".to_string())
+                {
                     state.last_error = Some(err);
                 } else {
-                    handle_hash_verify(
-                        state,
-                        fd_handle.take(),
-                        path.as_deref(),
-                        reference.as_deref().unwrap(),
-                        algo,
-                    );
+                    let source = hash_job_source(fd_handle.take(), path.as_deref());
+                    if let Some(src) = source {
+                        let reference = reference.unwrap();
+                        let job = WorkerJob::HashVerify(HashVerifyJob {
+                            source: src,
+                            reference: reference.clone(),
+                            algo,
+                        });
+                        state.hash_reference = Some(reference);
+                        state.hash_match = None;
+                        state.last_hash = None;
+                        state.last_error = None;
+                        state.loading_with_spinner = true;
+                        state.loading_message = Some(hash_loading_message(algo).into());
+                        state.replace_current(Screen::Loading);
+                        if let Err(e) = STATE.worker().enqueue(job) {
+                            state.last_error = Some(e);
+                        }
+                        #[cfg(test)]
+                        {
+                            apply_worker_results(state);
+                        }
+                    } else {
+                        state.last_error = Some("missing_path".into());
+                        state.hash_match = None;
+                        state.last_hash = None;
+                    }
                 }
             }
             None
@@ -2067,20 +2301,28 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
         }
         Action::PdfExtract { fd, uri, selection } => {
             state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            state.pdf.last_output = None;
             let mut fd_handle = FdHandle::new(fd);
             if selection.is_empty() {
                 state.pdf.last_error = Some("no_pages_selected".into());
             } else if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_pdf_operation(
-                    state,
-                    PdfOperation::Extract,
-                    Some(raw_fd),
-                    None,
-                    uri.as_deref(),
-                    None,
-                    &selection,
-                ) {
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Processing PDF...".into());
+                let job = WorkerJob::PdfOperation(PdfWorkerArgs {
+                    op: PdfOperation::Extract,
+                    primary_fd: raw_fd,
+                    secondary_fd: None,
+                    primary_uri: uri.clone(),
+                    secondary_uri: None,
+                    selected_pages: selection.clone(),
+                });
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
@@ -2088,20 +2330,28 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
         }
         Action::PdfDelete { fd, uri, selection } => {
             state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            state.pdf.last_output = None;
             let mut fd_handle = FdHandle::new(fd);
             if selection.is_empty() {
                 state.pdf.last_error = Some("no_pages_selected".into());
             } else if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_pdf_operation(
-                    state,
-                    PdfOperation::Delete,
-                    Some(raw_fd),
-                    None,
-                    uri.as_deref(),
-                    None,
-                    &selection,
-                ) {
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Processing PDF...".into());
+                let job = WorkerJob::PdfOperation(PdfWorkerArgs {
+                    op: PdfOperation::Delete,
+                    primary_fd: raw_fd,
+                    secondary_fd: None,
+                    primary_uri: uri.clone(),
+                    secondary_uri: None,
+                    selected_pages: selection.clone(),
+                });
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
@@ -2109,20 +2359,28 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
         }
         Action::PdfReorder { fd, uri, order } => {
             state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            state.pdf.last_output = None;
             let mut fd_handle = FdHandle::new(fd);
             if order.is_empty() {
                 state.pdf.last_error = Some("no_pages_selected".into());
             } else if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_pdf_operation(
-                    state,
-                    PdfOperation::Reorder,
-                    Some(raw_fd),
-                    None,
-                    uri.as_deref(),
-                    None,
-                    &order,
-                ) {
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Processing PDF...".into());
+                let job = WorkerJob::PdfOperation(PdfWorkerArgs {
+                    op: PdfOperation::Reorder,
+                    primary_fd: raw_fd,
+                    secondary_fd: None,
+                    primary_uri: uri.clone(),
+                    secondary_uri: None,
+                    selected_pages: order.clone(),
+                });
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
@@ -2135,19 +2393,27 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
             secondary_uri,
         } => {
             state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            state.pdf.last_output = None;
             let mut primary = FdHandle::new(primary_fd);
             let mut secondary = FdHandle::new(secondary_fd);
             if let (Some(p_fd), Some(s_fd)) = (primary.take(), secondary.take()) {
-                if let Err(e) = handle_pdf_operation(
-                    state,
-                    PdfOperation::Merge,
-                    Some(p_fd),
-                    Some(s_fd),
-                    primary_uri.as_deref(),
-                    secondary_uri.as_deref(),
-                    &[],
-                ) {
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Processing PDF...".into());
+                let job = WorkerJob::PdfOperation(PdfWorkerArgs {
+                    op: PdfOperation::Merge,
+                    primary_fd: p_fd,
+                    secondary_fd: Some(s_fd),
+                    primary_uri: primary_uri.clone(),
+                    secondary_uri: secondary_uri.clone(),
+                    selected_pages: Vec::new(),
+                });
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
@@ -2503,19 +2769,20 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 state.replace_current(Screen::Loading);
                 return Some(render_ui(&state));
             }
-            state.loading_message = None;
+            state.loading_message = Some("Pixelating...".into());
             state.loading_with_spinner = true;
             state.replace_current(Screen::PixelArt);
             if let Some(path) = state.pixel_art.source_path.clone() {
-                match process_pixel_art(&path, state.pixel_art.scale_factor) {
-                    Ok(out) => {
-                        state.pixel_art.result_path = Some(out);
-                        state.pixel_art.error = None;
-                    }
-                    Err(e) => {
-                        state.pixel_art.result_path = None;
-                        state.pixel_art.error = Some(e);
-                    }
+                let job = WorkerJob::PixelArt {
+                    source_path: path,
+                    scale: state.pixel_art.scale_factor,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.pixel_art.error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pixel_art.error = Some("no_image_selected".into());
@@ -2525,7 +2792,7 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
         Action::KotlinImagePick { path, fd, error } => {
             // Ensure we stay on the image screen
             if !matches!(state.current_screen(), Screen::KotlinImage) {
-                 state.push_screen(Screen::KotlinImage);
+                state.push_screen(Screen::KotlinImage);
             }
             state.image.result = None;
             let mut fd_handle = FdHandle::new(fd);
@@ -2544,18 +2811,19 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                             state.image.source_path = Some(saved);
                         }
                         Err(e) => {
-                             state.image.result = Some(features::kotlin_image::ImageConversionResult {
-                                path: None,
-                                size: None,
-                                format: None,
-                                error: Some(e),
-                            });
+                            state.image.result =
+                                Some(features::kotlin_image::ImageConversionResult {
+                                    path: None,
+                                    size: None,
+                                    format: None,
+                                    error: Some(e),
+                                });
                         }
                     }
                 } else if let Some(p) = path {
                     state.image.source_path = Some(p);
                 } else {
-                     state.image.result = Some(features::kotlin_image::ImageConversionResult {
+                    state.image.result = Some(features::kotlin_image::ImageConversionResult {
                         path: None,
                         size: None,
                         format: None,
@@ -2601,8 +2869,16 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
             state.dithering_result_path = None;
             let output_dir = path
                 .as_deref()
-                .map(|p| features::storage::output_dir_for(Some(p)).to_string_lossy().into_owned())
-                .unwrap_or_else(|| features::storage::preferred_temp_dir().to_string_lossy().into_owned());
+                .map(|p| {
+                    features::storage::output_dir_for(Some(p))
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .unwrap_or_else(|| {
+                    features::storage::preferred_temp_dir()
+                        .to_string_lossy()
+                        .into_owned()
+                });
             state.dithering_output_dir = Some(output_dir);
             let mut fd_handle = FdHandle::new(fd);
             if error.is_none() {
@@ -2644,25 +2920,23 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 state.replace_current(Screen::Loading);
                 return Some(render_ui(&state));
             }
-            state.loading_message = None;
+            state.loading_message = Some("Applying dithering...".into());
             state.loading_with_spinner = true;
             state.replace_current(Screen::Dithering);
             if let Some(path) = state.dithering_source_path.clone() {
-                let output_dir = state.dithering_output_dir.as_deref();
-                match process_dithering(
-                    &path,
-                    state.dithering_mode,
-                    state.dithering_palette,
+                let output_dir = state.dithering_output_dir.clone();
+                let job = WorkerJob::Dithering {
+                    source_path: path,
+                    mode: state.dithering_mode,
+                    palette: state.dithering_palette,
                     output_dir,
-                ) {
-                    Ok(out_path) => {
-                        state.dithering_result_path = Some(out_path);
-                        state.dithering_error = None;
-                    }
-                    Err(e) => {
-                        state.dithering_result_path = None;
-                        state.dithering_error = Some(e);
-                    }
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.dithering_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.dithering_error = Some("no_image_selected".into());
@@ -2744,10 +3018,7 @@ pub struct Feature {
 /// Render the home screen using a catalog of features.
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     use crate::ui::{
-        Button as UiButton,
-        Card as UiCard,
-        Column as UiColumn,
-        Section as UiSection,
+        Button as UiButton, Card as UiCard, Column as UiColumn, Section as UiSection,
         Text as UiText,
     };
 
@@ -2779,9 +3050,11 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         })
         .collect();
     if !quick_buttons.is_empty() {
-        let quick = UiCard::new(vec![serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()])
-            .title("⚡ Quick access")
-            .padding(12);
+        let quick = UiCard::new(vec![
+            serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()
+        ])
+        .title("⚡ Quick access")
+        .padding(12);
         children.push(serde_json::to_value(quick).unwrap());
     }
 
@@ -2861,8 +3134,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Show QR for last hash", "hash_qr_last")
-                    .id("hash_qr_last_btn"),
+                UiButton::new("Show QR for last hash", "hash_qr_last").id("hash_qr_last_btn"),
             )
             .unwrap(),
         );
@@ -3213,7 +3485,8 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::os::unix::io::IntoRawFd;
-    use std::sync::Mutex;
+    use std::sync::{atomic::Ordering, Mutex};
+    use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
     use zip::write::FileOptions;
 
@@ -3247,6 +3520,8 @@ mod tests {
 
     fn reset_state() {
         handle_command(make_command("reset")).expect("reset command should succeed");
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(0, Ordering::SeqCst);
     }
 
     fn extract_texts(ui: &Value) -> Vec<String> {
@@ -3285,8 +3560,14 @@ mod tests {
         let card = UiCard::new(body).title("⚡ Quick access").padding(6);
 
         let section_val = serde_json::to_value(section).expect("section should serialize");
-        assert_eq!(section_val.get("type"), Some(&Value::String("Section".into())));
-        assert_eq!(section_val.get("title"), Some(&Value::String("📁 Files".into())));
+        assert_eq!(
+            section_val.get("type"),
+            Some(&Value::String("Section".into()))
+        );
+        assert_eq!(
+            section_val.get("title"),
+            Some(&Value::String("📁 Files".into()))
+        );
         assert_eq!(section_val.get("icon"), Some(&Value::String("📁".into())));
         assert!(section_val
             .get("children")
@@ -3352,6 +3633,50 @@ mod tests {
     }
 
     #[test]
+    fn hash_verify_enqueues_and_releases_mutex() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(200, Ordering::SeqCst);
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let mut command = make_command("hash_verify");
+        command.path = Some(file.path().to_string_lossy().into_owned());
+        command.bindings = Some(HashMap::from([(
+            "hash_reference".into(),
+            SHA256_ABC.into(),
+        )]));
+
+        let start = Instant::now();
+        let ui = handle_command(command).expect("hash verify dispatch should succeed");
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "dispatch held the UI mutex for too long"
+        );
+        assert_contains_text(&ui, "Computing SHA-256");
+        assert!(
+            STATE.ui_try_lock().is_some(),
+            "state mutex should be free while worker runs"
+        );
+
+        std::thread::sleep(Duration::from_millis(250));
+        let refreshed =
+            handle_command(make_command("init")).expect("refresh after worker should succeed");
+        assert_contains_text(&refreshed, SHA256_ABC);
+
+        let state = STATE.ui_lock();
+        assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
+        assert_eq!(state.hash_match, Some(true));
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
     fn hash_file_sha1_via_fd_updates_ui_and_state() {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
@@ -3399,7 +3724,10 @@ mod tests {
         reset_state();
 
         let mut command = make_command("text_tools_word_count");
-        command.bindings = Some(HashMap::from([("text_input".into(), "one two  three".into())]));
+        command.bindings = Some(HashMap::from([(
+            "text_input".into(),
+            "one two  three".into(),
+        )]));
 
         let ui = handle_command(command).expect("text command should succeed");
 
@@ -3702,8 +4030,11 @@ mod tests {
 
         handle_command(make_command("text_viewer_load_more")).expect("load more should succeed");
         let state = STATE.ui_lock();
-        let after_len =
-            state.text_view_content.as_ref().map(|c| c.len()).unwrap_or(0);
+        let after_len = state
+            .text_view_content
+            .as_ref()
+            .map(|c| c.len())
+            .unwrap_or(0);
         assert!(after_len > 0);
         assert!(after_len <= 150_000);
         assert_eq!(state.text_view_total_bytes, Some(total));
@@ -3758,10 +4089,7 @@ mod tests {
         for pixel in img.pixels_mut() {
             *pixel = image::Rgba([color[0], color[1], color[2], 255]);
         }
-        let file = tempfile::Builder::new()
-            .suffix(".png")
-            .tempfile()
-            .unwrap();
+        let file = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
         img.save(file.path()).unwrap();
         file
     }
@@ -3992,6 +4320,78 @@ fn apply_worker_results(state: &mut AppState) {
                 Err(e) => {
                     state.multi_hash_error = Some(e);
                     state.multi_hash_results = None;
+                }
+            },
+            WorkerResult::HashVerify { value } => match value {
+                Ok(res) => {
+                    let cleaned_ref = res.reference.trim().to_ascii_lowercase();
+                    let cleaned_hash = res.computed.trim().to_ascii_lowercase();
+                    state.hash_reference = Some(res.reference);
+                    state.last_hash_algo = Some(hash_label(res.algo).into());
+                    state.last_hash = Some(res.computed);
+                    state.hash_match = Some(cleaned_ref == cleaned_hash);
+                    state.last_error = None;
+                    state.replace_current(Screen::HashVerify);
+                }
+                Err(e) => {
+                    state.last_error = Some(e);
+                    state.last_hash = None;
+                    state.hash_match = None;
+                    state.replace_current(Screen::HashVerify);
+                }
+            },
+            WorkerResult::Compression { value } => match value {
+                Ok(status) => {
+                    state.compression_status = Some(status);
+                    state.compression_error = None;
+                    state.replace_current(Screen::Compression);
+                }
+                Err(e) => {
+                    state.compression_error = Some(e);
+                    state.compression_status = None;
+                    state.replace_current(Screen::Compression);
+                }
+            },
+            WorkerResult::Dithering { value } => match value {
+                Ok(out) => {
+                    state.dithering_result_path = Some(out);
+                    state.dithering_error = None;
+                    state.replace_current(Screen::Dithering);
+                }
+                Err(e) => {
+                    state.dithering_result_path = None;
+                    state.dithering_error = Some(e);
+                    state.replace_current(Screen::Dithering);
+                }
+            },
+            WorkerResult::PixelArt { value } => match value {
+                Ok(out) => {
+                    state.pixel_art.result_path = Some(out);
+                    state.pixel_art.error = None;
+                    state.replace_current(Screen::PixelArt);
+                }
+                Err(e) => {
+                    state.pixel_art.result_path = None;
+                    state.pixel_art.error = Some(e);
+                    state.replace_current(Screen::PixelArt);
+                }
+            },
+            WorkerResult::PdfOperation { value } => match value {
+                Ok(res) => {
+                    state.pdf.last_output = Some(res.out_path);
+                    state.pdf.last_error = None;
+                    state.pdf.selected_pages = res.selected_pages;
+                    state.pdf.page_count = Some(res.page_count);
+                    state.pdf.current_title = res.title;
+                    if res.source_uri.is_some() {
+                        state.pdf.source_uri = res.source_uri;
+                    }
+                    state.replace_current(Screen::PdfTools);
+                }
+                Err(e) => {
+                    state.pdf.last_error = Some(e);
+                    state.pdf.last_output = None;
+                    state.replace_current(Screen::PdfTools);
                 }
             },
         }

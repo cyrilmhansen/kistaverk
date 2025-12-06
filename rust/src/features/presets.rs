@@ -1,6 +1,6 @@
 use crate::features::storage::preferred_temp_dir;
 use crate::state::{AppState, Screen};
-use crate::ui::{Button, Column, Text, maybe_push_back};
+use crate::ui::{maybe_push_back, Button, Column, Text};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -119,7 +119,10 @@ pub fn delete_preset(id: &str) -> Result<(), String> {
 }
 
 pub fn render_preset_manager(state: &AppState) -> Value {
-    let mut children = vec![to_value_or_text(Text::new("Presets").size(20.0), "presets_title")];
+    let mut children = vec![to_value_or_text(
+        Text::new("Presets").size(20.0),
+        "presets_title",
+    )];
 
     if let Some(tool) = &state.preset_state.current_tool_id {
         children.push(to_value_or_text(
@@ -142,7 +145,12 @@ pub fn render_preset_manager(state: &AppState) -> Value {
     }
 
     let filtered: Vec<&Preset> = if let Some(tid) = &state.preset_state.current_tool_id {
-        state.preset_state.presets.iter().filter(|p| &p.tool_id == tid).collect()
+        state
+            .preset_state
+            .presets
+            .iter()
+            .filter(|p| &p.tool_id == tid)
+            .collect()
     } else {
         state.preset_state.presets.iter().collect()
     };
@@ -161,13 +169,12 @@ pub fn render_preset_manager(state: &AppState) -> Value {
                     "preset_tool",
                 ),
             ];
-            
-            let load_btn = Button::new("Load", "preset_load")
-                .payload(json!({ "id": preset.id }));
+
+            let load_btn = Button::new("Load", "preset_load").payload(json!({ "id": preset.id }));
             row_items.push(to_value_or_text(load_btn, "preset_load_btn"));
 
-            let del_btn = Button::new("Delete", "preset_delete")
-                .payload(json!({ "id": preset.id }));
+            let del_btn =
+                Button::new("Delete", "preset_delete").payload(json!({ "id": preset.id }));
             row_items.push(to_value_or_text(del_btn, "preset_delete_btn"));
 
             children.push(json!({
@@ -181,9 +188,10 @@ pub fn render_preset_manager(state: &AppState) -> Value {
         }
     }
 
-    children.push(
-        to_value_or_text(Button::new("Create New Preset", "preset_save_dialog"), "preset_create_btn"),
-    );
+    children.push(to_value_or_text(
+        Button::new("Create New Preset", "preset_save_dialog"),
+        "preset_create_btn",
+    ));
 
     maybe_push_back(&mut children, state);
     to_value_or_text(Column::new(children).padding(16), "presets_root")
@@ -211,7 +219,10 @@ pub fn render_save_preset_dialog(state: &AppState) -> Value {
         ));
     }
 
-    children.push(to_value_or_text(Button::new("Save", "preset_save"), "presets_save_btn"));
+    children.push(to_value_or_text(
+        Button::new("Save", "preset_save"),
+        "presets_save_btn",
+    ));
 
     maybe_push_back(&mut children, state);
     to_value_or_text(Column::new(children).padding(16), "presets_save_root")
@@ -275,7 +286,7 @@ mod tests {
         let mut state = AppState::new();
         state.dithering_mode = DitheringMode::Bayer8x8;
         state.dithering_palette = DitheringPalette::GameBoy;
-        
+
         let payload = preset_payload_for_tool(&state, "dithering").unwrap();
         assert_eq!(payload["mode"], json!(DitheringMode::Bayer8x8));
         assert_eq!(payload["palette"], json!(DitheringPalette::GameBoy));
@@ -294,7 +305,7 @@ mod tests {
             }),
             created_at: 0,
         };
-        
+
         apply_preset_to_state(&mut state, &preset).unwrap();
         assert_eq!(state.dithering_mode, DitheringMode::Sierra);
         assert_eq!(state.dithering_palette, DitheringPalette::Cga);
@@ -309,28 +320,31 @@ mod tests {
         let root_dir = tempdir().expect("failed to create temp dir");
         let cache_dir = root_dir.path().join("cache");
         fs::create_dir(&cache_dir).expect("failed to create cache dir");
-        
+
         // Set the env var so preferred_temp_dir returns our mock cache
         // unsafe block needed for set_var in some contexts, but here it is standard lib
         env::set_var("KISTAVERK_TEMP_DIR", &cache_dir);
-        
+
         let tool_id = "test_tool";
         let name = "Test Preset";
         let data = json!({"foo": "bar"});
-        
+
         // 1. Save
         let saved = save_preset(tool_id, name, data.clone()).expect("save failed");
         assert_eq!(saved.name, name);
         assert_eq!(saved.tool_id, tool_id);
-        
+
         // 2. Load
         let all = load_presets().expect("load failed");
-        let loaded = all.iter().find(|p| p.id == saved.id).expect("preset not found");
+        let loaded = all
+            .iter()
+            .find(|p| p.id == saved.id)
+            .expect("preset not found");
         assert_eq!(loaded.data, data);
-        
+
         // 3. Delete
         delete_preset(&saved.id).expect("delete failed");
-        
+
         // 4. Verify deleted
         let all_after = load_presets().expect("load failed");
         assert!(all_after.iter().find(|p| p.id == saved.id).is_none());
