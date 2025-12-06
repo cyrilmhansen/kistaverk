@@ -1,6 +1,6 @@
 use crate::features::storage::output_dir_for;
 use crate::state::AppState;
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, maybe_push_back};
+use crate::ui::{maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -23,8 +23,7 @@ pub fn render_compression_screen(state: &AppState) -> Value {
     let mut children = vec![
         to_value_or_text(UiText::new("GZIP Compression").size(20.0), "gzip_title"),
         to_value_or_text(
-            UiText::new("Compress or decompress single files using .gz.")
-                .size(14.0),
+            UiText::new("Compress or decompress single files using .gz.").size(14.0),
             "gzip_subtitle",
         ),
         to_value_or_text(
@@ -42,23 +41,21 @@ pub fn render_compression_screen(state: &AppState) -> Value {
     ];
 
     if let Some(msg) = &state.compression_status {
-        children.push(
-            to_value_or_text(
-                UiText::new(msg).size(12.0).content_description("gzip_status"),
-                "gzip_status",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiText::new(msg)
+                .size(12.0)
+                .content_description("gzip_status"),
+            "gzip_status",
+        ));
     }
 
     if let Some(err) = &state.compression_error {
-        children.push(
-            to_value_or_text(
-                UiText::new(&format!("Error: {}", err))
-                    .size(12.0)
-                    .content_description("gzip_error"),
-                "gzip_error",
-            ),
-        );
+        children.push(to_value_or_text(
+            UiText::new(&format!("Error: {}", err))
+                .size(12.0)
+                .content_description("gzip_error"),
+            "gzip_error",
+        ));
     }
 
     maybe_push_back(&mut children, state);
@@ -87,8 +84,7 @@ pub fn gzip_compress(path: &str) -> Result<PathBuf, String> {
 
     let mut reader =
         BufReader::new(File::open(input).map_err(|e| format!("gzip_open_failed:{e}"))?);
-    let out_file =
-        File::create(&out_dir).map_err(|e| format!("gzip_dest_open_failed:{e}"))?;
+    let out_file = File::create(&out_dir).map_err(|e| format!("gzip_dest_open_failed:{e}"))?;
     let mut encoder = GzEncoder::new(out_file, Compression::default());
     copy(&mut reader, &mut encoder).map_err(|e| format!("gzip_compress_failed:{e}"))?;
     encoder
@@ -118,8 +114,7 @@ pub fn gzip_decompress(path: &str) -> Result<PathBuf, String> {
 
     let reader = BufReader::new(File::open(input).map_err(|e| format!("gzip_open_failed:{e}"))?);
     let mut decoder = GzDecoder::new(reader);
-    let mut out_file =
-        File::create(&out_dir).map_err(|e| format!("gzip_dest_open_failed:{e}"))?;
+    let mut out_file = File::create(&out_dir).map_err(|e| format!("gzip_dest_open_failed:{e}"))?;
     copy(&mut decoder, &mut out_file).map_err(|e| format!("gzip_decompress_failed:{e}"))?;
     out_file
         .flush()

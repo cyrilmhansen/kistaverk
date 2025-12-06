@@ -1,34 +1,19 @@
 use crate::features::storage::{output_dir_for, preferred_temp_dir};
 use crate::state::{AppState, DitheringMode, DitheringPalette};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, maybe_push_back};
+use crate::ui::{maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText};
 use image::{Rgba, RgbaImage};
 use serde_json::{json, Value};
+use std::fs;
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Path, PathBuf};
-use std::fs;
 use tempfile::Builder;
 
 const MONOCHROME: &[[u8; 3]] = &[[0, 0, 0], [255, 255, 255]];
-const CGA: &[[u8; 3]] = &[
-    [0, 0, 0],
-    [85, 255, 255],
-    [255, 85, 255],
-    [255, 255, 85],
-];
-const GAME_BOY: &[[u8; 3]] = &[
-    [15, 56, 15],
-    [48, 98, 48],
-    [139, 172, 15],
-    [155, 188, 15],
-];
+const CGA: &[[u8; 3]] = &[[0, 0, 0], [85, 255, 255], [255, 85, 255], [255, 255, 85]];
+const GAME_BOY: &[[u8; 3]] = &[[15, 56, 15], [48, 98, 48], [139, 172, 15], [155, 188, 15]];
 
-const BAYER_4X4: [[i32; 4]; 4] = [
-    [0, 8, 2, 10],
-    [12, 4, 14, 6],
-    [3, 11, 1, 9],
-    [15, 7, 13, 5],
-];
+const BAYER_4X4: [[i32; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
 const BAYER_8X8: [[i32; 8]; 8] = [
     [0, 48, 12, 60, 3, 51, 15, 63],
@@ -112,17 +97,13 @@ fn apply_error_diffusion(
                 y as u32,
                 Rgba([target[0], target[1], target[2], src_alpha]),
             );
-            let err = [r - target[0] as f32, g - target[1] as f32, b - target[2] as f32];
+            let err = [
+                r - target[0] as f32,
+                g - target[1] as f32,
+                b - target[2] as f32,
+            ];
             for (dx, dy, factor) in kernel {
-                add_error(
-                    &mut buffer,
-                    width,
-                    height,
-                    x + *dx,
-                    y + *dy,
-                    err,
-                    *factor,
-                );
+                add_error(&mut buffer, width, height, x + *dx, y + *dy, err, *factor);
             }
         }
     }
@@ -201,8 +182,7 @@ pub fn process_dithering(
         .to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "path_utf8".to_string())?;
-    path.keep()
-        .map_err(|e| format!("persist_failed:{e}"))?;
+    path.keep().map_err(|e| format!("persist_failed:{e}"))?;
     Ok(final_path)
 }
 
@@ -220,8 +200,7 @@ pub fn save_fd_to_temp(fd: RawFd, hint_path: Option<&str>) -> Result<String, Str
         .to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "path_utf8".to_string())?;
-    path.keep()
-        .map_err(|e| format!("persist_failed:{e}"))?;
+    path.keep().map_err(|e| format!("persist_failed:{e}"))?;
     Ok(final_path)
 }
 
@@ -299,15 +278,29 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     }
 
     let modes = [
-        (DitheringMode::Atkinson, "Atkinson", "dithering_mode_atkinson"),
-        (DitheringMode::FloydSteinberg, "Floyd-Steinberg", "dithering_mode_fs"),
+        (
+            DitheringMode::Atkinson,
+            "Atkinson",
+            "dithering_mode_atkinson",
+        ),
+        (
+            DitheringMode::FloydSteinberg,
+            "Floyd-Steinberg",
+            "dithering_mode_fs",
+        ),
         (DitheringMode::Sierra, "Sierra", "dithering_mode_sierra"),
-        (DitheringMode::Bayer4x4, "Bayer 4x4", "dithering_mode_bayer4"),
-        (DitheringMode::Bayer8x8, "Bayer 8x8", "dithering_mode_bayer8"),
+        (
+            DitheringMode::Bayer4x4,
+            "Bayer 4x4",
+            "dithering_mode_bayer4",
+        ),
+        (
+            DitheringMode::Bayer8x8,
+            "Bayer 8x8",
+            "dithering_mode_bayer8",
+        ),
     ];
-    children.push(
-        serde_json::to_value(UiText::new("Algorithm").size(14.0)).unwrap(),
-    );
+    children.push(serde_json::to_value(UiText::new("Algorithm").size(14.0)).unwrap());
     for (mode, label, action) in modes {
         let mut button = UiButton::new(label, action).id(action);
         if mode == state.dithering_mode {
@@ -317,13 +310,19 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     }
 
     let palettes = [
-        (DitheringPalette::Monochrome, "Monochrome", "dithering_palette_mono"),
+        (
+            DitheringPalette::Monochrome,
+            "Monochrome",
+            "dithering_palette_mono",
+        ),
         (DitheringPalette::Cga, "CGA", "dithering_palette_cga"),
-        (DitheringPalette::GameBoy, "Game Boy", "dithering_palette_gb"),
+        (
+            DitheringPalette::GameBoy,
+            "Game Boy",
+            "dithering_palette_gb",
+        ),
     ];
-    children.push(
-        serde_json::to_value(UiText::new("Palette").size(14.0)).unwrap(),
-    );
+    children.push(serde_json::to_value(UiText::new("Palette").size(14.0)).unwrap());
     for (palette, label, action) in palettes {
         let mut button = UiButton::new(label, action).id(action);
         if palette == state.dithering_palette {
@@ -333,9 +332,8 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     }
 
     if let Some(err) = &state.dithering_error {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap(),
-        );
+        children
+            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     }
 
     if let Some(result) = &state.dithering_result_path {

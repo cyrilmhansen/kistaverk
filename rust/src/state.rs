@@ -1,10 +1,10 @@
 use crate::features::archive::ArchiveState;
-use crate::features::system_info::SystemInfoState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::pdf::PdfState;
-use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::presets::PresetState;
+use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::sensor_logger::SensorSelection;
+use crate::features::system_info::SystemInfoState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

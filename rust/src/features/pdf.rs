@@ -1,9 +1,9 @@
+use crate::features::storage::{output_dir_for, parse_file_uri_path};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
-use crate::features::storage::{output_dir_for, parse_file_uri_path};
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -83,7 +83,8 @@ fn output_filename(source_uri: Option<&str>) -> String {
 
 use crate::state::{AppState, Screen};
 use crate::ui::{
-    Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker, Text as UiText, maybe_push_back,
+    maybe_push_back, Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker,
+    Text as UiText,
 };
 
 #[cfg(target_os = "android")]
@@ -169,6 +170,13 @@ pub enum PdfOperation {
     Reorder,
 }
 
+#[derive(Debug, Clone)]
+pub struct PdfOperationResult {
+    pub out_path: String,
+    pub page_count: u32,
+    pub title: Option<String>,
+}
+
 pub fn handle_pdf_select(
     state: &mut AppState,
     fd: Option<i32>,
@@ -195,20 +203,18 @@ pub fn handle_pdf_select(
     Ok(())
 }
 
-pub fn handle_pdf_operation(
-    state: &mut AppState,
+pub fn perform_pdf_operation(
     op: PdfOperation,
-    primary_fd: Option<i32>,
+    primary_fd: i32,
     secondary_fd: Option<i32>,
     primary_uri: Option<&str>,
     _secondary_uri: Option<&str>,
     selected_pages: &[u32],
-) -> Result<String, String> {
+) -> Result<PdfOperationResult, String> {
     log_pdf_debug(&format!(
         "pdf_operation: op={op:?} primary_fd={primary_fd:?} secondary_fd={secondary_fd:?} primary_uri={primary_uri:?} selection={selected_pages:?}"
     ));
-    let primary_fd = primary_fd.ok_or_else(|| "missing_fd".to_string())? as RawFd;
-    let doc = load_document(primary_fd)?;
+    let doc = load_document(primary_fd as RawFd)?;
     let output_doc = match op {
         PdfOperation::Extract => keep_pages(doc, selected_pages)?,
         PdfOperation::Delete => delete_pages(doc, selected_pages)?,
@@ -226,16 +232,42 @@ pub fn handle_pdf_operation(
     log_pdf_debug(&format!(
         "pdf_operation_complete: op={op:?} page_count={page_count} output_path={out_path}"
     ));
-    state.pdf.last_output = Some(out_path.clone());
+    Ok(PdfOperationResult {
+        out_path,
+        page_count,
+        title: new_title,
+    })
+}
+
+#[allow(dead_code)]
+pub fn handle_pdf_operation(
+    state: &mut AppState,
+    op: PdfOperation,
+    primary_fd: Option<i32>,
+    secondary_fd: Option<i32>,
+    primary_uri: Option<&str>,
+    _secondary_uri: Option<&str>,
+    selected_pages: &[u32],
+) -> Result<String, String> {
+    let primary_fd = primary_fd.ok_or_else(|| "missing_fd".to_string())?;
+    let result = perform_pdf_operation(
+        op,
+        primary_fd,
+        secondary_fd,
+        primary_uri,
+        _secondary_uri,
+        selected_pages,
+    )?;
+    state.pdf.last_output = Some(result.out_path.clone());
     state.pdf.source_uri = primary_uri
         .map(|u| u.to_string())
         .or_else(|| state.pdf.source_uri.clone());
     state.pdf.last_error = None;
     state.pdf.selected_pages = selected_pages.to_vec();
-    state.pdf.page_count = Some(page_count);
-    state.pdf.current_title = new_title;
+    state.pdf.page_count = Some(result.page_count);
+    state.pdf.current_title = result.title;
     state.replace_current(Screen::PdfTools);
-    Ok(out_path)
+    Ok(result.out_path)
 }
 
 pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
@@ -281,12 +313,9 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         let selected_len = state.pdf.selected_pages.len();
         children.push(
             serde_json::to_value(
-                UiText::new(&format!(
-                    "Selected pages: {} / {}",
-                    selected_len, count
-                ))
-                .size(12.0)
-                .content_description("pdf_selected_summary"),
+                UiText::new(&format!("Selected pages: {} / {}", selected_len, count))
+                    .size(12.0)
+                    .content_description("pdf_selected_summary"),
             )
             .unwrap(),
         );
@@ -342,8 +371,10 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Open viewer", "pdf_preview_screen").id("pdf_preview_btn"))
-                .unwrap(),
+            serde_json::to_value(
+                UiButton::new("Open viewer", "pdf_preview_screen").id("pdf_preview_btn"),
+            )
+            .unwrap(),
         );
     }
 
@@ -428,7 +459,9 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             serde_json::to_value(
                 UiColumn::new(vec![
                     serde_json::to_value(
-                        UiText::new("Quick placement").size(13.0).content_description("pdf_sign_grid_label"),
+                        UiText::new("Quick placement")
+                            .size(13.0)
+                            .content_description("pdf_sign_grid_label"),
                     )
                     .unwrap(),
                     json!({
@@ -436,7 +469,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                         "columns": 3,
                         "padding": 4,
                         "children": grid_children
-                    })
+                    }),
                 ])
                 .padding(8),
             )
@@ -625,8 +658,6 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
     serde_json::to_value(UiColumn::new(children).padding(16)).unwrap()
 }
 
-
-
 fn load_document(fd: RawFd) -> Result<Document, String> {
     if fd < 0 {
         return Err("invalid_fd".into());
@@ -699,7 +730,9 @@ fn reorder_pages(mut doc: Document, order: &[u32]) -> Result<Document, String> {
     let pages: BTreeMap<u32, lopdf::ObjectId> = doc.get_pages().into_iter().collect();
     let mut page_ids: Vec<lopdf::ObjectId> = Vec::with_capacity(order.len());
     for p in order {
-        let id = pages.get(p).ok_or_else(|| "page_out_of_range".to_string())?;
+        let id = pages
+            .get(p)
+            .ok_or_else(|| "page_out_of_range".to_string())?;
         page_ids.push(*id);
     }
 
@@ -723,10 +756,7 @@ fn reorder_pages(mut doc: Document, order: &[u32]) -> Result<Document, String> {
     }
 
     for page_id in &page_ids {
-        if let Ok(page_dict) = doc
-            .get_object_mut(*page_id)
-            .and_then(|o| o.as_dict_mut())
-        {
+        if let Ok(page_dict) = doc.get_object_mut(*page_id).and_then(|o| o.as_dict_mut()) {
             page_dict.set("Parent", pages_root_id);
         }
     }
@@ -886,8 +916,6 @@ fn write_pdf(mut doc: Document, source_uri: Option<&str>) -> Result<String, Stri
     Ok(path_str)
 }
 
-
-
 pub fn handle_pdf_sign(
     state: &mut AppState,
     fd: RawFd,
@@ -904,7 +932,10 @@ pub fn handle_pdf_sign(
     img_height_px: Option<f64>,
     img_dpi: Option<f64>,
 ) -> Result<(), String> {
-    assert!(width > 0.0 && height > 0.0, "signature dimensions must be positive");
+    assert!(
+        width > 0.0 && height > 0.0,
+        "signature dimensions must be positive"
+    );
     if let Some(page_num) = page {
         assert!(page_num > 0, "page index must be 1-based");
     }

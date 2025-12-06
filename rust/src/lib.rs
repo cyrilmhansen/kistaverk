@@ -1,6 +1,6 @@
 mod features;
+mod router;
 mod state;
 mod ui;
-mod router;
 
 pub use router::*;

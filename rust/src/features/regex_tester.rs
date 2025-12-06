@@ -1,5 +1,8 @@
 use crate::state::{AppState, RegexMatchResult};
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput, maybe_push_back};
+use crate::ui::{
+    maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
+    TextInput as UiTextInput,
+};
 use regex::Regex;
 use serde_json::Value;
 
@@ -28,14 +31,17 @@ pub fn render_regex_tester_screen(state: &AppState) -> Value {
     ];
 
     if let Some(err) = &state.regex_tester.error {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap(),
-        );
+        children
+            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     } else if let Some(result) = &state.regex_tester.match_result {
         let status = if result.matched { "Match" } else { "No match" };
         children.push(
-            serde_json::to_value(UiText::new(status).size(14.0).content_description("regex_status"))
-                .unwrap(),
+            serde_json::to_value(
+                UiText::new(status)
+                    .size(14.0)
+                    .content_description("regex_status"),
+            )
+            .unwrap(),
         );
         if result.matched {
             for (idx, grp) in result.groups.iter().enumerate() {
@@ -52,7 +58,10 @@ pub fn render_regex_tester_screen(state: &AppState) -> Value {
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
-pub fn handle_regex_action(state: &mut AppState, bindings: &std::collections::HashMap<String, String>) {
+pub fn handle_regex_action(
+    state: &mut AppState,
+    bindings: &std::collections::HashMap<String, String>,
+) {
     state.regex_tester.pattern = bindings
         .get("regex_pattern")
         .cloned()

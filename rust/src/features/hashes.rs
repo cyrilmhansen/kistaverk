@@ -1,15 +1,15 @@
 use crate::state::{AppState, MultiHashResults};
+use crate::ui::{maybe_push_back, Button as UiButton, Text as UiText, TextInput as UiTextInput};
 use blake3::Hasher as Blake3;
 use crc32fast::Hasher as Crc32;
 use md4::Md4;
 use md5::Md5;
+use serde_json::{json, Value};
 use sha1::Sha1;
 use sha2::{digest::Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::os::unix::io::{FromRawFd, RawFd};
-use serde_json::{json, Value};
-use crate::ui::{Button as UiButton, Text as UiText, TextInput as UiTextInput, maybe_push_back};
 
 #[derive(Debug, Clone, Copy)]
 pub enum HashAlgo {
@@ -21,6 +21,7 @@ pub enum HashAlgo {
     Blake3,
 }
 
+#[allow(dead_code)]
 pub fn hash_label(algo: HashAlgo) -> &'static str {
     match algo {
         HashAlgo::Sha256 => "SHA-256",
@@ -83,6 +84,7 @@ pub fn handle_hash_action(
     }
 }
 
+#[allow(dead_code)]
 pub fn handle_hash_verify(
     state: &mut AppState,
     fd: Option<i32>,
@@ -122,11 +124,7 @@ pub fn handle_hash_verify(
 }
 
 #[allow(dead_code)]
-pub fn handle_multi_hash_action(
-    state: &mut AppState,
-    fd: Option<i32>,
-    path: Option<&str>,
-) {
+pub fn handle_multi_hash_action(state: &mut AppState, fd: Option<i32>, path: Option<&str>) {
     let source = match fd {
         Some(raw) if raw >= 0 => Some(HashSource::RawFd(raw as RawFd)),
         _ => path.map(HashSource::Path),
@@ -138,7 +136,9 @@ pub fn handle_multi_hash_action(
         return;
     };
 
-    let file_path_for_display = path.map(|s| s.to_string()).unwrap_or_else(|| "Selected file".to_string());
+    let file_path_for_display = path
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Selected file".to_string());
 
     match compute_all_hashes(source, file_path_for_display) {
         Ok(results) => {
@@ -250,7 +250,10 @@ fn hash_stream<R: Read>(reader: R, algo: HashAlgo) -> Result<String, String> {
     }
 }
 
-pub fn compute_all_hashes(source: HashSource<'_>, file_path_for_display: String) -> Result<MultiHashResults, String> {
+pub fn compute_all_hashes(
+    source: HashSource<'_>,
+    file_path_for_display: String,
+) -> Result<MultiHashResults, String> {
     let file = match source {
         HashSource::RawFd(fd) => unsafe { File::from_raw_fd(fd) },
         HashSource::Path(path) => File::open(path).map_err(|e| format!("open_failed:{e}"))?,
@@ -322,8 +325,12 @@ pub fn render_hash_verify_screen(state: &AppState) -> Value {
     if let Some(matches) = state.hash_match {
         let status = if matches { "Match ✅" } else { "Mismatch ❌" };
         children.push(
-            serde_json::to_value(UiText::new(status).size(14.0).content_description("hash_verify_status"))
-                .unwrap(),
+            serde_json::to_value(
+                UiText::new(status)
+                    .size(14.0)
+                    .content_description("hash_verify_status"),
+            )
+            .unwrap(),
         );
     }
     if let Some(hash) = &state.last_hash {
