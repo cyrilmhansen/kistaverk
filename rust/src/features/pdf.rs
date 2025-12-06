@@ -904,6 +904,25 @@ pub fn handle_pdf_sign(
     img_height_px: Option<f64>,
     img_dpi: Option<f64>,
 ) -> Result<(), String> {
+    assert!(width > 0.0 && height > 0.0, "signature dimensions must be positive");
+    if let Some(page_num) = page {
+        assert!(page_num > 0, "page index must be 1-based");
+    }
+    if let Some(x) = page_x_pct {
+        assert!(
+            (0.0..=1.0).contains(&x),
+            "page_x_pct must be normalized to 0..1"
+        );
+    }
+    if let Some(y) = page_y_pct {
+        assert!(
+            (0.0..=1.0).contains(&y),
+            "page_y_pct must be normalized to 0..1"
+        );
+    }
+    if let Some(dpi) = img_dpi {
+        assert!(dpi > 0.0, "img_dpi must be positive when provided");
+    }
     log_pdf_debug(&format!(
         "pdf_sign: fd={fd} uri={uri:?} page={page:?} pos=({pos_x},{pos_y}) pct=({page_x_pct:?},{page_y_pct:?}) size=({width}x{height}) img_px=({img_width_px:?}x{img_height_px:?}) dpi={img_dpi:?}"
     ));

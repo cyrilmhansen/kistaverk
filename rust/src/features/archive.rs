@@ -3,7 +3,7 @@ use crate::features::text_viewer::read_text_from_reader;
 use crate::state::{AppState, Screen};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::{copy, Write};
 use std::os::unix::io::{FromRawFd, RawFd};
@@ -191,51 +191,56 @@ fn rel_path(base: &Path, path: &Path) -> Result<String, String> {
 
 pub fn render_archive_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Archive Viewer").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("View contents of .zip files and extract items.").size(14.0)).unwrap(),
-        serde_json::to_value(
+        to_value_or_text(UiText::new("Archive Viewer").size(20.0), "archive_title"),
+        to_value_or_text(
+            UiText::new("View contents of .zip files and extract items.").size(14.0),
+            "archive_subtitle",
+        ),
+        to_value_or_text(
             UiButton::new("Open Archive", "archive_open")
                 .requires_file_picker(true)
                 .content_description("Pick an archive to list"),
-        )
-        .unwrap(),
+            "archive_open_btn",
+        ),
     ];
 
     if state.archive.path.is_some() && !state.archive.entries.is_empty() {
         children.push(
-            serde_json::to_value(
+            to_value_or_text(
                 UiButton::new("Extract All", "archive_extract_all")
                     .content_description("archive_extract_all"),
-            )
-            .unwrap(),
+                "archive_extract_all",
+            ),
         );
     }
 
     if let Some(err) = &state.archive.error {
         children.push(
-            serde_json::to_value(
+            to_value_or_text(
                 UiText::new(&format!("Error: {}", err))
                     .size(14.0)
                     .content_description("archive_error"),
-            )
-            .unwrap(),
+                "archive_error",
+            ),
         );
     }
 
     if let Some(path) = &state.archive.path {
         children.push(
-            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
+            to_value_or_text(UiText::new(&format!("File: {}", path)).size(12.0), "archive_path"),
         );
     }
     if let Some(msg) = &state.archive.last_output {
         children.push(
-            serde_json::to_value(UiText::new(msg).size(12.0).content_description("archive_status"))
-                .unwrap(),
+            to_value_or_text(
+                UiText::new(msg).size(12.0).content_description("archive_status"),
+                "archive_status",
+            ),
         );
     }
 
     if !state.archive.entries.is_empty() {
-        children.push(serde_json::to_value(UiText::new("Contents:").size(16.0)).unwrap());
+        children.push(to_value_or_text(UiText::new("Contents:").size(16.0), "archive_contents"));
         let mut rows = Vec::new();
         for (idx, entry) in state.archive.entries.iter().enumerate() {
             let icon = if entry.is_dir { "📁" } else { "📄" };
@@ -249,57 +254,67 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             if is_text_entry(entry) {
                 let action = format!("archive_open_text:{idx}");
                 entry_children.push(
-                    serde_json::to_value(
+                    to_value_or_text(
                         UiButton::new(&label, &action).content_description("archive_entry_text"),
-                    )
-                    .unwrap(),
+                        "archive_entry_text",
+                    ),
                 );
             } else {
                 entry_children.push(
-                    serde_json::to_value(
+                    to_value_or_text(
                         UiText::new(&label)
                             .size(14.0)
                             .content_description("archive_entry"),
-                    )
-                    .unwrap(),
+                        "archive_entry_label",
+                    ),
                 );
             }
-            entry_children.push(
-                serde_json::to_value(
-                    UiButton::new("Extract", &format!("archive_extract_entry:{idx}"))
-                        .content_description("archive_extract_entry"),
-                )
-                .unwrap(),
-            );
-            rows.push(serde_json::to_value(UiColumn::new(entry_children).padding(8)).unwrap());
+            entry_children.push(to_value_or_text(
+                UiButton::new("Extract", &format!("archive_extract_entry:{idx}"))
+                    .content_description("archive_extract_entry"),
+                "archive_extract_entry",
+            ));
+            rows.push(to_value_or_text(
+                UiColumn::new(entry_children).padding(8),
+                "archive_entry_row",
+            ));
         }
-        children.push(serde_json::to_value(UiColumn::new(rows).padding(8)).unwrap());
+        children.push(to_value_or_text(UiColumn::new(rows).padding(8), "archive_entry_list"));
         if state.archive.truncated {
             children.push(
-                serde_json::to_value(
+                to_value_or_text(
                     UiText::new("Showing first 500 entries (truncated)")
                         .size(12.0)
                         .content_description("archive_truncated"),
-                )
-                .unwrap(),
+                    "archive_truncated",
+                ),
             );
         }
     } else if state.archive.error.is_none() && state.archive.path.is_some() {
         children.push(
-            serde_json::to_value(
+            to_value_or_text(
                 UiText::new("No entries found or archive empty.")
                     .size(12.0)
                     .content_description("archive_empty"),
-            )
-            .unwrap(),
+                "archive_empty",
+            ),
         );
     }
 
     if state.nav_depth() > 1 {
-        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+        children.push(to_value_or_text(UiButton::new("Back", "back"), "archive_back"));
     }
 
-    serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()
+    to_value_or_text(UiColumn::new(children).padding(24), "archive_root")
+}
+
+fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
+    serde_json::to_value(value).unwrap_or_else(|e| {
+        json!({
+            "type": "Text",
+            "text": format!("{context}_serialize_error:{e}")
+        })
+    })
 }
 
 fn human_bytes(b: u64) -> String {

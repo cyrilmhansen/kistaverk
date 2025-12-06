@@ -4,54 +4,66 @@ use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, maybe_pu
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use serde_json::Value;
+use serde::Serialize;
+use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{copy, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
+    serde_json::to_value(value).unwrap_or_else(|e| {
+        json!({
+            "type": "Text",
+            "text": format!("{context}_serialize_error:{e}")
+        })
+    })
+}
+
 pub fn render_compression_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("GZIP Compression").size(20.0)).unwrap(),
-        serde_json::to_value(
+        to_value_or_text(UiText::new("GZIP Compression").size(20.0), "gzip_title"),
+        to_value_or_text(
             UiText::new("Compress or decompress single files using .gz.")
                 .size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
+            "gzip_subtitle",
+        ),
+        to_value_or_text(
             UiButton::new("Compress to .gz", "gzip_compress")
                 .requires_file_picker(true)
                 .content_description("gzip_compress_btn"),
-        )
-        .unwrap(),
-        serde_json::to_value(
+            "gzip_compress_btn",
+        ),
+        to_value_or_text(
             UiButton::new("Decompress .gz", "gzip_decompress")
                 .requires_file_picker(true)
                 .content_description("gzip_decompress_btn"),
-        )
-        .unwrap(),
+            "gzip_decompress_btn",
+        ),
     ];
 
     if let Some(msg) = &state.compression_status {
         children.push(
-            serde_json::to_value(UiText::new(msg).size(12.0).content_description("gzip_status"))
-                .unwrap(),
+            to_value_or_text(
+                UiText::new(msg).size(12.0).content_description("gzip_status"),
+                "gzip_status",
+            ),
         );
     }
 
     if let Some(err) = &state.compression_error {
         children.push(
-            serde_json::to_value(
+            to_value_or_text(
                 UiText::new(&format!("Error: {}", err))
                     .size(12.0)
                     .content_description("gzip_error"),
-            )
-            .unwrap(),
+                "gzip_error",
+            ),
         );
     }
 
     maybe_push_back(&mut children, state);
 
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+    to_value_or_text(UiColumn::new(children).padding(20), "gzip_root")
 }
 
 pub fn gzip_compress(path: &str) -> Result<PathBuf, String> {

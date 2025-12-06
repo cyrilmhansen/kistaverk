@@ -747,8 +747,12 @@ pub fn format_bytes(bytes: u64) -> String {
 
 pub fn render_multi_hash_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(Text::new("Multi-Hash Calculator").size(20.0)).unwrap(),
-        serde_json::to_value(Text::new("Select a file to compute MD5, SHA-1, SHA-256, and BLAKE3 hashes.").size(14.0)).unwrap(),
+        to_value_or_text(Text::new("Multi-Hash Calculator").size(20.0), "multi_hash_title"),
+        to_value_or_text(
+            Text::new("Select a file to compute MD5, SHA-1, SHA-256, and BLAKE3 hashes.")
+                .size(14.0),
+            "multi_hash_subtitle",
+        ),
         json!({
             "type": "Button",
             "text": "Pick File to Hash",
@@ -761,13 +765,16 @@ pub fn render_multi_hash_screen(state: &AppState) -> Value {
 
     if let Some(err) = &state.multi_hash_error {
         children.push(
-            serde_json::to_value(Text::new(&format!("Error: {}", err)).size(14.0)).unwrap(),
+            to_value_or_text(Text::new(&format!("Error: {}", err)).size(14.0), "multi_hash_error"),
         );
     }
 
     if let Some(results) = &state.multi_hash_results {
         children.push(
-            serde_json::to_value(Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0)).unwrap(),
+            to_value_or_text(
+                Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0),
+                "multi_hash_path",
+            ),
         );
 
         let hash_display = |label: &str, value: &str| {
@@ -775,9 +782,9 @@ pub fn render_multi_hash_screen(state: &AppState) -> Value {
                 "type": "Column",
                 "padding": 8,
                 "children": [
-                    serde_json::to_value(Text::new(label).size(12.0)).unwrap(),
-                    serde_json::to_value(Text::new(value).size(10.0)).unwrap(),
-                    serde_json::to_value(Button::new("Copy", "noop").copy_text(value)).unwrap(),
+                    to_value_or_text(Text::new(label).size(12.0), "multi_hash_label"),
+                    to_value_or_text(Text::new(value).size(10.0), "multi_hash_value"),
+                    to_value_or_text(Button::new("Copy", "noop").copy_text(value), "multi_hash_copy"),
                 ]
             })
         };
@@ -788,5 +795,14 @@ pub fn render_multi_hash_screen(state: &AppState) -> Value {
         children.push(hash_display("BLAKE3", &results.blake3));
     }
 
-    serde_json::to_value(Column::new(children).padding(24)).unwrap()
+    to_value_or_text(Column::new(children).padding(24), "multi_hash_root")
+}
+
+fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
+    serde_json::to_value(value).unwrap_or_else(|e| {
+        json!({
+            "type": "Text",
+            "text": format!("{context}_serialize_error:{e}")
+        })
+    })
 }

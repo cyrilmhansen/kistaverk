@@ -90,13 +90,16 @@ pub fn save_preset(tool_id: &str, name: &str, data: Value) -> Result<Preset, Str
     let dir = presets_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("mkdir_failed:{e}"))?;
 
-    let id = format!("{}_{}", tool_id, SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis());
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("clock_err:{e:?}"))?;
+    let id = format!("{}_{}", tool_id, now.as_millis());
     let preset = Preset {
         id: id.clone(),
         name: name.to_string(),
         tool_id: tool_id.to_string(),
         data,
-        created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+        created_at: now.as_secs(),
     };
 
     let path = dir.join(format!("{}.json", id));
@@ -116,19 +119,26 @@ pub fn delete_preset(id: &str) -> Result<(), String> {
 }
 
 pub fn render_preset_manager(state: &AppState) -> Value {
-    let mut children = vec![
-        serde_json::to_value(Text::new("Presets").size(20.0)).unwrap(),
-    ];
+    let mut children = vec![to_value_or_text(Text::new("Presets").size(20.0), "presets_title")];
 
     if let Some(tool) = &state.preset_state.current_tool_id {
-        children.push(serde_json::to_value(Text::new(&format!("Managing presets for: {}", tool)).size(14.0)).unwrap());
+        children.push(to_value_or_text(
+            Text::new(&format!("Managing presets for: {}", tool)).size(14.0),
+            "presets_tool",
+        ));
     }
 
     if let Some(msg) = &state.preset_state.last_message {
-        children.push(serde_json::to_value(Text::new(msg).size(12.0)).unwrap());
+        children.push(to_value_or_text(
+            Text::new(msg).size(12.0),
+            "presets_message",
+        ));
     }
     if let Some(err) = &state.preset_state.error {
-        children.push(serde_json::to_value(Text::new(&format!("Error: {}", err)).size(12.0)).unwrap());
+        children.push(to_value_or_text(
+            Text::new(&format!("Error: {}", err)).size(12.0),
+            "presets_error",
+        ));
     }
 
     let filtered: Vec<&Preset> = if let Some(tid) = &state.preset_state.current_tool_id {
@@ -138,21 +148,27 @@ pub fn render_preset_manager(state: &AppState) -> Value {
     };
 
     if filtered.is_empty() {
-        children.push(serde_json::to_value(Text::new("No presets found.").size(14.0)).unwrap());
+        children.push(to_value_or_text(
+            Text::new("No presets found.").size(14.0),
+            "presets_empty",
+        ));
     } else {
         for preset in filtered {
             let mut row_items = vec![
-                serde_json::to_value(Text::new(&preset.name).size(16.0)).unwrap(),
-                serde_json::to_value(Text::new(&format!("({})", preset.tool_id)).size(10.0)).unwrap(),
+                to_value_or_text(Text::new(&preset.name).size(16.0), "preset_name"),
+                to_value_or_text(
+                    Text::new(&format!("({})", preset.tool_id)).size(10.0),
+                    "preset_tool",
+                ),
             ];
             
             let load_btn = Button::new("Load", "preset_load")
                 .payload(json!({ "id": preset.id }));
-            row_items.push(serde_json::to_value(load_btn).unwrap());
+            row_items.push(to_value_or_text(load_btn, "preset_load_btn"));
 
             let del_btn = Button::new("Delete", "preset_delete")
                 .payload(json!({ "id": preset.id }));
-            row_items.push(serde_json::to_value(del_btn).unwrap());
+            row_items.push(to_value_or_text(del_btn, "preset_delete_btn"));
 
             children.push(json!({
                 "type": "Card",
@@ -166,17 +182,20 @@ pub fn render_preset_manager(state: &AppState) -> Value {
     }
 
     children.push(
-        serde_json::to_value(Button::new("Create New Preset", "preset_save_dialog")).unwrap()
+        to_value_or_text(Button::new("Create New Preset", "preset_save_dialog"), "preset_create_btn"),
     );
 
     maybe_push_back(&mut children, state);
-    serde_json::to_value(Column::new(children).padding(16)).unwrap()
+    to_value_or_text(Column::new(children).padding(16), "presets_root")
 }
 
 pub fn render_save_preset_dialog(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(Text::new("Save Preset").size(20.0)).unwrap(),
-        serde_json::to_value(Text::new("Enter a name for your preset:").size(14.0)).unwrap(),
+        to_value_or_text(Text::new("Save Preset").size(20.0), "presets_save_title"),
+        to_value_or_text(
+            Text::new("Enter a name for your preset:").size(14.0),
+            "presets_save_subtitle",
+        ),
         json!({
             "type": "Input",
             "bind_key": "preset_name",
@@ -186,13 +205,25 @@ pub fn render_save_preset_dialog(state: &AppState) -> Value {
     ];
 
     if let Some(err) = &state.preset_state.error {
-        children.push(serde_json::to_value(Text::new(&format!("Error: {}", err)).size(12.0)).unwrap());
+        children.push(to_value_or_text(
+            Text::new(&format!("Error: {}", err)).size(12.0),
+            "presets_save_error",
+        ));
     }
 
-    children.push(serde_json::to_value(Button::new("Save", "preset_save")).unwrap());
+    children.push(to_value_or_text(Button::new("Save", "preset_save"), "presets_save_btn"));
 
     maybe_push_back(&mut children, state);
-    serde_json::to_value(Column::new(children).padding(16)).unwrap()
+    to_value_or_text(Column::new(children).padding(16), "presets_save_root")
+}
+
+fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
+    serde_json::to_value(value).unwrap_or_else(|e| {
+        json!({
+            "type": "Text",
+            "text": format!("{context}_serialize_error:{e}")
+        })
+    })
 }
 
 // Helper to extract state for saving
