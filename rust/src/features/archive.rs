@@ -1,6 +1,6 @@
 use crate::features::storage::output_dir_for;
 use crate::features::text_viewer::read_text_from_reader;
-use crate::state::{AppState, Screen};
+use crate::state::AppState;
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -27,6 +27,13 @@ pub struct ArchiveState {
     pub last_output: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchiveOpenResult {
+    pub path: Option<String>,
+    pub entries: Vec<ArchiveEntry>,
+    pub truncated: bool,
+}
+
 impl ArchiveState {
     pub const fn new() -> Self {
         Self {
@@ -47,15 +54,20 @@ impl ArchiveState {
     }
 }
 
-pub fn handle_archive_open(
-    state: &mut AppState,
-    fd: RawFd,
-    path: Option<&str>,
-) -> Result<(), String> {
-    state.archive.reset();
-    state.archive.path = path.map(|s| s.to_string());
-
+pub fn open_archive_from_fd(fd: RawFd, path: Option<&str>) -> Result<ArchiveOpenResult, String> {
     let file = unsafe { File::from_raw_fd(fd) };
+    read_archive_entries(file, path)
+}
+
+pub fn open_archive_from_path(path: &str) -> Result<ArchiveOpenResult, String> {
+    let file = File::open(path).map_err(|e| format!("archive_open_failed:{e}"))?;
+    read_archive_entries(file, Some(path))
+}
+
+fn read_archive_entries(
+    file: File,
+    path: Option<&str>,
+) -> Result<ArchiveOpenResult, String> {
     let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_open_failed:{e}"))?;
 
     let mut entries = Vec::new();
@@ -69,11 +81,11 @@ pub fn handle_archive_open(
             });
         }
     }
-    state.archive.entries = entries;
-    state.archive.truncated = archive.len() > limit;
-    state.archive.error = None;
-    state.replace_current(Screen::ArchiveTools);
-    Ok(())
+    Ok(ArchiveOpenResult {
+        path: path.map(|s| s.to_string()),
+        entries,
+        truncated: archive.len() > limit,
+    })
 }
 
 pub fn create_archive(source_path: &str) -> Result<PathBuf, String> {

@@ -1,5 +1,5 @@
 use crate::features;
-use crate::features::archive::{handle_archive_open, render_archive_screen};
+use crate::features::archive::{self, render_archive_screen, ArchiveOpenResult};
 use crate::features::color_tools::{handle_color_action, render_color_screen};
 use crate::features::compression::{gzip_compress, gzip_decompress, render_compression_screen};
 use crate::features::dithering::{process_dithering, render_dithering_screen, save_fd_to_temp};
@@ -199,6 +199,12 @@ struct PdfWorkerResult {
     source_uri: Option<String>,
 }
 
+#[derive(Clone)]
+struct ArchiveCompressResult {
+    open: ArchiveOpenResult,
+    status: String,
+}
+
 enum WorkerJob {
     Hash {
         source: HashSourceInput,
@@ -224,6 +230,20 @@ enum WorkerJob {
         scale: u32,
     },
     PdfOperation(PdfWorkerArgs),
+    ArchiveOpen {
+        fd: i32,
+        path: Option<String>,
+    },
+    ArchiveCompress {
+        source_path: String,
+    },
+    ArchiveExtractAll {
+        archive_path: String,
+    },
+    ArchiveExtractEntry {
+        archive_path: String,
+        index: u32,
+    },
 }
 
 enum WorkerResult {
@@ -247,6 +267,16 @@ enum WorkerResult {
     },
     PdfOperation {
         value: Result<PdfWorkerResult, String>,
+    },
+    ArchiveOpen {
+        value: Result<ArchiveOpenResult, String>,
+    },
+    ArchiveCompress {
+        value: Result<ArchiveCompressResult, String>,
+    },
+    ArchiveExtract {
+        archive_path: String,
+        value: Result<String, String>,
     },
 }
 
@@ -342,6 +372,52 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
                 source_uri: args.primary_uri.clone(),
             });
             WorkerResult::PdfOperation { value }
+        }
+        WorkerJob::ArchiveOpen { fd, path } => {
+            test_worker_delay();
+            let value = archive::open_archive_from_fd(fd as RawFd, path.as_deref());
+            WorkerResult::ArchiveOpen { value }
+        }
+        WorkerJob::ArchiveCompress { source_path } => {
+            test_worker_delay();
+            let value = archive::create_archive(&source_path).and_then(|out| {
+                let open_res = archive::open_archive_from_path(
+                    out.to_string_lossy().as_ref(),
+                )?;
+                Ok(ArchiveCompressResult {
+                    status: format!("Archive created at {}", out.display()),
+                    open: open_res,
+                })
+            });
+            WorkerResult::ArchiveCompress { value }
+        }
+        WorkerJob::ArchiveExtractAll { archive_path } => {
+            test_worker_delay();
+            let value = {
+                let dest = archive::archive_output_root(&archive_path);
+                archive::extract_all(&archive_path, &dest).map(|count| {
+                    format!("Extracted {count} entries to {}", dest.display())
+                })
+            };
+            WorkerResult::ArchiveExtract {
+                archive_path,
+                value,
+            }
+        }
+        WorkerJob::ArchiveExtractEntry {
+            archive_path,
+            index,
+        } => {
+            test_worker_delay();
+            let value = {
+                let dest = archive::archive_output_root(&archive_path);
+                archive::extract_entry(&archive_path, &dest, index)
+                    .map(|out| format!("Extracted to {}", out.display()))
+            };
+            WorkerResult::ArchiveExtract {
+                archive_path,
+                value,
+            }
         }
     }
 }
@@ -1853,18 +1929,28 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
         }
         Action::ArchiveOpen { fd, path, error } => {
             state.push_screen(Screen::ArchiveTools);
+            state.archive.error = error.clone();
+            state.archive.last_output = None;
+            state.archive.entries.clear();
+            state.archive.truncated = false;
+            state.archive.path = path.clone();
             let mut fd_handle = FdHandle::new(fd);
             if let Some(err) = error {
                 state.archive.error = Some(err);
-                state.archive.last_output = None;
             } else if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_archive_open(state, raw_fd, path.as_deref()) {
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Opening archive...".into());
+                state.replace_current(Screen::Loading);
+                let job = WorkerJob::ArchiveOpen { fd: raw_fd, path };
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.archive.error = Some(e);
-                    state.archive.last_output = None;
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.archive.error = Some("missing_fd".into());
-                state.archive.last_output = None;
             }
             None
         }
@@ -1872,28 +1958,26 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
             state.push_screen(Screen::ArchiveTools);
             state.archive.error = None;
             state.archive.last_output = None;
+            state.archive.entries.clear();
+            state.archive.truncated = false;
+            state.archive.path = None;
             if let Some(err) = error {
                 state.archive.error = Some(err);
             } else if let Some(path) = path {
-                match features::archive::create_archive(&path) {
-                    Ok(out) => {
-                        state.archive.last_output =
-                            Some(format!("Archive created at {}", out.display()));
-                        if let Ok(file) = File::open(&out) {
-                            let raw_fd = std::os::unix::io::IntoRawFd::into_raw_fd(file);
-                            if let Err(e) = handle_archive_open(
-                                state,
-                                raw_fd,
-                                Some(out.to_string_lossy().as_ref()),
-                            ) {
-                                state.archive.error = Some(e);
-                            }
-                        } else {
-                            state.archive.error = Some("archive_reopen_failed:open".into());
-                            state.archive.last_output = None;
-                        }
+                if fd.is_some() {
+                    state.archive.error = Some("archive_compress_requires_path".into());
+                } else {
+                    state.loading_with_spinner = true;
+                    state.loading_message = Some("Compressing...".into());
+                    state.replace_current(Screen::Loading);
+                    let job = WorkerJob::ArchiveCompress { source_path: path };
+                    if let Err(e) = STATE.worker().enqueue(job) {
+                        state.archive.error = Some(e);
                     }
-                    Err(e) => state.archive.error = Some(e),
+                    #[cfg(test)]
+                    {
+                        apply_worker_results(state);
+                    }
                 }
             } else if fd.is_some() {
                 state.archive.error = Some("archive_compress_requires_path".into());
@@ -1933,42 +2017,48 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
         }
         Action::ArchiveExtractAll => {
             state.replace_current(Screen::ArchiveTools);
+            state.archive.last_output = None;
             if let Some(path) = state.archive.path.clone() {
-                let dest = features::archive::archive_output_root(&path);
-                match features::archive::extract_all(&path, &dest) {
-                    Ok(count) => {
-                        state.archive.error = None;
-                        state.archive.last_output =
-                            Some(format!("Extracted {count} entries to {}", dest.display()));
-                    }
-                    Err(e) => {
-                        state.archive.error = Some(e);
-                        state.archive.last_output = None;
-                    }
+                state.archive.error = None;
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Extracting...".into());
+                state.replace_current(Screen::Loading);
+                let job = WorkerJob::ArchiveExtractAll {
+                    archive_path: path,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.archive.error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.archive.error = Some("archive_missing_path".into());
-                state.archive.last_output = None;
             }
             None
         }
         Action::ArchiveExtractEntry { index } => {
             state.replace_current(Screen::ArchiveTools);
+            state.archive.last_output = None;
             if let Some(path) = state.archive.path.clone() {
-                let dest = features::archive::archive_output_root(&path);
-                match features::archive::extract_entry(&path, &dest, index) {
-                    Ok(out) => {
-                        state.archive.error = None;
-                        state.archive.last_output = Some(format!("Extracted to {}", out.display()));
-                    }
-                    Err(e) => {
-                        state.archive.error = Some(e);
-                        state.archive.last_output = None;
-                    }
+                state.archive.error = None;
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Extracting...".into());
+                state.replace_current(Screen::Loading);
+                let job = WorkerJob::ArchiveExtractEntry {
+                    archive_path: path,
+                    index,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.archive.error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.archive.error = Some("archive_missing_path".into());
-                state.archive.last_output = None;
             }
             None
         }
@@ -3677,6 +3767,55 @@ mod tests {
     }
 
     #[test]
+    fn archive_open_enqueues_and_releases_mutex() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(200, Ordering::SeqCst);
+
+        let mut zip_file = NamedTempFile::new().unwrap();
+        {
+            let mut writer = zip::ZipWriter::new(&mut zip_file);
+            let options =
+                FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            writer.start_file("note.txt", options).unwrap();
+            writer.write_all(b"hello from zip").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let fd = File::open(zip_file.path()).unwrap().into_raw_fd();
+        let mut open_cmd = make_command("archive_open");
+        open_cmd.fd = Some(fd);
+        open_cmd.path = Some(zip_file.path().to_string_lossy().into_owned());
+
+        let start = Instant::now();
+        let ui = handle_command(open_cmd).expect("archive open dispatch should succeed");
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "dispatch held the UI mutex for too long"
+        );
+        assert_contains_text(&ui, "Opening archive");
+        assert!(
+            STATE.ui_try_lock().is_some(),
+            "state mutex should be free while archive worker runs"
+        );
+
+        std::thread::sleep(Duration::from_millis(250));
+        handle_command(make_command("init")).expect("refresh after worker should succeed");
+        let state = STATE.ui_lock();
+        assert!(state
+            .archive
+            .entries
+            .iter()
+            .any(|e| e.name == "note.txt"));
+        assert!(matches!(state.current_screen(), Screen::ArchiveTools));
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
     fn hash_file_sha1_via_fd_updates_ui_and_state() {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
@@ -4392,6 +4531,74 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.last_error = Some(e);
                     state.pdf.last_output = None;
                     state.replace_current(Screen::PdfTools);
+                }
+            },
+            WorkerResult::ArchiveOpen { value } => match value {
+                Ok(res) => {
+                    state.archive.path = res.path;
+                    state.archive.entries = res.entries;
+                    state.archive.truncated = res.truncated;
+                    state.archive.error = None;
+                    state.archive.last_output = None;
+                    state.replace_current(Screen::ArchiveTools);
+                }
+                Err(e) => {
+                    state.archive.error = Some(e);
+                    state.archive.last_output = None;
+                    state.archive.entries.clear();
+                    state.archive.truncated = false;
+                    state.replace_current(Screen::ArchiveTools);
+                }
+            },
+            WorkerResult::ArchiveCompress { value } => match value {
+                Ok(res) => {
+                    state.archive.path = res.open.path;
+                    state.archive.entries = res.open.entries;
+                    state.archive.truncated = res.open.truncated;
+                    state.archive.error = None;
+                    state.archive.last_output = Some(res.status);
+                    state.replace_current(Screen::ArchiveTools);
+                }
+                Err(e) => {
+                    state.archive.error = Some(e);
+                    state.archive.last_output = None;
+                    state.archive.entries.clear();
+                    state.archive.truncated = false;
+                    state.replace_current(Screen::ArchiveTools);
+                }
+            },
+            WorkerResult::ArchiveExtract {
+                archive_path,
+                value,
+            } => match value {
+                Ok(status) => {
+                    let path_matches = state
+                        .archive
+                        .path
+                        .as_deref()
+                        .map(|p| p == archive_path)
+                        .unwrap_or(true);
+                    if path_matches {
+                        if state.archive.path.is_none() {
+                            state.archive.path = Some(archive_path);
+                        }
+                        state.archive.last_output = Some(status);
+                        state.archive.error = None;
+                        state.replace_current(Screen::ArchiveTools);
+                    }
+                }
+                Err(e) => {
+                    let path_matches = state
+                        .archive
+                        .path
+                        .as_deref()
+                        .map(|p| p == archive_path)
+                        .unwrap_or(true);
+                    if path_matches {
+                        state.archive.error = Some(e);
+                        state.archive.last_output = None;
+                        state.replace_current(Screen::ArchiveTools);
+                    }
                 }
             },
         }

@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-06)
+- **16KB Alignment (Android 15)**: Updated build config to enforce 16KB page alignment for native libraries.
 - **Image Tools (Hybrid)**: Implemented Image Converter and Resizer. Rust manages UI/State; Kotlin handles image processing (Bitmap/Compress). Features: Format conversion (WebP/PNG/JPEG), Resizing (Scale/Quality), and Target Size capping. *Tests added: Rendering logic and State serialization verified.*
 - **Camera Scanning (Rust-Driven)**: Implemented robust QR code scanning for Receiver using `rxing` pure-Rust decoder. JNI bridge passes camera frames (Y-plane) to Rust, and CameraX manages the camera lifecycle and frame acquisition on the Android side.
 - **QR Data Transfer (Receiver)**: Implemented protocol logic for parsing and reassembling split files (`QRTX` header). Added manual entry UI for verification. Logic verified via unit tests.
