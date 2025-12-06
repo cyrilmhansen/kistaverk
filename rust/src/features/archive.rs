@@ -366,7 +366,7 @@ fn is_text_entry(entry: &ArchiveEntry) -> bool {
     TEXT_EXTENSIONS.iter().any(|ext| name.ends_with(ext))
 }
 
-pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String), String> {
+pub fn read_text_entry(state: &AppState, index: u32) -> Result<(String, String), String> {
     let archive_path = state
         .archive
         .path
@@ -375,7 +375,7 @@ pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String
     let entry = state
         .archive
         .entries
-        .get(index)
+        .get(index as usize)
         .ok_or_else(|| "archive_entry_out_of_range".to_string())?;
 
     if entry.is_dir {
@@ -388,7 +388,7 @@ pub fn read_text_entry(state: &AppState, index: usize) -> Result<(String, String
     let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
     let mut entry_file = archive
-        .by_index(index)
+        .by_index(index as usize)
         .map_err(|e| format!("archive_entry_open_failed:{e}"))?;
 
     let text = read_text_from_reader(&mut entry_file)?;
@@ -425,16 +425,17 @@ pub fn extract_all(archive_path: &str, dest_root: &Path) -> Result<usize, String
 pub fn extract_entry(
     archive_path: &str,
     dest_root: &Path,
-    index: usize,
+    index: u32,
 ) -> Result<PathBuf, String> {
     fs::create_dir_all(dest_root).map_err(|e| format!("create_dest_failed:{e}"))?;
     let file = File::open(archive_path).map_err(|e| format!("archive_reopen_failed:{e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("archive_reopen_failed:{e}"))?;
-    if index >= archive.len() {
+    let index_usize = index as usize;
+    if index_usize >= archive.len() {
         return Err("archive_entry_out_of_range".into());
     }
     let mut entry = archive
-        .by_index(index)
+        .by_index(index_usize)
         .map_err(|e| format!("archive_entry_open_failed:{e}"))?;
     let out_path = safe_join(dest_root, entry.name())?;
     if entry.name().ends_with('/') || entry.is_dir() {

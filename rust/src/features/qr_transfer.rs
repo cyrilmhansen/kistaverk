@@ -63,7 +63,7 @@ pub fn decode_qr_frame_luma(
 pub struct QrSlideshowState {
     pub source_path: Option<String>,
     pub chunks: Vec<String>,
-    pub current_index: usize,
+    pub current_index: u32,
     pub is_playing: bool,
     pub interval_ms: u64,
     pub error: Option<String>,
@@ -175,11 +175,16 @@ pub fn refresh_current_qr(state: &mut AppState) -> Result<(), String> {
         state.qr_slideshow.current_qr_base64 = None;
         return Ok(());
     }
+    let max_index = state
+        .qr_slideshow
+        .chunks
+        .len()
+        .saturating_sub(1) as u32;
     let idx = state
         .qr_slideshow
         .current_index
-        .min(state.qr_slideshow.chunks.len().saturating_sub(1));
-    let payload = &state.qr_slideshow.chunks[idx];
+        .min(max_index);
+    let payload = &state.qr_slideshow.chunks[idx as usize];
     let image_b64 = qr_png_base64(payload)?;
     state.qr_slideshow.current_index = idx;
     state.qr_slideshow.current_qr_base64 = Some(image_b64);
@@ -196,14 +201,14 @@ pub fn advance_frame(state: &mut AppState, step: isize) -> Result<(), String> {
     if next < 0 {
         next += len;
     }
-    state.qr_slideshow.current_index = next as usize;
+    state.qr_slideshow.current_index = next as u32;
     refresh_current_qr(state)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct QrReceiveState {
     pub chunks: Vec<Option<Vec<u8>>>,
-    pub total_chunks: Option<usize>,
+    pub total_chunks: Option<u32>,
     pub last_scanned: Option<String>,
     pub status: Option<String>,
     pub error: Option<String>,
@@ -232,16 +237,16 @@ pub(crate) fn chunk_bytes(bytes: &[u8]) -> Vec<String> {
         return Vec::new();
     }
     let mut chunks = Vec::new();
+    let total_chunks = ((bytes.len() + CHUNK_BYTES - 1) / CHUNK_BYTES) as u32;
     for (i, chunk) in bytes.chunks(CHUNK_BYTES).enumerate() {
-        let total_chunks = (bytes.len() + CHUNK_BYTES - 1) / CHUNK_BYTES;
         let encoded = base64::engine::general_purpose::STANDARD.encode(chunk);
-        let payload = format!("{}|{}/{}|{}", HEADER_PREFIX, i + 1, total_chunks, encoded);
+        let payload = format!("{}|{}/{}|{}", HEADER_PREFIX, i as u32 + 1, total_chunks, encoded);
         chunks.push(payload);
     }
     chunks
 }
 
-fn parse_qr_payload(payload: &str) -> Result<(usize, usize, Vec<u8>), String> {
+fn parse_qr_payload(payload: &str) -> Result<(u32, u32, Vec<u8>), String> {
     let mut parts = payload.splitn(3, '|');
     let prefix = parts.next().ok_or_else(|| "qr_invalid_header".to_string())?;
     if prefix != HEADER_PREFIX {
@@ -253,12 +258,12 @@ fn parse_qr_payload(payload: &str) -> Result<(usize, usize, Vec<u8>), String> {
     let mut order_split = order.split('/');
     let index = order_split
         .next()
-        .and_then(|s| s.parse::<usize>().ok())
+        .and_then(|s| s.parse::<u32>().ok())
         .filter(|v| *v > 0)
         .ok_or_else(|| "qr_invalid_index".to_string())?;
     let total = order_split
         .next()
-        .and_then(|s| s.parse::<usize>().ok())
+        .and_then(|s| s.parse::<u32>().ok())
         .filter(|v| *v > 0)
         .ok_or_else(|| "qr_invalid_total".to_string())?;
     let data_b64 = parts
@@ -276,31 +281,30 @@ pub fn handle_receive_scan(state: &mut AppState, payload: &str) -> Result<(), St
         None => {
             state.qr_receive.total_chunks = Some(total);
             state.qr_receive.chunks.clear();
-            state.qr_receive.chunks.resize(total, None);
+            state.qr_receive.chunks.resize(total as usize, None);
         }
         _ => {}
     }
     if index == 0 || index > total {
         return Err("qr_index_out_of_bounds".into());
     }
-    if state.qr_receive.chunks.len() < total {
-        state.qr_receive.chunks.resize(total, None);
+    if state.qr_receive.chunks.len() < total as usize {
+        state.qr_receive.chunks.resize(total as usize, None);
     }
-    state.qr_receive.chunks[index - 1] = Some(data);
+    state.qr_receive.chunks[index as usize - 1] = Some(data);
     state.qr_receive.last_scanned = Some(payload.to_string());
-    state.qr_receive.status = Some(format!(
-        "Received {}/{}",
-        state.qr_receive.chunks.iter().filter(|c| c.is_some()).count(),
-        total,
-    ));
-    state.qr_receive.error = None;
-    if state
+    let received = state
         .qr_receive
         .chunks
         .iter()
         .filter(|c| c.is_some())
-        .count()
-        == total
+        .count() as u32;
+    state.qr_receive.status = Some(format!(
+        "Received {}/{}",
+        received, total,
+    ));
+    state.qr_receive.error = None;
+    if received as usize == total as usize
     {
         match finalize_receive(state) {
             Ok(bytes) => {
@@ -319,10 +323,16 @@ pub fn finalize_receive(state: &mut AppState) -> Result<Vec<u8>, String> {
         .total_chunks
         .ok_or_else(|| "qr_no_total".to_string())?;
     let mut data = Vec::new();
-    if state.qr_receive.chunks.len() < total {
+    if state.qr_receive.chunks.len() < total as usize {
         return Err("qr_incomplete".into());
     }
-    for (idx, chunk_opt) in state.qr_receive.chunks.iter().enumerate().take(total) {
+    for (idx, chunk_opt) in state
+        .qr_receive
+        .chunks
+        .iter()
+        .enumerate()
+        .take(total as usize)
+    {
         let chunk = chunk_opt
             .as_ref()
             .ok_or_else(|| format!("qr_missing_chunk:{}", idx + 1))?;
@@ -373,8 +383,8 @@ pub fn render_qr_slideshow_screen(state: &AppState) -> Value {
     }
 
     if !state.qr_slideshow.chunks.is_empty() {
-        let total = state.qr_slideshow.chunks.len();
-        let idx = state.qr_slideshow.current_index + 1;
+        let total = state.qr_slideshow.chunks.len() as u32;
+        let idx = state.qr_slideshow.current_index.saturating_add(1);
         children.push(
             serde_json::to_value(
                 UiText::new(&format!("Frame {idx}/{total}")).size(14.0),
@@ -475,12 +485,17 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
         children.push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
     }
     if let Some(total) = state.qr_receive.total_chunks {
+        let received = state
+            .qr_receive
+            .chunks
+            .iter()
+            .filter(|c| c.is_some())
+            .count() as u32;
         children.push(
             serde_json::to_value(
                 UiText::new(&format!(
                     "Progress: {}/{}",
-                    state.qr_receive.chunks.iter().filter(|c| c.is_some()).count(),
-                    total
+                    received, total
                 ))
                 .size(12.0),
             )
@@ -512,7 +527,15 @@ pub fn render_qr_receive_screen(state: &AppState) -> Value {
     } else if state
         .qr_receive
         .total_chunks
-        .map(|t| state.qr_receive.chunks.iter().filter(|c| c.is_some()).count() == t)
+        .map(|t| {
+            state
+                .qr_receive
+                .chunks
+                .iter()
+                .filter(|c| c.is_some())
+                .count() as u32
+                == t
+        })
         .unwrap_or(false)
     {
         children.push(
@@ -549,9 +572,9 @@ mod tests {
         state.qr_slideshow.current_index = 0;
         refresh_current_qr(&mut state).unwrap();
         advance_frame(&mut state, 1).unwrap();
-        assert_eq!(state.qr_slideshow.current_index, 1);
+        assert_eq!(state.qr_slideshow.current_index, 1u32);
         advance_frame(&mut state, 1).unwrap();
-        assert_eq!(state.qr_slideshow.current_index, 0);
+        assert_eq!(state.qr_slideshow.current_index, 0u32);
     }
 
     #[test]

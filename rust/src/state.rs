@@ -264,8 +264,8 @@ impl AppState {
         self.nav_stack.last().cloned().unwrap_or(Screen::Home)
     }
 
-    pub fn nav_depth(&self) -> usize {
-        let depth = self.nav_stack.len();
+    pub fn nav_depth(&self) -> u32 {
+        let depth = self.nav_stack.len() as u32;
         if depth == 0 {
             1
         } else {

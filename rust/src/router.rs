@@ -423,11 +423,11 @@ enum Action {
         error: Option<String>,
     },
     ArchiveOpenText {
-        index: usize,
+        index: u32,
     },
     ArchiveExtractAll,
     ArchiveExtractEntry {
-        index: usize,
+        index: u32,
     },
     CompressionScreen,
     GzipCompress {
@@ -874,14 +874,14 @@ fn parse_action(command: Command) -> Result<Action, String> {
         other => {
             if let Some(idx) = other.strip_prefix("archive_open_text:") {
                 let index = idx
-                    .parse::<usize>()
+                    .parse::<u32>()
                     .map_err(|_| format!("invalid_archive_index:{idx}"))?;
                 Ok(Action::ArchiveOpenText { index })
             } else if other == "archive_extract_all" {
                 Ok(Action::ArchiveExtractAll)
             } else if let Some(idx) = other.strip_prefix("archive_extract_entry:") {
                 let index = idx
-                    .parse::<usize>()
+                    .parse::<u32>()
                     .map_err(|_| format!("invalid_archive_index:{idx}"))?;
                 Ok(Action::ArchiveExtractEntry { index })
             } else if other == "multi_hash_screen" {
@@ -1716,7 +1716,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                     state.text_view_path = Some(label);
                     state.text_view_content = Some(text);
                     state.text_view_error = None;
-                    if let Some(entry) = state.archive.entries.get(index) {
+                    if let Some(entry) = state.archive.entries.get(index as usize) {
                         state.text_view_language = guess_language_from_path(&entry.name);
                     } else {
                         state.text_view_language = None;
@@ -1726,7 +1726,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                     state.text_view_error = Some(e);
                     state.text_view_content = None;
                     state.text_view_language = None;
-                    if let Some(entry) = state.archive.entries.get(index) {
+                    if let Some(entry) = state.archive.entries.get(index as usize) {
                         state.text_view_path = state
                             .archive
                             .path
