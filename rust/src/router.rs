@@ -3767,6 +3767,45 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_jni_call_proceeds_while_worker_runs() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(300, Ordering::SeqCst);
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let mut hash_cmd = make_command("hash_file_sha256");
+        hash_cmd.path = Some(file.path().to_string_lossy().into_owned());
+        handle_command(hash_cmd).expect("hash dispatch should succeed");
+
+        let start = Instant::now();
+        let inc_ui = handle_command(make_command("increment"))
+            .expect("increment should not be blocked by worker");
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "increment waited too long for state mutex"
+        );
+        assert_contains_text(&inc_ui, "Tool menu");
+
+        let state = STATE.ui_lock();
+        assert_eq!(state.counter, 1);
+        drop(state);
+
+        std::thread::sleep(Duration::from_millis(350));
+        handle_command(make_command("init")).expect("refresh should apply worker result");
+        let state = STATE.ui_lock();
+        assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
+        assert!(state.last_error.is_none());
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+        TEST_WORKER_DELAY_MS.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
     fn archive_open_enqueues_and_releases_mutex() {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
