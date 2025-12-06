@@ -61,6 +61,31 @@ class UiRenderer(
     private val renderMetaTag = R.id.render_meta_tag
     private val bindKeyTag = R.id.bind_key_tag
     private val dataTag = R.id.data_tag
+    private val creators: Map<String, (JSONObject, View?) -> View> = mapOf(
+        "Column" to { data, matched -> createColumn(data, matched as? LinearLayout) },
+        "Section" to { data, matched -> createSection(data, matched as? LinearLayout) },
+        "Card" to { data, matched -> createCard(data, matched as? LinearLayout) },
+        "Text" to { data, matched -> createText(data, matched as? TextView) },
+        "Button" to { data, matched -> createButton(data, matched as? Button) },
+        "ShaderToy" to { data, matched -> createShaderToy(data, matched as? ShaderToyView) },
+        "TextInput" to { data, matched -> createTextInput(data, matched as? EditText) },
+        "Checkbox" to { data, matched -> createCheckbox(data, matched as? CheckBox) },
+        "Progress" to { data, matched -> createProgress(data, matched as? LinearLayout) },
+        "Grid" to { data, matched -> createGrid(data, matched as? LinearLayout) },
+        "ImageBase64" to { data, matched -> createImageBase64(data, matched as? LinearLayout) },
+        "ColorSwatch" to { data, matched -> createColorSwatch(data, matched) },
+        "PdfPagePicker" to { data, matched -> createPdfPagePicker(data, matched as? HorizontalScrollView) },
+        "SignaturePad" to { data, matched -> createSignaturePad(data, matched as? SignaturePadView) },
+        "PdfSignPlacement" to { data, matched -> createPdfSignPlacement(data, matched as? SignPlacementView) },
+        "PdfSignPreview" to { data, matched -> createPdfSignPreview(data, matched as? PdfSignPreview) },
+        "PdfPreviewGrid" to { data, matched -> createPdfPreviewGrid(data, matched as? ScrollView) },
+        "PdfSinglePage" to { data, matched -> createPdfSinglePage(data, matched as? ImageView) },
+        "DepsList" to { data, matched -> createDepsList(data, matched as? LinearLayout) },
+        "CodeView" to { data, matched -> createCodeView(data, matched as? WebView) },
+        "Compass" to { data, matched -> createCompass(data, matched) },
+        "Barometer" to { data, matched -> createBarometer(data, matched as? SensorShaderView) },
+        "Magnetometer" to { data, matched -> createMagnetometer(data, matched as? SensorShaderView) },
+    )
     private val host = FrameLayout(context).apply {
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -202,33 +227,8 @@ class UiRenderer(
         val type = data.optString("type", "")
         val nodeId = resolveNodeId(data)
         val matched = if (existing != null && matchesMeta(existing, type, nodeId)) existing else null
-        return when (type) {
-            "Column" -> createColumn(data, matched as? LinearLayout)
-            "Section" -> createSection(data, matched as? LinearLayout)
-            "Card" -> createCard(data, matched as? LinearLayout)
-            "Text" -> createText(data, matched as? TextView)
-            "Button" -> createButton(data, matched as? Button)
-            "ShaderToy" -> createShaderToy(data, matched as? ShaderToyView)
-            "TextInput" -> createTextInput(data, matched as? EditText)
-            "Checkbox" -> createCheckbox(data, matched as? CheckBox)
-            "Progress" -> createProgress(data, matched as? LinearLayout)
-            "Grid" -> createGrid(data, matched as? LinearLayout)
-            "ImageBase64" -> createImageBase64(data, matched as? LinearLayout)
-            "ColorSwatch" -> createColorSwatch(data, matched)
-            "PdfPagePicker" -> createPdfPagePicker(data, matched as? HorizontalScrollView)
-            "SignaturePad" -> createSignaturePad(data, matched as? SignaturePadView)
-            "PdfSignPlacement" -> createPdfSignPlacement(data, matched as? SignPlacementView)
-            "PdfSignPreview" -> createPdfSignPreview(data, matched as? PdfSignPreview)
-            "PdfPreviewGrid" -> createPdfPreviewGrid(data, matched as? ScrollView)
-            "PdfSinglePage" -> createPdfSinglePage(data, matched as? ImageView)
-            "DepsList" -> createDepsList(data, matched as? LinearLayout)
-            "CodeView" -> createCodeView(data, matched as? WebView)
-            "Compass" -> createCompass(data, matched)
-            "Barometer" -> createBarometer(data, matched as? SensorShaderView)
-            "Magnetometer" -> createMagnetometer(data, matched as? SensorShaderView)
-            "" -> createErrorView("Missing type")
-            else -> createErrorView("Unknown: $type")
-        }
+        val creator = creators[type] ?: return createErrorView(if (type.isBlank()) "Missing type" else "Unknown: $type")
+        return creator.invoke(data, matched)
     }
 
     private fun validate(node: JSONObject): String? {
