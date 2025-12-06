@@ -41,6 +41,7 @@ pub struct HashVerifyResult {
     pub algo: HashAlgo,
 }
 
+#[allow(dead_code)]
 pub fn handle_hash_action(
     state: &mut AppState,
     fd: Option<i32>,
@@ -120,6 +121,7 @@ pub fn handle_hash_verify(
     }
 }
 
+#[allow(dead_code)]
 pub fn handle_multi_hash_action(
     state: &mut AppState,
     fd: Option<i32>,
@@ -155,7 +157,7 @@ pub enum HashSource<'a> {
     Path(&'a str),
 }
 
-fn compute_hash(source: HashSource<'_>, algo: HashAlgo) -> Result<String, String> {
+pub fn compute_hash(source: HashSource<'_>, algo: HashAlgo) -> Result<String, String> {
     let file = match source {
         HashSource::RawFd(fd) => unsafe { File::from_raw_fd(fd) },
         HashSource::Path(path) => File::open(path).map_err(|e| format!("open_failed:{e}"))?,

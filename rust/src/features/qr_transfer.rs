@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn decode_qr_frame_stub_returns_error() {
         let buf = vec![0u8; 16];
-        let err = decode_qr_frame_luma(4, 4, 4, 0, &buf).unwrap_err();
-        assert_eq!(err, "qr_decoder_unavailable_offline");
+        let result = decode_qr_frame_luma(&buf, 4, 4, 4, 0).expect("decode should not panic");
+        assert!(result.is_none(), "expected no QR data for stub input");
     }
 }
