@@ -238,6 +238,11 @@ enum Action {
         target: Option<ImageTarget>,
         output_dir: Option<String>,
     },
+    KotlinImagePick {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
     DitheringScreen,
     DitheringPickImage {
         path: Option<String>,
@@ -692,6 +697,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
             target: target.as_deref().and_then(parse_image_target),
             output_dir,
         }),
+        "kotlin_image_pick" => Ok(Action::KotlinImagePick { path, fd, error }),
         "dithering_screen" => Ok(Action::DitheringScreen),
         "dithering_pick_image" => Ok(Action::DitheringPickImage { path, fd, error }),
         "dithering_mode_fs" => Ok(Action::DitheringSetMode {
@@ -1322,6 +1328,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::KotlinImageResizeSync { .. }
         | a @ Action::KotlinImageResult { .. }
         | a @ Action::KotlinImageOutputDir { .. }
+        | a @ Action::KotlinImagePick { .. }
         | a @ Action::DitheringScreen
         | a @ Action::DitheringPickImage { .. }
         | a @ Action::DitheringSetMode { .. }
@@ -2512,6 +2519,49 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 }
             } else {
                 state.pixel_art.error = Some("no_image_selected".into());
+            }
+            None
+        }
+        Action::KotlinImagePick { path, fd, error } => {
+            // Ensure we stay on the image screen
+            if !matches!(state.current_screen(), Screen::KotlinImage) {
+                 state.push_screen(Screen::KotlinImage);
+            }
+            state.image.result = None;
+            let mut fd_handle = FdHandle::new(fd);
+            if let Some(err) = error {
+                state.image.result = Some(features::kotlin_image::ImageConversionResult {
+                    path: None,
+                    size: None,
+                    format: None,
+                    error: Some(err),
+                });
+            } else {
+                if let Some(raw_fd) = fd_handle.take() {
+                    // Reuse save_fd_to_temp from dithering module as it is a generic helper
+                    match save_fd_to_temp(raw_fd as RawFd, path.as_deref()) {
+                        Ok(saved) => {
+                            state.image.source_path = Some(saved);
+                        }
+                        Err(e) => {
+                             state.image.result = Some(features::kotlin_image::ImageConversionResult {
+                                path: None,
+                                size: None,
+                                format: None,
+                                error: Some(e),
+                            });
+                        }
+                    }
+                } else if let Some(p) = path {
+                    state.image.source_path = Some(p);
+                } else {
+                     state.image.result = Some(features::kotlin_image::ImageConversionResult {
+                        path: None,
+                        size: None,
+                        format: None,
+                        error: Some("missing_source".into()),
+                    });
+                }
             }
             None
         }

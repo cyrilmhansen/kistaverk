@@ -303,6 +303,17 @@ class MainActivity : ComponentActivity() {
         )
 
         renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
+            if (KotlinImageConversion.isConversionAction(action)) {
+                val sourcePath = bindings["image_source_path"]
+                if (sourcePath != null) {
+                    val uri = Uri.fromFile(File(sourcePath))
+                    handleKotlinImageConversion(uri, action, bindings)
+                } else {
+                    // Fallback to Rust if source path missing (should not happen if UI is correct)
+                    dispatchWithOptionalLoading(action, bindings = bindings)
+                }
+                return@UiRenderer
+            }
             if (action == "kotlin_image_pick_dir") {
                 pickDirLauncher.launch(null)
                 return@UiRenderer

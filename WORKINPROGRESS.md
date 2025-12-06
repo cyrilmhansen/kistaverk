@@ -2,7 +2,8 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
-## Status (2025-12-03)
+## Status (2025-12-06)
+- **Image Tools (Hybrid)**: Implemented Image Converter and Resizer. Rust manages UI/State; Kotlin handles image processing (Bitmap/Compress). Features: Format conversion (WebP/PNG/JPEG), Resizing (Scale/Quality), and Target Size capping. *Tests added: Rendering logic and State serialization verified.*
 - **Camera Scanning (Rust-Driven)**: Implemented robust QR code scanning for Receiver using `rxing` pure-Rust decoder. JNI bridge passes camera frames (Y-plane) to Rust, and CameraX manages the camera lifecycle and frame acquisition on the Android side.
 - **QR Data Transfer (Receiver)**: Implemented protocol logic for parsing and reassembling split files (`QRTX` header). Added manual entry UI for verification. Logic verified via unit tests.
 - **QR Data Transfer (Sender)**: Implemented "QR Slideshow" to broadcast files. Features chunking (512B), adjustable speed, and play/pause controls. Protocol: `QRTX|i/n|base64`. Verified via Rust unit tests.
@@ -57,10 +58,9 @@ Keep this file short and actionable. Update it at the end of each session.
 - Text viewer: WebView search bar.
 - PDF UX: 3x3 placement grid.
 - Outputs: “Save As” flow.
-- Image tools: resize/quality controls.
 - Hash verify: on-device QA.
 - DSL polish: keep grouping readable.
 
 ## Notes
 - Prism assets are MIT; license stored in `assets/prism/PRISM_LICENSE.txt`.
-- Keep APK slim (<5 MB).***
+- Keep APK slim (< 5 MB).
