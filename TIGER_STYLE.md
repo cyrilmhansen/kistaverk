@@ -105,6 +105,12 @@ Assertions are a safety net, not a substitute for human understanding. A fuzzer 
 *   *Good:* `PrefetchOptions { cache: Cache::Data, ..Default::default() }`
 *   *Better:* Explicitly passing a configuration struct where defaults might be dangerous.
 
+## Applying TigerStyle to Android/Kotlin
+- **Limit function length**: keep dispatch/event handlers under ~70 lines. Extract domain managers (e.g., `AppSensorManager`, `CameraManager`) instead of accreting branches in `MainActivity`.
+- **Reuse views**: prefer a registry of small view factories over giant `when` chains in renderers (`UiRenderer` uses a creator map). Reuse existing views when IDs match to avoid GC churn.
+- **Control plane vs data plane**: offload long-running work off the UI thread; keep permission checks and UI updates short and predictable.
+- **Explicit types and units**: suffix timing/size fields (e.g., `interval_ms`, `size_bytes`) and avoid platform-width `Int`/`Long` for external IDs unless required by APIs.
+
 ## Performance
 “The lack of back-of-the-envelope performance sketches is the root of all evil.” — Rivacindela Hudsoni
 

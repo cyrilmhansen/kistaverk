@@ -3,9 +3,9 @@
 This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over JSON.
 
 ## Stack & Responsibilities
-- **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). Typed DSL now includes grouping containers (Section/Card) for better readability. JNI entry catches panics.
-- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues. Image conversions/resizing run on the Kotlin side while Rust still owns navigation/state/results.
-- **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls.
+- **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). Typed DSL now includes grouping containers (Section/Card) for better readability. JNI entry catches panics. TigerStyle refactors split the router into domain handlers and a background worker queue so long-running work (e.g., hashes) no longer block UI locks.
+- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues. Image conversions/resizing run on the Kotlin side while Rust still owns navigation/state/results. Camera/QR scanning now lives in a dedicated `CameraManager`; sensor logging plus compass/barometer/magnetometer live in `AppSensorManager`, keeping `MainActivity` dispatch lean (<70 lines focus).
+- **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls. Heavy Rust commands can be enqueued; results are applied on the next dispatch to avoid the global UI mutex becoming a bottleneck.
 
 ## Navigation
 - `Vec<Screen>` stack in Rust; Home is root. Hardware Back calls `back` action; inline Back buttons shown when depth > 1 (QR, text tools, archive viewer, sensor logger, color tools, Kotlin image flows, text viewer).
@@ -24,7 +24,7 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - **Archive viewer**: ZIP listing (capped, truncated flag); text entries are buttons that load into the text viewer.
 - **Color/Text tools/QR/Sensor logger**: Pure-Rust logic with native UI; QR encoded via `qrcode` and shown as base64 image.
 - **Accessibility**: `content_description` propagated on widgets; Back buttons consistent; renderer guardrails prevent crashes on malformed payloads.
-- **Sensor logger**: Foreground Service now keeps logging alive with a persistent notification, and the UI surface warns/status indicator while logging so TalkBack users know it’s running.
+- **Sensor logger**: Foreground Service keeps logging alive with a persistent notification, and the UI surface warns/status indicator while logging so TalkBack users know it’s running. Kotlin routes permissions and lifecycles through `AppSensorManager`.
 - **Tests**: Rust unit tests cover business logic and JSON builders; Robolectric exercises renderer validation (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card/Compass/Barometer/Magnetometer) and navigation/back wiring. Snapshot/restore tested in Kotlin. Sensor widgets use GLSurfaceView GLSL; RuntimeShader avoided for broader device support.
 
 ## Assets & Licensing
@@ -39,7 +39,7 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls.
 
 ## Known Risks & Mitigations
-- **Global Rust `STATE` mutex**: Blocks long ops; mitigation: spawn threads for heavy tasks (hash, PDF), use channels/local locks.
+- **Global Rust `STATE` mutex**: Previously blocked long ops; mitigation: router now owns a worker queue for heavy commands and applies results on the control-plane lock. Continue to avoid long-held UI locks.
 - **JSON Overhead**: Serialization cost; mitigation: diffing, partial updates, or separate data channels for blobs.
 - **Blocking I/O**: JNI boundary blocking; mitigation: thread pool for I/O.
 - **UI Scalability**: `LinearLayout` OOM on lists; mitigation: `RecyclerView` adapter for lists.
