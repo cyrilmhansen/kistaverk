@@ -20,8 +20,8 @@ use crate::features::misc_screens::{
 };
 use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
 use crate::features::pdf::{
-    handle_pdf_sign, perform_pdf_operation, perform_pdf_set_title, render_pdf_preview_screen,
-    render_pdf_screen, PdfOperation, PdfSetTitleResult,
+    perform_pdf_operation, perform_pdf_set_title, perform_pdf_sign, render_pdf_preview_screen,
+    render_pdf_screen, PdfOperation, PdfSetTitleResult, PdfSignResult,
 };
 use crate::features::pixel_art::{
     process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd,
@@ -272,6 +272,21 @@ enum WorkerJob {
         uri: Option<String>,
         title: Option<String>,
     },
+    PdfSign {
+        fd: i32,
+        uri: Option<String>,
+        signature: String,
+        page: Option<u32>,
+        page_x_pct: Option<f64>,
+        page_y_pct: Option<f64>,
+        pos_x: f64,
+        pos_y: f64,
+        width: f64,
+        height: f64,
+        img_width_px: Option<f64>,
+        img_height_px: Option<f64>,
+        img_dpi: Option<f64>,
+    },
 }
 
 enum WorkerResult {
@@ -317,6 +332,9 @@ enum WorkerResult {
     },
     PdfSetTitle {
         value: Result<PdfSetTitleResult, String>,
+    },
+    PdfSign {
+        value: Result<PdfSignResult, String>,
     },
 }
 
@@ -502,6 +520,45 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
             test_worker_delay();
             let value = perform_pdf_set_title(fd as RawFd, uri.as_deref(), title.as_deref());
             WorkerResult::PdfSetTitle { value }
+        }
+        WorkerJob::PdfSign {
+            fd,
+            uri,
+            signature,
+            page,
+            page_x_pct,
+            page_y_pct,
+            pos_x,
+            pos_y,
+            width,
+            height,
+            img_width_px,
+            img_height_px,
+            img_dpi,
+        } => {
+            test_worker_delay();
+            let value = perform_pdf_sign(
+                fd as RawFd,
+                uri.as_deref(),
+                &signature,
+                page,
+                page_x_pct,
+                page_y_pct,
+                pos_x,
+                pos_y,
+                width,
+                height,
+                img_width_px,
+                img_height_px,
+                img_dpi,
+            )
+            .map(|res| PdfSignResult {
+                out_path: res.out_path,
+                page_count: res.page_count,
+                title: res.title,
+                source_uri: res.source_uri,
+            });
+            WorkerResult::PdfSign { value }
         }
     }
 }
@@ -2691,14 +2748,14 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
             img_dpi,
         } => {
             state.push_screen(Screen::PdfTools);
-            let mut fd_handle = FdHandle::new(fd);
             if let Some(sig) = signature.or_else(|| state.pdf.signature_base64.clone()) {
-                if let Some(raw_fd) = fd_handle.take() {
-                    if let Err(e) = handle_pdf_sign(
-                        state,
-                        raw_fd,
-                        uri.as_deref(),
-                        &sig,
+                if let Some(raw_fd) = fd {
+                    state.loading_message = Some("Signing PDF...".into());
+                    state.loading_with_spinner = true;
+                    let job = WorkerJob::PdfSign {
+                        fd: raw_fd,
+                        uri: uri.clone(),
+                        signature: sig,
                         page,
                         page_x_pct,
                         page_y_pct,
@@ -2709,8 +2766,13 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                         img_width_px,
                         img_height_px,
                         img_dpi,
-                    ) {
+                    };
+                    if let Err(e) = STATE.worker().enqueue(job) {
                         state.pdf.last_error = Some(e);
+                    }
+                    #[cfg(test)]
+                    {
+                        apply_worker_results(state);
                     }
                 } else {
                     state.pdf.last_error = Some("missing_fd".into());
@@ -5061,6 +5123,20 @@ fn apply_worker_results(state: &mut AppState) {
                 }
             },
             WorkerResult::PdfSetTitle { value } => match value {
+                Ok(res) => {
+                    state.pdf.last_output = Some(res.out_path.clone());
+                    state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());
+                    state.pdf.current_title = res.title.clone();
+                    state.pdf.page_count = Some(res.page_count);
+                    state.pdf.last_error = None;
+                    state.replace_current(Screen::PdfTools);
+                }
+                Err(e) => {
+                    state.pdf.last_error = Some(e);
+                    state.replace_current(Screen::PdfTools);
+                }
+            },
+            WorkerResult::PdfSign { value } => match value {
                 Ok(res) => {
                     state.pdf.last_output = Some(res.out_path.clone());
                     state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());

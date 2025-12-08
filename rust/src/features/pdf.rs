@@ -925,6 +925,7 @@ fn write_pdf(mut doc: Document, source_uri: Option<&str>) -> Result<String, Stri
     Ok(path_str)
 }
 
+#[allow(dead_code)]
 pub fn handle_pdf_sign(
     state: &mut AppState,
     fd: RawFd,
@@ -1222,6 +1223,14 @@ pub struct PdfSetTitleResult {
     pub source_uri: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PdfSignResult {
+    pub out_path: String,
+    pub page_count: u32,
+    pub title: Option<String>,
+    pub source_uri: Option<String>,
+}
+
 pub fn perform_pdf_set_title(
     fd: RawFd,
     uri: Option<&str>,
@@ -1267,6 +1276,142 @@ pub fn perform_pdf_set_title(
         out_path,
         page_count,
         title: Some(title),
+        source_uri: uri.map(|u| u.to_string()),
+    })
+}
+
+#[allow(dead_code)]
+pub fn perform_pdf_sign(
+    fd: RawFd,
+    uri: Option<&str>,
+    signature_base64: &str,
+    page: Option<u32>,
+    page_x_pct: Option<f64>,
+    page_y_pct: Option<f64>,
+    pos_x: f64,
+    pos_y: f64,
+    width: f64,
+    height: f64,
+    img_width_px: Option<f64>,
+    img_height_px: Option<f64>,
+    img_dpi: Option<f64>,
+) -> Result<PdfSignResult, String> {
+    assert!(
+        width > 0.0 && height > 0.0,
+        "signature dimensions must be positive"
+    );
+    if let Some(page_num) = page {
+        assert!(page_num > 0, "page index must be 1-based");
+    }
+    if let Some(x) = page_x_pct {
+        assert!(
+            (0.0..=1.0).contains(&x),
+            "page_x_pct must be normalized to 0..1"
+        );
+    }
+    if let Some(y) = page_y_pct {
+        assert!(
+            (0.0..=1.0).contains(&y),
+            "page_y_pct must be normalized to 0..1"
+        );
+    }
+    if let Some(dpi) = img_dpi {
+        assert!(dpi > 0.0, "img_dpi must be positive when provided");
+    }
+    log_pdf_debug(&format!(
+        "pdf_sign: fd={fd} uri={uri:?} page={page:?} pos=({pos_x},{pos_y}) pct=({page_x_pct:?},{page_y_pct:?}) size=({width}x{height}) img_px=({img_width_px:?}x{img_height_px:?}) dpi={img_dpi:?}"
+    ));
+    let mut doc = load_document(fd)?;
+    let target_page = page.unwrap_or(1);
+    let pages = doc.get_pages();
+    let page_id = *pages
+        .get(&target_page)
+        .ok_or_else(|| "page_out_of_range".to_string())?;
+    let (page_width, page_height) = page_dimensions(&doc, page_id)?;
+
+    let sig_bytes = B64
+        .decode(signature_base64.as_bytes())
+        .map_err(|e| format!("signature_decode_failed:{e}"))?;
+    let img = image::load_from_memory(&sig_bytes)
+        .map_err(|e| format!("signature_image_invalid:{e}"))?
+        .to_rgba8();
+    let (img_w, img_h) = img.dimensions();
+    let mut rgb = Vec::with_capacity((img_w * img_h * 3) as usize);
+    let mut alpha = Vec::with_capacity((img_w * img_h) as usize);
+    for pixel in img.pixels() {
+        rgb.push(pixel[0]);
+        rgb.push(pixel[1]);
+        rgb.push(pixel[2]);
+        alpha.push(pixel[3]);
+    }
+
+    let smask_stream = Stream::new(
+        dictionary! {
+            "Type" => "XObject",
+            "Subtype" => "Image",
+            "Width" => img_w as i64,
+            "Height" => img_h as i64,
+            "ColorSpace" => "DeviceGray",
+            "BitsPerComponent" => 8,
+        },
+        alpha,
+    );
+    let smask_id = doc.add_object(smask_stream);
+
+    let image_stream = Stream::new(
+        dictionary! {
+            "Type" => "XObject",
+            "Subtype" => "Image",
+            "Width" => img_w as i64,
+            "Height" => img_h as i64,
+            "ColorSpace" => "DeviceRGB",
+            "BitsPerComponent" => 8,
+            "SMask" => smask_id,
+        },
+        rgb,
+    );
+    let image_id = doc.add_object(image_stream);
+
+    // Position computation
+    let (x_pt, y_pt) = if let (Some(px), Some(py)) = (page_x_pct, page_y_pct) {
+        let x = (px.clamp(0.0, 1.0) * page_width) - width * 0.5;
+        let y = (py.clamp(0.0, 1.0) * page_height) - height * 0.5;
+        (x, y)
+    } else {
+        (pos_x, pos_y)
+    };
+
+    let content = format!(
+        "q {} 0 0 {} {} {} cm /Im0 Do Q\n",
+        width, height, x_pt, y_pt
+    )
+    .into_bytes();
+
+    let mut resources = dictionary! {
+        "XObject" => dictionary! {
+            "Im0" => image_id
+        }
+    };
+
+    if let Ok(page_dict) = doc.get_object_mut(page_id).and_then(|o| o.as_dict_mut()) {
+        if let Ok(res) = page_dict.get_mut(b"Resources").and_then(|o| o.as_dict_mut()) {
+            for (k, v) in res.iter() {
+                resources.set(k.clone(), v.clone());
+            }
+        }
+        ensure_xobject_dict(&mut resources)?;
+        page_dict.set("Resources", resources);
+    }
+
+    append_page_content(&mut doc, page_id, content)?;
+
+    let page_count = doc.get_pages().len() as u32;
+    let title = extract_pdf_title(&doc);
+    let out_path = write_pdf(doc, uri)?;
+    Ok(PdfSignResult {
+        out_path,
+        page_count,
+        title,
         source_uri: uri.map(|u| u.to_string()),
     })
 }
