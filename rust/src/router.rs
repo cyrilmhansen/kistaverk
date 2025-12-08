@@ -5036,6 +5036,31 @@ mod tests {
 
         TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
     }
+
+    #[test]
+    fn pdf_sign_grid_updates_coordinates() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        {
+            let mut state = STATE.ui_lock();
+            state.pdf.page_count = Some(3);
+            state.pdf.source_uri = Some("file://dummy.pdf".into());
+        }
+
+        let mut cmd = make_command("pdf_sign_grid");
+        cmd.bindings = Some(HashMap::from_iter([
+            ("pdf_signature_page".into(), "2".into()),
+            ("pdf_signature_x_pct".into(), "0.8".into()),
+            ("pdf_signature_y_pct".into(), "0.3".into()),
+        ]));
+        handle_command(cmd).expect("grid action should succeed");
+
+        let state = STATE.ui_lock();
+        assert_eq!(state.pdf.signature_target_page, Some(2));
+        assert_eq!(state.pdf.signature_x_pct, Some(0.8));
+        assert_eq!(state.pdf.signature_y_pct, Some(0.3));
+        assert_eq!(state.pdf.signature_grid_selection, Some((2, 0.8, 0.3)));
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();

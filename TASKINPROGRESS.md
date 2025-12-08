@@ -1,25 +1,22 @@
-# Task In Progress: Symbolic Differentiation (CAS)
+# Task In Progress: PDF 3x3 Placement Grid
 
-## Status: Implemented
+## Status: Planning
 *   **Date:** 2025-12-08
-*   **Objective:** Extend the Math Tool to support symbolic differentiation (Computer Algebra System).
+*   **Objective:** Implement a visual 3x3 grid of buttons for quick PDF signature placement (Top-Left, Top-Center, etc.), as requested in `WORKINPROGRESS.md` ("PDF UX: 3x3 placement grid").
 *   **Plan:**
-    1.  **Data Structures (`features/math_tool.rs`):**
-        *   Added `Symbol` enum for AST.
-    2.  **Parsing Logic (`features/math_tool.rs`):**
-        *   Implemented `tokenize` (updated for variables), `shunting_yard`, and `rpn_to_symbol` to build AST.
-    3.  **Differentiation Logic (`features/math_tool.rs`):**
-        *   Implemented `differentiate` with Power, Chain, Product, Quotient rules, and standard function derivatives.
-    4.  **Simplification Logic (`features/math_tool.rs`):**
-        *   Implemented `simplify` to fold constants and remove identity ops (x*1, x+0, etc.).
-    5.  **Formatting (`features/math_tool.rs`):**
-        *   Implemented `render_symbol` for string output.
-    6.  **Integration (`features/math_tool.rs`):**
-        *   Updated `evaluate_expression` to intercept `deriv(...)` calls.
-    7.  **Tests:**
-        *   Added unit tests for symbolic differentiation rules (polynomial, trig, chain rule) and simplification.
+    1.  **Refine UI (`features/pdf.rs`):**
+        *   The current `render_pdf_screen` already contains a basic implementation of a 3x3 grid.
+        *   I will review it to ensure it uses the `Grid` component effectively and that the actions (`pdf_sign_grid`) are correctly mapped.
+        *   I will verify that the layout looks like a grid (using `Grid` type with `columns: 3`).
+    2.  **Action Handling (`router.rs`):**
+        *   The `Action::PdfSignGrid` variant exists.
+        *   I will ensure the handler correctly updates `signature_x_pct`, `signature_y_pct`, and `signature_target_page`.
+    3.  **Feedback Loop (`features/pdf.rs`):**
+        *   Ensure that selecting a grid position updates the `PdfSignPlacement` and `PdfSignPreview` components to reflect the new coordinates immediately.
+    4.  **Tests:**
+        *   Add a test case in `router.rs` or `pdf.rs` to verify that `pdf_sign_grid` action updates the state coordinates correctly (e.g., Top-Left -> 0.1, 0.1).
 
-## Previous Task: Refine PDF Placement Overlay
+## Previous Task: Symbolic Differentiation (CAS)
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Updated `PdfState` to store page aspect ratio and pass it to the UI for accurate placement markers. `load_pdf_metadata` now returns aspect ratio.
+*   **Summary:** Added symbolic differentiation support to the Math Tool.
