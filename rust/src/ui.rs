@@ -718,6 +718,8 @@ pub struct CodeView<'a> {
     pub line_numbers: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
 }
 
 impl<'a> CodeView<'a> {
@@ -730,6 +732,7 @@ impl<'a> CodeView<'a> {
             theme: None,
             line_numbers: None,
             content_description: None,
+            id: None,
         }
     }
 
@@ -759,6 +762,11 @@ impl<'a> CodeView<'a> {
     #[allow(dead_code)]
     pub fn content_description(mut self, cd: &'a str) -> Self {
         self.content_description = Some(cd);
+        self
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
         self
     }
 }

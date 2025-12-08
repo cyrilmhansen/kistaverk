@@ -593,7 +593,8 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                     } else {
                         "light"
                     })
-                    .line_numbers(false),
+                    .line_numbers(false)
+                    .id("text_viewer_code_hex"),
             )
             .unwrap(),
         );
@@ -621,7 +622,8 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
         let mut code = UiCodeView::new(content)
             .wrap(true)
             .theme(theme)
-            .line_numbers(state.text_view_line_numbers);
+            .line_numbers(state.text_view_line_numbers)
+            .id("text_viewer_code");
         if let Some(lang_str) = lang.as_deref() {
             code = code.language(lang_str);
         }
@@ -672,5 +674,21 @@ mod tests {
         state.text_view_find_query = Some("needle".into());
         let ui = render_text_viewer_screen(&state);
         assert_eq!(ui.get("find_query").and_then(|v| v.as_str()), Some("needle"));
+    }
+
+    #[test]
+    fn code_view_has_stable_id() {
+        let mut state = AppState::new();
+        state.text_view_content = Some("hello".into());
+        let ui = render_text_viewer_screen(&state);
+        let children = ui.get("children").and_then(|c| c.as_array()).unwrap();
+        let has_code_id = children.iter().any(|child| {
+            child
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| id == "text_viewer_code")
+                .unwrap_or(false)
+        });
+        assert!(has_code_id, "expected CodeView to carry id");
     }
 }

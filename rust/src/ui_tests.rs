@@ -25,4 +25,11 @@ mod tests {
         assert_eq!(val.get("debounce_ms").and_then(|v| v.as_u64()), Some(150));
         assert_eq!(val.get("single_line").and_then(|v| v.as_bool()), Some(true));
     }
+
+    #[test]
+    fn text_input_omits_debounce_when_none() {
+        let input = TextInput::new("plain").hint("Type");
+        let val = serde_json::to_value(input).unwrap();
+        assert!(val.get("debounce_ms").is_none());
+    }
 }

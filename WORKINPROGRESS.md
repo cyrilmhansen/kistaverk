@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-08)
+- **Input Debouncing**: Implemented `debounce_ms` property for `TextInput` in `ui.rs` and applied it to `MathTool` and `TextViewer` inputs.
 - **Symbolic CAS**: Implemented symbolic differentiation in the Math Tool. Users can now compute derivatives (e.g., `deriv(x^2, x)` -> `2*x`) with simplification support.
 - **Refine PDF Placement Overlay**: Updated PDF signature tool to respect page aspect ratio for accurate marker placement.
 - **Offload Blocking File I/O**: Moved PDF loading, File Info, and Text View operations to a background worker thread to prevent UI freezes.
