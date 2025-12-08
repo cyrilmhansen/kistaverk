@@ -12,6 +12,7 @@ pub mod presets;
 pub mod qr;
 pub mod qr_transfer;
 pub mod regex_tester;
+pub mod sensor_utils;
 pub mod sensor_logger;
 pub mod storage;
 pub mod system_info;

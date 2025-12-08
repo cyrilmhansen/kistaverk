@@ -1,26 +1,19 @@
-# Task In Progress: Math Expression Evaluator
+# Task In Progress: Sensor Data Smoothing
 
 ## Status: Implemented
 *   **Date:** 2025-12-08
-*   **Objective:** Implement a Math Tool in Rust to evaluate mathematical expressions (arithmetic, functions) and display results.
+*   **Objective:** Implement signal smoothing (Low-Pass Filter) for Compass, Barometer, and Magnetometer to reduce UI jitter.
 *   **Plan:**
-    1.  **State Management (`state.rs`):**
-        *   Added `MathToolState` struct (expression, history, error).
-        *   Added `Screen::MathTool` variant.
-    2.  **Logic (`features/math_tool.rs`):**
-        *   Implemented Shunting-yard algorithm for parsing.
-        *   Implemented RPN evaluator.
-        *   Supported operators: `+`, `-`, `*`, `/`, `^`.
-        *   Supported functions: `sin`, `cos`, `sqrt`, `log`.
-    3.  **UI (`features/math_tool.rs`):**
-        *   Rendered input field, calculate button, and history list.
-    4.  **Integration (`router.rs`):**
-        *   Added `MathToolScreen`, `MathCalculate`, `MathClearHistory` actions.
-        *   Registered in `feature_catalog` under "Utilities".
-    5.  **Tests:**
-        *   Added unit tests for precedence, parentheses, functions, and errors.
+    1.  **New Module (`features/sensor_utils.rs`):**
+        *   Implemented `LowPassFilter` logic (scalar & angular).
+    2.  **State Update (`state.rs`):**
+        *   Added filter state fields (`compass_filter_angle`, etc.) to `AppState`.
+    3.  **Integration (`router.rs`):**
+        *   Updated `CompassSet`, `BarometerSet`, `MagnetometerSet` to use smoothing.
+    4.  **Tests:**
+        *   Added unit tests in `sensor_utils.rs`.
 
-## Previous Task: Global Mutex Contention Refactoring
+## Previous Task: Math Expression Evaluator
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Refactored heavy tasks to use `WorkerRuntime` and `mpsc` channels.
+*   **Summary:** Implemented a math expression parser and evaluator with history support. Verified via unit tests.

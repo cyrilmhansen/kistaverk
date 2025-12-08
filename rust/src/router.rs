@@ -37,6 +37,7 @@ use crate::features::qr_transfer::{
     render_qr_slideshow_screen, save_received_file,
 };
 use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
+use crate::features::sensor_utils::{low_pass_angle, low_pass_scalar};
 use crate::features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
     render_sensor_logger_screen,
@@ -280,6 +281,10 @@ enum WorkerResult {
         value: Result<String, String>,
     },
 }
+
+const COMPASS_SMOOTH_ALPHA: f64 = 0.2;
+const BAROMETER_SMOOTH_ALPHA: f64 = 0.2;
+const MAGNETOMETER_SMOOTH_ALPHA: f64 = 0.2;
 
 fn run_worker_job(job: WorkerJob) -> WorkerResult {
     match job {
@@ -2805,12 +2810,17 @@ fn handle_sensor_actions(state: &mut AppState, action: Action) {
             angle_radians,
             error,
         } => {
-            let mut angle = angle_radians % std::f64::consts::TAU;
-            if angle < 0.0 {
-                angle += std::f64::consts::TAU;
+            if let Some(err) = error {
+                state.compass_error = Some(err);
+            } else if let Some(filtered) =
+                low_pass_angle(state.compass_filter_angle, angle_radians, COMPASS_SMOOTH_ALPHA)
+            {
+                state.compass_filter_angle = Some(filtered);
+                state.compass_angle_radians = filtered;
+                state.compass_error = None;
+            } else {
+                state.compass_error = Some("invalid_angle".into());
             }
-            state.compass_angle_radians = angle;
-            state.compass_error = error;
             if matches!(state.current_screen(), Screen::Compass) {
                 state.replace_current(Screen::Compass);
             }
@@ -2819,8 +2829,17 @@ fn handle_sensor_actions(state: &mut AppState, action: Action) {
             state.push_screen(Screen::Barometer);
         }
         Action::BarometerSet { hpa, error } => {
-            state.barometer_hpa = Some(hpa);
-            state.barometer_error = error;
+            if let Some(err) = error {
+                state.barometer_error = Some(err);
+            } else if let Some(filtered) =
+                low_pass_scalar(state.barometer_filter_value, hpa, BAROMETER_SMOOTH_ALPHA)
+            {
+                state.barometer_filter_value = Some(filtered);
+                state.barometer_hpa = Some(filtered);
+                state.barometer_error = None;
+            } else {
+                state.barometer_error = Some("invalid_pressure".into());
+            }
             if matches!(state.current_screen(), Screen::Barometer) {
                 state.replace_current(Screen::Barometer);
             }
@@ -2832,8 +2851,19 @@ fn handle_sensor_actions(state: &mut AppState, action: Action) {
             magnitude_ut,
             error,
         } => {
-            state.magnetometer_ut = Some(magnitude_ut);
-            state.magnetometer_error = error;
+            if let Some(err) = error {
+                state.magnetometer_error = Some(err);
+            } else if let Some(filtered) = low_pass_scalar(
+                state.magnetometer_filter_value,
+                magnitude_ut,
+                MAGNETOMETER_SMOOTH_ALPHA,
+            ) {
+                state.magnetometer_filter_value = Some(filtered);
+                state.magnetometer_ut = Some(filtered);
+                state.magnetometer_error = None;
+            } else {
+                state.magnetometer_error = Some("invalid_magnetometer".into());
+            }
             if matches!(state.current_screen(), Screen::Magnetometer) {
                 state.replace_current(Screen::Magnetometer);
             }

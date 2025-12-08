@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-08)
+- **Sensor Smoothing**: Implemented Low-Pass Filters (alpha=0.2) for Compass (angular), Barometer, and Magnetometer to reduce jitter. Logic in `sensor_utils.rs` with unit tests; state persists across updates.
 - **Math Expression Evaluator**: Implemented a parser and evaluator for mathematical expressions (`features/math_tool.rs`). Supports arithmetic, powers, and basic functions (`sin`, `cos`, `sqrt`, `log`). UI includes history tracking.
 - **16KB Alignment (Android 15)**: Updated build config to enforce 16KB page alignment for native libraries.
 - **Image Tools (Hybrid)**: Implemented Image Converter and Resizer. Rust manages UI/State; Kotlin handles image processing (Bitmap/Compress). Features: Format conversion (WebP/PNG/JPEG), Resizing (Scale/Quality), and Target Size capping. *Tests added: Rendering logic and State serialization verified.*

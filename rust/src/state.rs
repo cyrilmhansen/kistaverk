@@ -181,6 +181,9 @@ pub struct AppState {
     pub barometer_error: Option<String>,
     pub magnetometer_ut: Option<f64>,
     pub magnetometer_error: Option<String>,
+    pub compass_filter_angle: Option<f64>,
+    pub barometer_filter_value: Option<f64>,
+    pub magnetometer_filter_value: Option<f64>,
     pub multi_hash_results: Option<MultiHashResults>,
     pub multi_hash_error: Option<String>,
     pub dithering_source_path: Option<String>,
@@ -250,6 +253,9 @@ impl AppState {
             barometer_error: None,
             magnetometer_ut: None,
             magnetometer_error: None,
+            compass_filter_angle: None,
+            barometer_filter_value: None,
+            magnetometer_filter_value: None,
             multi_hash_results: None,
             multi_hash_error: None,
             dithering_source_path: None,
@@ -376,6 +382,9 @@ impl AppState {
         self.barometer_error = None;
         self.magnetometer_ut = None;
         self.magnetometer_error = None;
+        self.compass_filter_angle = None;
+        self.barometer_filter_value = None;
+        self.magnetometer_filter_value = None;
         self.multi_hash_results = None;
         self.multi_hash_error = None;
         self.dithering_source_path = None;
