@@ -648,5 +648,28 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
 
     maybe_push_back(&mut children, state);
 
-    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
+    let mut root = json!({
+        "type": "Column",
+        "padding": 20,
+        "scrollable": false,
+        "children": children
+    });
+    if let Some(q) = &state.text_view_find_query {
+        root["find_query"] = json!(q);
+    }
+    root
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+
+    #[test]
+    fn find_query_is_exposed_in_render() {
+        let mut state = AppState::new();
+        state.text_view_find_query = Some("needle".into());
+        let ui = render_text_viewer_screen(&state);
+        assert_eq!(ui.get("find_query").and_then(|v| v.as_str()), Some("needle"));
+    }
 }

@@ -4824,6 +4824,32 @@ mod tests {
 
         TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
     }
+
+    #[test]
+    fn text_viewer_find_clear_removes_query() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+
+        handle_command(make_command("text_viewer_screen")).expect("enter text viewer");
+
+        let mut find_cmd = make_command("text_viewer_find_submit");
+        find_cmd.bindings = Some(HashMap::from_iter([("find_query".into(), "needle".into())]));
+        handle_command(find_cmd).expect("set find query");
+
+        let mut clear_cmd = make_command("text_viewer_find_clear");
+        clear_cmd.bindings = Some(HashMap::from_iter([("find_query".into(), "".into())]));
+        let ui = handle_command(clear_cmd).expect("clear find query");
+
+        let state = STATE.ui_lock();
+        assert!(state.text_view_find_query.is_none());
+        assert_eq!(
+            state.text_view_find_match.as_deref(),
+            Some("Cleared search")
+        );
+        drop(state);
+
+        assert!(ui.get("find_query").is_none());
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();
