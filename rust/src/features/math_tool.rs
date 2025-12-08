@@ -1,7 +1,7 @@
 use crate::state::{AppState, MathHistoryEntry};
 use crate::ui::{
     maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
-    TextInput as UiTextInput,
+    TextInput as UiTextInput, VirtualList as UiVirtualList,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -35,10 +35,16 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
 
     if !state.math_tool.history.is_empty() {
         children.push(serde_json::to_value(UiText::new("History").size(16.0)).unwrap());
-        for entry in state.math_tool.history.iter() {
-            let line = format!("{} = {}", entry.expression, entry.result);
-            children.push(serde_json::to_value(UiText::new(&line).size(12.0)).unwrap());
-        }
+        let items: Vec<Value> = state
+            .math_tool
+            .history
+            .iter()
+            .map(|entry| {
+                serde_json::to_value(UiText::new(&format!("{} = {}", entry.expression, entry.result)).size(12.0))
+                    .unwrap()
+            })
+            .collect();
+        children.push(serde_json::to_value(UiVirtualList::new(items).id("math_history")).unwrap());
     }
 
     maybe_push_back(&mut children, state);
@@ -741,6 +747,7 @@ fn format_result(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     fn approx_eq(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
@@ -814,5 +821,38 @@ mod tests {
         let sym_err = evaluate_expression("deriv(x^2)").unwrap_err();
         assert!(sym_err.starts_with("symbolic_result:"));
         assert!(sym_err.contains("2*x"));
+    }
+
+    #[test]
+    fn history_renders_as_virtual_list() {
+        let mut state = AppState::new();
+        state.math_tool.history.push(MathHistoryEntry {
+            expression: "1+1".into(),
+            result: "2".into(),
+        });
+        state.math_tool.history.push(MathHistoryEntry {
+            expression: "2+2".into(),
+            result: "4".into(),
+        });
+
+        let ui = render_math_tool_screen(&state);
+        assert_eq!(ui.get("type").and_then(Value::as_str), Some("Column"));
+        let children = ui.get("children").and_then(Value::as_array).unwrap();
+        let has_virtual = children.iter().any(|c| {
+            c.get("type")
+                .and_then(Value::as_str)
+                .map(|t| t == "VirtualList")
+                .unwrap_or(false)
+        });
+        assert!(has_virtual, "expected history to use VirtualList");
+    }
+
+    #[test]
+    fn virtual_list_serializes_estimated_height() {
+        let items = vec![serde_json::to_value(UiText::new("a")).unwrap()];
+        let list = UiVirtualList::new(items).estimated_item_height(24);
+        let val = serde_json::to_value(list).unwrap();
+        assert_eq!(val.get("type").and_then(Value::as_str), Some("VirtualList"));
+        assert_eq!(val.get("estimated_item_height").and_then(Value::as_u64), Some(24));
     }
 }

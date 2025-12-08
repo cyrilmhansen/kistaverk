@@ -176,6 +176,38 @@ impl<'a> Column<'a> {
 }
 
 #[derive(Serialize)]
+pub struct VirtualList<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub children: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_item_height: Option<u32>,
+}
+
+impl<'a> VirtualList<'a> {
+    pub fn new(children: Vec<serde_json::Value>) -> Self {
+        Self {
+            kind: "VirtualList",
+            children,
+            id: None,
+            estimated_item_height: None,
+        }
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn estimated_item_height(mut self, height: u32) -> Self {
+        self.estimated_item_height = Some(height);
+        self
+    }
+}
+
+#[derive(Serialize)]
 pub struct Section<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
