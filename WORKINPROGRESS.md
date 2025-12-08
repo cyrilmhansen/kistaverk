@@ -2,7 +2,8 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
-## Status (2025-12-06)
+## Status (2025-12-08)
+- **Math Expression Evaluator**: Implemented a parser and evaluator for mathematical expressions (`features/math_tool.rs`). Supports arithmetic, powers, and basic functions (`sin`, `cos`, `sqrt`, `log`). UI includes history tracking.
 - **16KB Alignment (Android 15)**: Updated build config to enforce 16KB page alignment for native libraries.
 - **Image Tools (Hybrid)**: Implemented Image Converter and Resizer. Rust manages UI/State; Kotlin handles image processing (Bitmap/Compress). Features: Format conversion (WebP/PNG/JPEG), Resizing (Scale/Quality), and Target Size capping. *Tests added: Rendering logic and State serialization verified.*
 - **Camera Scanning (Rust-Driven)**: Implemented robust QR code scanning for Receiver using `rxing` pure-Rust decoder. JNI bridge passes camera frames (Y-plane) to Rust, and CameraX manages the camera lifecycle and frame acquisition on the Android side.
@@ -15,30 +16,18 @@ Keep this file short and actionable. Update it at the end of each session.
 - **PDF Reordering**: Implemented page reordering logic (`reorder_pages` in `pdf.rs`) and UI integration. Users can now specify a new page order (e.g., "2, 1, 3") to restructure PDF documents. Includes unit tests for logic verification.
 - **ZIP Extraction**: Implemented full ZIP extraction ("Extract All" and single file "Extract") with directory traversal protection (Zip Slip). Added unit tests for path sanitization.
 - **File Inspector**: Upgraded "File Info" to "File Inspector". Now includes a 512-byte hex dump preview and UTF-8 text detection check.
-- **Refactoring Complete**: `lib.rs` size reduced by extracting UI rendering logic to feature modules (`misc_screens.rs`, `file_info.rs`, `hashes.rs`, `text_viewer.rs`, `sensor_logger.rs`) and shared helpers to `ui.rs`. Codebase is more modular and easier to maintain.
-- App state/navigation: Rust owns a `Vec<Screen>` stack; hardware Back pops safely. Inline Back buttons present when depth > 1 (QR, text tools, archive, sensor logger, color, Kotlin image).
-- Renderer now does basic diffing: stable node IDs (explicit `id`, `bind_key`, or action) allow view reuse and keyboard/focus stability instead of full `removeAllViews`.
-- Text viewer: Prism-backed WebView (MIT assets bundled into `prism-bundle.min.js`), language guessing, wrap toggle, theme toggle, line numbers. Archive text entries open directly in viewer. Binary sniff with hex preview; chunked, windowed loads (128 KB) with next/prev and byte-offset jump.
-- Tests: `cargo test` green. JNI guarded by `catch_unwind`; renderer validation in Kotlin prevents malformed payload crashes. Rust PDF loader uses `memmap2` to avoid loading whole files into heap.
-- PDFs: Signature overlay uses `PdfSignPlacement` tap targets with normalized coords; signatures append to existing page content (no new pages). Temp outputs now prefer source directory (or Downloads/cache for SAF content) with `_modified_YYMMDDhhmm.pdf` suffix. SignaturePad disables parent scroll during draw.
-- Save As: UI now offers “Save as…” for PDF/image outputs via ACTION_CREATE_DOCUMENT; Android copies the existing file into a user-chosen location.
-- Text viewer binary guardrails: sniff first 4KB for binary/unsupported content; show hex preview and “Load anyway” instead of loading full file. Text loads still capped at 256KB.
- - Compass: single GLSL/GLSurfaceView implementation; driven by Kotlin sensors with throttled sync back to Rust; Rust state stores last angle/error for snapshots.
- - Barometer/Magnetometer: GLSL widgets fed by sensors with throttled Rust sync; error surfaced when sensors unavailable.
-- DSL: Section/Card grouping widgets added to the DSL and renderer; menu now uses them for quick access and category grouping.
+- **Refactoring Complete**: `lib.rs` size reduced by extracting UI rendering logic to feature modules. Codebase is more modular.
 
 ## Technical Debt & Issues (High Priority)
-1. **Global Mutex Contention**: `STATE` mutex in `lib.rs` blocks all JNI calls during long-running ops.
-   - *Action*: Refactor heavy tasks to spawn threads and update state via channels/local locks.
-2. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
+1. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
    - *Action*: Implement partial updates/diffing or separate data channels.
-3. **Blocking I/O**: JNI calls block the thread.
+2. **Blocking I/O**: JNI calls block the thread.
    - *Action*: Move file I/O to a dedicated blocking thread pool.
-4. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
+3. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 
 ## Roadmap (Future Features)
-- **Math/CAS**: Numeric solver and optional symbolic CAS.
+- **Symbolic CAS**: Extend math tool to support symbolic solving.
 
 ## Immediate Focus
 - Harden input UX: avoid spamming Rust on every character.
@@ -46,7 +35,6 @@ Keep this file short and actionable. Update it at the end of each session.
 - Ensure Back buttons stay wired for all nested flows.
 - Robolectric coverage: add tests for `CodeView` and `PdfSignPlacement`.
 - PDF UX: refine placement overlay.
-- Rust core: mitigate long-held STATE mutex.
 - Text viewer: polish chunked loads/paging.
 - DSL grouping: add renderer tests.
 - Compass/Barometer/Magnetometer: smoothing/filtering.

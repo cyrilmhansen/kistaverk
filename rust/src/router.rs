@@ -18,6 +18,7 @@ use crate::features::misc_screens::{
     render_about_screen, render_barometer_screen, render_compass_screen, render_loading_screen,
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
+use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
 use crate::features::pdf::{
     handle_pdf_select, handle_pdf_sign, handle_pdf_title, perform_pdf_operation,
     render_pdf_preview_screen, render_pdf_screen, PdfOperation,
@@ -754,6 +755,11 @@ enum Action {
     RegexTest {
         bindings: HashMap<String, String>,
     },
+    MathToolScreen,
+    MathCalculate {
+        bindings: HashMap<String, String>,
+    },
+    MathClearHistory,
     UuidScreen,
     UuidGenerate,
     RandomStringGenerate {
@@ -876,6 +882,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "pixel_art_apply" => Ok(Action::PixelArtApply { loading_only }),
         "regex_tester_screen" => Ok(Action::RegexTesterScreen),
         "regex_test" => Ok(Action::RegexTest { bindings }),
+        "math_tool_screen" => Ok(Action::MathToolScreen),
+        "math_calculate" => Ok(Action::MathCalculate { bindings }),
+        "math_clear_history" => Ok(Action::MathClearHistory),
         "uuid_screen" => Ok(Action::UuidScreen),
         "uuid_generate" => Ok(Action::UuidGenerate),
         "random_string_generate" => Ok(Action::RandomStringGenerate { bindings }),
@@ -1609,6 +1618,24 @@ fn handle_command(command: Command) -> Result<Value, String> {
             handle_regex_action(&mut state, &bindings);
             if matches!(state.current_screen(), Screen::RegexTester) {
                 state.replace_current(Screen::RegexTester);
+            }
+        }
+        Action::MathToolScreen => {
+            state.push_screen(Screen::MathTool);
+            state.math_tool.error = None;
+        }
+        Action::MathCalculate { bindings } => {
+            state.push_screen(Screen::MathTool);
+            handle_math_action(&mut state, "math_calculate", &bindings);
+            if matches!(state.current_screen(), Screen::MathTool) {
+                state.replace_current(Screen::MathTool);
+            }
+        }
+        Action::MathClearHistory => {
+            state.push_screen(Screen::MathTool);
+            handle_math_action(&mut state, "math_clear_history", &HashMap::new());
+            if matches!(state.current_screen(), Screen::MathTool) {
+                state.replace_current(Screen::MathTool);
             }
         }
         Action::UuidScreen => {
@@ -3087,6 +3114,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::MultiHash => render_multi_hash_screen(state),
         Screen::PixelArt => render_pixel_art_screen(state),
         Screen::RegexTester => render_regex_tester_screen(state),
+        Screen::MathTool => render_math_tool_screen(state),
         Screen::UuidGenerator => render_uuid_screen(state),
         Screen::PresetManager => render_preset_manager(state),
         Screen::PresetSave => render_save_preset_dialog(state),
@@ -3337,6 +3365,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "regex_tester_screen",
             requires_file_picker: false,
             description: "test patterns & captures",
+        },
+        Feature {
+            id: "math_tool",
+            name: "➗ Math evaluator",
+            category: "🧰 Utilities",
+            action: "math_tool_screen",
+            requires_file_picker: false,
+            description: "evaluate expressions & functions",
         },
         Feature {
             id: "uuid_generator",

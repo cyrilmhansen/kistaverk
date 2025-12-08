@@ -39,6 +39,7 @@ pub enum Screen {
     PresetSave,
     QrSlideshow,
     QrReceive,
+    MathTool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -105,6 +106,33 @@ pub struct UuidGeneratorState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MathHistoryEntry {
+    pub expression: String,
+    pub result: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MathToolState {
+    pub expression: String,
+    pub history: Vec<MathHistoryEntry>,
+    pub error: Option<String>,
+}
+
+impl MathToolState {
+    pub const fn new() -> Self {
+        Self {
+            expression: String::new(),
+            history: Vec::new(),
+            error: None,
+        }
+    }
+
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub counter: i32,
     pub nav_stack: Vec<Screen>,
@@ -168,6 +196,7 @@ pub struct AppState {
     pub preset_state: PresetState,
     pub qr_slideshow: QrSlideshowState,
     pub qr_receive: QrReceiveState,
+    pub math_tool: MathToolState,
 }
 
 impl AppState {
@@ -251,6 +280,7 @@ impl AppState {
             preset_state: PresetState::new(),
             qr_slideshow: QrSlideshowState::new(),
             qr_receive: QrReceiveState::new(),
+            math_tool: MathToolState::new(),
         }
     }
 
@@ -370,5 +400,6 @@ impl AppState {
         self.preset_state.reset();
         self.qr_slideshow.reset();
         self.qr_receive.reset();
+        self.math_tool = MathToolState::new();
     }
 }
