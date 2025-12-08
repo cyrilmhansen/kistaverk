@@ -85,9 +85,308 @@ pub fn handle_math_action(
 }
 
 pub fn evaluate_expression(expr: &str) -> Result<f64, String> {
+    if let Some(inner) = extract_deriv_call(expr) {
+        let ast = parse_symbolic(&inner)?;
+        let deriv = differentiate(&ast, "x");
+        let simplified = simplify(&deriv);
+        let rendered = render_symbol(&simplified);
+        // Represent derivative as NaN in numeric context; caller (UI) will display string.
+        return Err(format!("symbolic_result:{rendered}"));
+    }
+
     let tokens = tokenize(expr)?;
     let rpn = shunting_yard(&tokens)?;
     eval_rpn(&rpn)
+}
+
+fn extract_deriv_call(expr: &str) -> Option<String> {
+    let trimmed = expr.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("deriv") {
+        return None;
+    }
+    let open = trimmed.find('(')?;
+    let mut depth = 0i32;
+    let mut end = None;
+    for (idx, ch) in trimmed.char_indices().skip(open) {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(idx);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let end_idx = end?;
+    let inner = trimmed.get(open + 1..end_idx)?;
+    Some(inner.trim().to_string())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Symbol {
+    Number(f64),
+    Var(String),
+    Add(Box<Symbol>, Box<Symbol>),
+    Sub(Box<Symbol>, Box<Symbol>),
+    Mul(Box<Symbol>, Box<Symbol>),
+    Div(Box<Symbol>, Box<Symbol>),
+    Pow(Box<Symbol>, Box<Symbol>),
+    Neg(Box<Symbol>),
+    Sin(Box<Symbol>),
+    Cos(Box<Symbol>),
+    Sqrt(Box<Symbol>),
+    Log(Box<Symbol>),
+}
+
+fn parse_symbolic(expr: &str) -> Result<Symbol, String> {
+    let tokens = tokenize(expr)?;
+    let rpn = shunting_yard(&tokens)?;
+    rpn_to_symbol(&rpn)
+}
+
+fn rpn_to_symbol(tokens: &[RpnToken]) -> Result<Symbol, String> {
+    let mut stack: Vec<Symbol> = Vec::new();
+    for token in tokens {
+        match token {
+            RpnToken::Number(n) => stack.push(Symbol::Number(*n)),
+            RpnToken::Variable(name) => stack.push(Symbol::Var(name.clone())),
+            RpnToken::Operator(op) => {
+                let sym = match op {
+                    Operator::Add => {
+                        let (b, a) = pop_two_symbol(&mut stack)?;
+                        Symbol::Add(Box::new(a), Box::new(b))
+                    }
+                    Operator::Sub => {
+                        let (b, a) = pop_two_symbol(&mut stack)?;
+                        Symbol::Sub(Box::new(a), Box::new(b))
+                    }
+                    Operator::Mul => {
+                        let (b, a) = pop_two_symbol(&mut stack)?;
+                        Symbol::Mul(Box::new(a), Box::new(b))
+                    }
+                    Operator::Div => {
+                        let (b, a) = pop_two_symbol(&mut stack)?;
+                        Symbol::Div(Box::new(a), Box::new(b))
+                    }
+                    Operator::Pow => {
+                        let (b, a) = pop_two_symbol(&mut stack)?;
+                        Symbol::Pow(Box::new(a), Box::new(b))
+                    }
+                    Operator::Neg => {
+                        let a = stack.pop().ok_or_else(|| "missing_operand".to_string())?;
+                        Symbol::Neg(Box::new(a))
+                    }
+                };
+                stack.push(sym);
+            }
+            RpnToken::Function(name) => {
+                let arg = stack.pop().ok_or_else(|| "missing_operand".to_string())?;
+                let sym = match name.as_str() {
+                    "sin" => Symbol::Sin(Box::new(arg)),
+                    "cos" => Symbol::Cos(Box::new(arg)),
+                    "sqrt" => Symbol::Sqrt(Box::new(arg)),
+                    "log" => Symbol::Log(Box::new(arg)),
+                    other => return Err(format!("unknown_function:{other}")),
+                };
+                stack.push(sym);
+            }
+        }
+    }
+    if stack.len() == 1 {
+        Ok(stack.pop().unwrap())
+    } else {
+        Err("invalid_expression".into())
+    }
+}
+
+fn pop_two_symbol(stack: &mut Vec<Symbol>) -> Result<(Symbol, Symbol), String> {
+    let b = stack.pop().ok_or_else(|| "missing_operand".to_string())?;
+    let a = stack.pop().ok_or_else(|| "missing_operand".to_string())?;
+    Ok((b, a))
+}
+
+fn differentiate(expr: &Symbol, var: &str) -> Symbol {
+    use Symbol::*;
+    match expr {
+        Number(_) => Number(0.0),
+        Var(name) => {
+            if name == var {
+                Number(1.0)
+            } else {
+                Number(0.0)
+            }
+        }
+        Add(a, b) => Add(Box::new(differentiate(a, var)), Box::new(differentiate(b, var))),
+        Sub(a, b) => Sub(Box::new(differentiate(a, var)), Box::new(differentiate(b, var))),
+        Mul(a, b) => Add(
+            Box::new(Mul(Box::new(differentiate(a, var)), b.clone())),
+            Box::new(Mul(a.clone(), Box::new(differentiate(b, var)))),
+        ),
+        Div(a, b) => Div(
+            Box::new(Sub(
+                Box::new(Mul(Box::new(differentiate(a, var)), b.clone())),
+                Box::new(Mul(a.clone(), Box::new(differentiate(b, var)))),
+            )),
+            Box::new(Pow(b.clone(), Box::new(Number(2.0)))),
+        ),
+        Pow(a, b) => {
+            match (a.as_ref(), b.as_ref()) {
+                (_, Number(n)) => Mul(
+                    Box::new(Mul(Box::new(Number(*n)), Box::new(Pow(a.clone(), Box::new(Number(n - 1.0)))))),
+                    Box::new(differentiate(a, var)),
+                ),
+                (Number(_), _) => {
+                    // d/dx c^g = c^g * ln(c) * g'
+                    Mul(
+                        Box::new(Mul(
+                            Box::new(Pow(a.clone(), b.clone())),
+                            Box::new(Log(a.clone())),
+                        )),
+                        Box::new(differentiate(b, var)),
+                    )
+                }
+                _ => {
+                    // General case: d(a^b) = a^b * (b' * ln a + b * a'/a)
+                    let a_prime = differentiate(a, var);
+                    let b_prime = differentiate(b, var);
+                    let term1 = Mul(Box::new(b_prime), Box::new(Log(a.clone())));
+                    let term2 = Mul(
+                        b.clone(),
+                        Box::new(Div(Box::new(a_prime), a.clone())),
+                    );
+                    Mul(Box::new(Pow(a.clone(), b.clone())), Box::new(Add(Box::new(term1), Box::new(term2))))
+                }
+            }
+        }
+        Neg(a) => Neg(Box::new(differentiate(a, var))),
+        Sin(a) => Mul(Box::new(Cos(a.clone())), Box::new(differentiate(a, var))),
+        Cos(a) => Neg(Box::new(Mul(Box::new(Sin(a.clone())), Box::new(differentiate(a, var))))),
+        Sqrt(a) => Div(
+            Box::new(differentiate(a, var)),
+            Box::new(Mul(Box::new(Number(2.0)), Box::new(Sqrt(a.clone())))),
+        ),
+        Log(a) => Div(Box::new(differentiate(a, var)), a.clone()),
+    }
+}
+
+fn simplify(expr: &Symbol) -> Symbol {
+    use Symbol::*;
+    match expr {
+        Add(a, b) => {
+            let sa = simplify(a);
+            let sb = simplify(b);
+            match (&sa, &sb) {
+                (Number(x), Number(y)) => Number(x + y),
+                (Number(0.0), other) => other.clone(),
+                (other, Number(0.0)) => other.clone(),
+                _ => Add(Box::new(sa), Box::new(sb)),
+            }
+        }
+        Sub(a, b) => {
+            let sa = simplify(a);
+            let sb = simplify(b);
+            match (&sa, &sb) {
+                (Number(x), Number(y)) => Number(x - y),
+                (other, Number(0.0)) => other.clone(),
+                _ => Sub(Box::new(sa), Box::new(sb)),
+            }
+        }
+        Mul(a, b) => {
+            let sa = simplify(a);
+            let sb = simplify(b);
+            match (&sa, &sb) {
+                (Number(x), Number(y)) => Number(x * y),
+                (Number(0.0), _) | (_, Number(0.0)) => Number(0.0),
+                (Number(1.0), other) => other.clone(),
+                (other, Number(1.0)) => other.clone(),
+                _ => Mul(Box::new(sa), Box::new(sb)),
+            }
+        }
+        Div(a, b) => {
+            let sa = simplify(a);
+            let sb = simplify(b);
+            match (&sa, &sb) {
+                (Number(x), Number(y)) if *y != 0.0 => Number(x / y),
+                (other, Number(1.0)) => other.clone(),
+                _ => Div(Box::new(sa), Box::new(sb)),
+            }
+        }
+        Pow(a, b) => {
+            let sa = simplify(a);
+            let sb = simplify(b);
+            match (&sa, &sb) {
+                (Number(x), Number(y)) => Number(x.powf(*y)),
+                (_, Number(0.0)) => Number(1.0),
+                (other, Number(1.0)) => other.clone(),
+                _ => Pow(Box::new(sa), Box::new(sb)),
+            }
+        }
+        Neg(a) => {
+            let sa = simplify(a);
+            match sa {
+                Number(v) => Number(-v),
+                _ => Neg(Box::new(sa)),
+            }
+        }
+        Sin(a) => Sin(Box::new(simplify(a))),
+        Cos(a) => Cos(Box::new(simplify(a))),
+        Sqrt(a) => Sqrt(Box::new(simplify(a))),
+        Log(a) => Log(Box::new(simplify(a))),
+        Number(n) => Number(*n),
+        Var(v) => Var(v.clone()),
+    }
+}
+
+fn render_symbol(expr: &Symbol) -> String {
+    use Symbol::*;
+    match expr {
+        Number(n) => {
+            let mut out = format!("{:.10}", n);
+            while out.contains('.') && out.ends_with('0') {
+                out.pop();
+            }
+            if out.ends_with('.') {
+                out.pop();
+            }
+            out
+        }
+        Var(v) => v.clone(),
+        Add(a, b) => format!("{}+{}", wrap(a, 1), wrap(b, 1)),
+        Sub(a, b) => format!("{}-{}", wrap(a, 1), wrap(b, 1)),
+        Mul(a, b) => format!("{}*{}", wrap(a, 2), wrap(b, 2)),
+        Div(a, b) => format!("{}/{}", wrap(a, 2), wrap(b, 2)),
+        Pow(a, b) => format!("{}^{}", wrap(a, 3), wrap(b, 3)),
+        Neg(a) => format!("-{}", wrap(a, 4)),
+        Sin(a) => format!("sin({})", render_symbol(a)),
+        Cos(a) => format!("cos({})", render_symbol(a)),
+        Sqrt(a) => format!("sqrt({})", render_symbol(a)),
+        Log(a) => format!("log({})", render_symbol(a)),
+    }
+}
+
+fn precedence(sym: &Symbol) -> u8 {
+    use Symbol::*;
+    match sym {
+        Add(_, _) | Sub(_, _) => 1,
+        Mul(_, _) | Div(_, _) => 2,
+        Pow(_, _) => 3,
+        Neg(_) => 4,
+        _ => 5,
+    }
+}
+
+fn wrap(sym: &Symbol, parent_prec: u8) -> String {
+    let child = render_symbol(sym);
+    let prec = precedence(sym);
+    if prec < parent_prec {
+        format!("({child})")
+    } else {
+        child
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,6 +434,7 @@ impl Operator {
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Number(f64),
+    Variable(String),
     Operator(Operator),
     Function(String),
     LeftParen,
@@ -144,6 +444,7 @@ enum Token {
 #[derive(Debug, Clone)]
 enum RpnToken {
     Number(f64),
+    Variable(String),
     Operator(Operator),
     Function(String),
 }
@@ -172,9 +473,12 @@ fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
                 } else if lowered == "e" {
                     tokens.push(Token::Number(E));
                     prev_is_value = true;
-                } else {
+                } else if matches!(lowered.as_str(), "sin" | "cos" | "sqrt" | "log" | "deriv") {
                     tokens.push(Token::Function(lowered));
                     prev_is_value = false;
+                } else {
+                    tokens.push(Token::Variable(lowered));
+                    prev_is_value = true;
                 }
             }
             '+' => {
@@ -275,6 +579,7 @@ fn shunting_yard(tokens: &[Token]) -> Result<Vec<RpnToken>, String> {
     for token in tokens {
         match token {
             Token::Number(n) => output.push(RpnToken::Number(*n)),
+            Token::Variable(name) => output.push(RpnToken::Variable(name.clone())),
             Token::Function(name) => stack.push(Token::Function(name.clone())),
             Token::Operator(op) => {
                 while let Some(top) = stack.last() {
@@ -338,6 +643,9 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
     for token in tokens {
         match token {
             RpnToken::Number(n) => stack.push(*n),
+            RpnToken::Variable(name) => {
+                return Err(format!("unknown_variable:{name}"));
+            }
             RpnToken::Operator(op) => {
                 let arity = op.arity();
                 if stack.len() < arity {
@@ -451,6 +759,28 @@ mod tests {
     }
 
     #[test]
+    fn derivative_of_polynomial() {
+        let ast = parse_symbolic("x^3 + 2*x").unwrap();
+        let deriv = differentiate(&ast, "x");
+        let simplified = simplify(&deriv);
+        assert_eq!(render_symbol(&simplified), "3*x^2+2");
+    }
+
+    #[test]
+    fn derivative_of_trig_and_log() {
+        let ast = parse_symbolic("sin(x) + log(x)").unwrap();
+        let deriv = simplify(&differentiate(&ast, "x"));
+        assert_eq!(render_symbol(&deriv), "cos(x)+1/x");
+    }
+
+    #[test]
+    fn derivative_chain_with_power() {
+        let ast = parse_symbolic("(x^2 + 1)^3").unwrap();
+        let deriv = simplify(&differentiate(&ast, "x"));
+        assert_eq!(render_symbol(&deriv), "3*(x^2+1)^2*2*x");
+    }
+
+    #[test]
     fn supports_unary_minus_and_functions() {
         let res = evaluate_expression("-cos(0) + sqrt(9)").unwrap();
         assert!(approx_eq(res, 2.0));
@@ -471,6 +801,18 @@ mod tests {
     #[test]
     fn errors_on_unknown_function() {
         let err = evaluate_expression("foo(2)").unwrap_err();
-        assert!(err.starts_with("unknown_function"));
+        assert!(err.contains("unknown"));
+    }
+
+    #[test]
+    fn numeric_and_symbolic_paths_coexist() {
+        // Numeric evaluation stays numeric.
+        let num = evaluate_expression("2+2").unwrap();
+        assert!(approx_eq(num, 4.0));
+
+        // Symbolic deriv triggers symbolic_result string payload.
+        let sym_err = evaluate_expression("deriv(x^2)").unwrap_err();
+        assert!(sym_err.starts_with("symbolic_result:"));
+        assert!(sym_err.contains("2*x"));
     }
 }

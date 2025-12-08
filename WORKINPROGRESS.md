@@ -3,6 +3,9 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-08)
+- **Symbolic CAS**: Implemented symbolic differentiation in the Math Tool. Users can now compute derivatives (e.g., `deriv(x^2, x)` -> `2*x`) with simplification support.
+- **Refine PDF Placement Overlay**: Updated PDF signature tool to respect page aspect ratio for accurate marker placement.
+- **Offload Blocking File I/O**: Moved PDF loading, File Info, and Text View operations to a background worker thread to prevent UI freezes.
 - **WebView Text Search**: Implemented search bar in Text Viewer. `render_text_viewer_screen` now exposes `find_query` in the JSON payload, allowing the Kotlin renderer to trigger `webView.findAllAsync()`. Added navigation controls (Next/Prev/Clear) and unit tests.
 - **Sensor Smoothing**: Implemented Low-Pass Filters (alpha=0.2) for Compass (angular), Barometer, and Magnetometer to reduce jitter. Logic in `sensor_utils.rs` with unit tests; state persists across updates.
 - **Math Expression Evaluator**: Implemented a parser and evaluator for mathematical expressions (`features/math_tool.rs`). Supports arithmetic, powers, and basic functions (`sin`, `cos`, `sqrt`, `log`). UI includes history tracking.
@@ -23,20 +26,17 @@ Keep this file short and actionable. Update it at the end of each session.
 ## Technical Debt & Issues (High Priority)
 1. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
    - *Action*: Implement partial updates/diffing or separate data channels.
-2. **Blocking I/O**: JNI calls block the thread.
-   - *Action*: Move file I/O to a dedicated blocking thread pool.
-3. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
+2. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 
 ## Roadmap (Future Features)
-- **Symbolic CAS**: Extend math tool to support symbolic solving.
+- **Symbolic Integration**: Extend math tool to support basic integration.
 
 ## Immediate Focus
 - Harden input UX: avoid spamming Rust on every character.
 - On-device QA for text viewer (large logs), TalkBack, theme toggles.
 - Ensure Back buttons stay wired for all nested flows.
 - Robolectric coverage: add tests for `CodeView` and `PdfSignPlacement`.
-- PDF UX: refine placement overlay.
 - Text viewer: polish chunked loads/paging.
 - DSL grouping: add renderer tests.
 - Compass/Barometer/Magnetometer: smoothing/filtering.

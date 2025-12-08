@@ -1,22 +1,25 @@
-# Task In Progress: Refine PDF Placement Overlay
+# Task In Progress: Symbolic Differentiation (CAS)
 
-## Status: Planning
+## Status: Implemented
 *   **Date:** 2025-12-08
-*   **Objective:** Improve the UX of the PDF signature placement overlay by ensuring the "tap to place" marker accurately reflects the scaled position on the rendered page thumbnail.
+*   **Objective:** Extend the Math Tool to support symbolic differentiation (Computer Algebra System).
 *   **Plan:**
-    1.  **Analyze Current State (`features/pdf.rs`):**
-        *   The current `PdfSignPlacement` component (in Kotlin, driven by JSON) sends `pdf_signature_x_pct` and `pdf_signature_y_pct`.
-        *   The preview thumbnail (`PdfSignPreview`) renders a marker based on these percentages.
-    2.  **Refinement Logic (`features/pdf.rs`):**
-        *   Update `render_pdf_screen` to ensure the `PdfSignPreview` component receives the aspect ratio of the page if available (from `page_dimensions`).
-        *   Currently, `page_dimensions` is internal. We might need to expose it or cache the page aspect ratio in `PdfState`.
-    3.  **UI Update (`features/pdf.rs`):**
-        *   When rendering `PdfSignPreview`, pass an explicit `aspect_ratio` field if known.
-        *   This allows the client (Kotlin) to draw the preview box with the correct aspect ratio, ensuring the normalized coordinates (0.0-1.0) visually map to the correct physical location on the PDF page.
-    4.  **Tests:**
-        *   Add a test case in `pdf.rs` to verify that `page_dimensions` extracts the correct media box and calculates the aspect ratio.
+    1.  **Data Structures (`features/math_tool.rs`):**
+        *   Added `Symbol` enum for AST.
+    2.  **Parsing Logic (`features/math_tool.rs`):**
+        *   Implemented `tokenize` (updated for variables), `shunting_yard`, and `rpn_to_symbol` to build AST.
+    3.  **Differentiation Logic (`features/math_tool.rs`):**
+        *   Implemented `differentiate` with Power, Chain, Product, Quotient rules, and standard function derivatives.
+    4.  **Simplification Logic (`features/math_tool.rs`):**
+        *   Implemented `simplify` to fold constants and remove identity ops (x*1, x+0, etc.).
+    5.  **Formatting (`features/math_tool.rs`):**
+        *   Implemented `render_symbol` for string output.
+    6.  **Integration (`features/math_tool.rs`):**
+        *   Updated `evaluate_expression` to intercept `deriv(...)` calls.
+    7.  **Tests:**
+        *   Added unit tests for symbolic differentiation rules (polynomial, trig, chain rule) and simplification.
 
-## Previous Task: Offload Blocking File I/O to Worker Thread Pool
+## Previous Task: Refine PDF Placement Overlay
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Moved blocking file I/O operations (PDF load, File Info, Text View) to the asynchronous worker thread pool to prevent UI freezes.
+*   **Summary:** Updated `PdfState` to store page aspect ratio and pass it to the UI for accurate placement markers. `load_pdf_metadata` now returns aspect ratio.
