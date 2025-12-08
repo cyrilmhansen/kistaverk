@@ -1,26 +1,20 @@
-# Task In Progress: Symbolic Integration (Math Tool)
+# Task In Progress: Input Debouncing
 
 ## Status: Planning
 *   **Date:** 2025-12-08
-*   **Objective:** Extend the Symbolic CAS in the Math Tool to support basic indefinite integration (anti-derivatives), as requested in `WORKINPROGRESS.md`.
+*   **Objective:** Harden the input UX by introducing a `debounce_ms` property to the `TextInput` component. This instructs the renderer to delay sending state updates to Rust, reducing the frequency of JNI calls during rapid typing.
 *   **Plan:**
-    1.  **Logic (`features/math_tool.rs`):**
-        *   Implement `integrate(expr: &Symbol, var: &str) -> Symbol`.
-        *   Support basic rules:
-            *   Power rule: `x^n -> x^(n+1)/(n+1)` (handle `n=-1` case `1/x -> ln(x)`).
-            *   Linearity: `integrate(a + b) -> integrate(a) + integrate(b)`.
-            *   Trig functions: `sin(x) -> -cos(x)`, `cos(x) -> sin(x)`.
-            *   Exponential: `e^x -> e^x` (represented as `exp` in parser if needed, or `e^x`).
-        *   Update `evaluate_expression` to detect `integ(...)` calls.
-    2.  **Parser Update (`features/math_tool.rs`):**
-        *   Ensure `tokenize` handles `integ` keyword.
-    3.  **Integration (`features/math_tool.rs`):**
-        *   Wire `integ(...)` string inputs to the new `integrate` function.
-        *   Return symbolic result string similar to `deriv`.
+    1.  **Protocol Update (`ui.rs`):**
+        *   Add `debounce_ms: Option<u64>` to the `TextInput` struct.
+        *   Add a builder method `debounce_ms(ms: u64)`.
+    2.  **Implementation (`features/text_viewer.rs`):**
+        *   Apply `.debounce_ms(300)` to the Find query input.
+    3.  **Implementation (`features/math_tool.rs`):**
+        *   Apply `.debounce_ms(300)` to the Math expression input.
     4.  **Tests:**
-        *   Unit tests for basic polynomial and trig integration.
+        *   Add a unit test in `ui.rs` (or `mod.rs`) to verify that `debounce_ms` is correctly serialized into the JSON payload.
 
-## Previous Task: JSON-Backed RecyclerView Adapter
+## Previous Task: PDF 3x3 Placement Grid (Refinement)
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Implemented `VirtualList` in JSON protocol and integrated it into the Math Tool history for scalable list rendering.
+*   **Summary:** Refined `PdfSignPlacement` to respect page aspect ratio and confirmed with integration tests.

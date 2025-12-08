@@ -459,6 +459,8 @@ pub struct TextInput<'a> {
     pub single_line: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_lines: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debounce_ms: Option<u32>,
 }
 
 impl<'a> TextInput<'a> {
@@ -472,6 +474,7 @@ impl<'a> TextInput<'a> {
             content_description: None,
             single_line: None,
             max_lines: None,
+            debounce_ms: None,
         }
     }
 
@@ -505,6 +508,11 @@ impl<'a> TextInput<'a> {
     #[allow(dead_code)]
     pub fn max_lines(mut self, value: u32) -> Self {
         self.max_lines = Some(value);
+        self
+    }
+
+    pub fn debounce_ms(mut self, value: u32) -> Self {
+        self.debounce_ms = Some(value);
         self
     }
 }

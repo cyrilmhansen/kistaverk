@@ -20,6 +20,7 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
                 .hint("e.g., sin(pi/2) + 3^2")
                 .text(&state.math_tool.expression)
                 .single_line(true)
+                .debounce_ms(150)
                 .action_on_submit("math_calculate"),
         )
         .unwrap(),

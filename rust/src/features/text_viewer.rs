@@ -482,6 +482,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                                 .as_deref()
                                 .unwrap_or(""),
                             "hint": "Enter search term",
+                            "debounce_ms": 150,
                             "action_on_submit": "text_viewer_find_submit",
                             "single_line": true
                         }),
