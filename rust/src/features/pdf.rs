@@ -177,6 +177,7 @@ pub struct PdfOperationResult {
     pub title: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn handle_pdf_select(
     state: &mut AppState,
     fd: Option<i32>,
@@ -764,6 +765,14 @@ fn reorder_pages(mut doc: Document, order: &[u32]) -> Result<Document, String> {
     Ok(doc)
 }
 
+pub fn load_pdf_metadata(fd: RawFd) -> Result<(u32, Option<String>), String> {
+    let doc = load_document(fd)?;
+    let pages = doc.get_pages();
+    let count = pages.len() as u32;
+    let title = extract_pdf_title(&doc);
+    Ok((count, title))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1205,12 +1214,19 @@ fn ensure_xobject_dict<'a>(
     }
 }
 
-pub fn handle_pdf_title(
-    state: &mut AppState,
+#[derive(Debug, Clone)]
+pub struct PdfSetTitleResult {
+    pub out_path: String,
+    pub page_count: u32,
+    pub title: Option<String>,
+    pub source_uri: Option<String>,
+}
+
+pub fn perform_pdf_set_title(
     fd: RawFd,
     uri: Option<&str>,
     title: Option<&str>,
-) -> Result<(), String> {
+) -> Result<PdfSetTitleResult, String> {
     log_pdf_debug(&format!(
         "pdf_set_title: fd={fd} uri={uri:?} title_present={}",
         title.map(|t| !t.trim().is_empty()).unwrap_or(false)
@@ -1247,13 +1263,27 @@ pub fn handle_pdf_title(
     log_pdf_debug(&format!(
         "pdf_set_title_complete: output_path={out_path} page_count={page_count}"
     ));
-    state.pdf.last_output = Some(out_path.clone());
-    state.pdf.source_uri = uri
-        .map(|u| u.to_string())
-        .or_else(|| state.pdf.source_uri.clone());
+    Ok(PdfSetTitleResult {
+        out_path,
+        page_count,
+        title: Some(title),
+        source_uri: uri.map(|u| u.to_string()),
+    })
+}
+
+#[allow(dead_code)]
+pub fn handle_pdf_title(
+    state: &mut AppState,
+    fd: RawFd,
+    uri: Option<&str>,
+    title: Option<&str>,
+) -> Result<(), String> {
+    let res = perform_pdf_set_title(fd, uri, title)?;
+    state.pdf.last_output = Some(res.out_path.clone());
+    state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());
     state.pdf.last_error = None;
-    state.pdf.current_title = Some(title);
-    state.pdf.page_count = Some(page_count);
+    state.pdf.current_title = res.title.clone();
+    state.pdf.page_count = Some(res.page_count);
     state.replace_current(Screen::PdfTools);
     Ok(())
 }

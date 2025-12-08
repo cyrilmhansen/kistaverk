@@ -69,6 +69,33 @@ struct ChunkOutcome {
     reached_eof: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum TextViewSource {
+    Fd {
+        fd: RawFd,
+        display_path: Option<String>,
+    },
+    Path {
+        read_path: String,
+        display_path: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct TextViewLoadResult {
+    pub content: Option<String>,
+    pub hex_preview: Option<String>,
+    pub error: Option<String>,
+    pub path: Option<String>,
+    pub cached_path: Option<String>,
+    pub language: Option<String>,
+    pub total_bytes: Option<u64>,
+    pub loaded_bytes: u64,
+    pub window_offset: u64,
+    pub has_more: bool,
+    pub has_previous: bool,
+}
+
 fn bytes_to_string(buf: Vec<u8>) -> String {
     String::from_utf8(buf.clone()).unwrap_or_else(|_| String::from_utf8_lossy(&buf).to_string())
 }
@@ -138,188 +165,153 @@ pub fn guess_language_from_path(path: &str) -> Option<String> {
     }
 }
 
-pub fn load_text_from_fd(state: &mut AppState, fd: RawFd, path: Option<&str>) {
-    let mut file = unsafe { File::from_raw_fd(fd) };
-    let total_bytes = file.metadata().ok().map(|m| m.len());
-    state.text_view_language = path.and_then(guess_language_from_path);
-
-    let use_temp = path.is_none() || path.map(|p| p.starts_with("content://")).unwrap_or(false);
-    if use_temp {
-        match copy_fd_to_temp(&mut file) {
-            Ok(temp_path) => {
-                state.text_view_cached_path = Some(temp_path.clone());
-                handle_text_from_path(
-                    state,
-                    &temp_path,
-                    path.or(Some(temp_path.as_str())),
-                    0,
-                    false,
-                    true,
-                );
-            }
-            Err(e) => {
-                state.text_view_error = Some(e);
-                state.text_view_content = None;
-            }
-        }
-    } else {
-        state.text_view_cached_path = None;
-        handle_text_chunk(state, file, path, total_bytes, 0, false, path.is_some());
-    }
-}
-
-pub fn load_text_from_path(state: &mut AppState, path: &str) {
-    load_text_from_path_at_offset(state, path, 0, false);
-}
-
-pub fn load_text_from_path_at_offset(
-    state: &mut AppState,
-    path: &str,
+pub fn load_text_for_worker(
+    source: TextViewSource,
     offset: u64,
     force_text: bool,
-) {
-    // Window reads re-open the file each time to keep memory bounded.
-    if offset > 0 {
-        match File::open(path).and_then(|mut f| f.seek(SeekFrom::Start(offset)).map(|_| ())) {
-            Ok(_) => {}
-            Err(e) => {
-                state.text_view_error = Some(format!("seek_failed:{e}"));
-                state.text_view_has_more = false;
-                return;
+    can_page: bool,
+) -> Result<TextViewLoadResult, String> {
+    match source {
+        TextViewSource::Fd { fd, display_path } => {
+            if fd < 0 {
+                return Err("invalid_fd".into());
+            }
+            let mut file = unsafe { File::from_raw_fd(fd) };
+            let use_temp = display_path
+                .as_deref()
+                .map(|p| p.starts_with("content://"))
+                .unwrap_or(true);
+            if use_temp {
+                let temp = copy_fd_to_temp(&mut file)?;
+                let res = load_from_path_internal(
+                    &temp,
+                    display_path.as_deref().or(Some(&temp)),
+                    offset,
+                    force_text,
+                    can_page,
+                )?;
+                Ok(TextViewLoadResult {
+                    cached_path: Some(temp),
+                    ..res
+                })
+            } else {
+                let display = display_path.clone().unwrap_or_else(|| "<fd>".into());
+                load_from_path_internal(&display, Some(&display), offset, force_text, can_page)
             }
         }
+        TextViewSource::Path {
+            read_path,
+            display_path,
+        } => load_from_path_internal(
+            &read_path,
+            display_path.as_deref(),
+            offset,
+            force_text,
+            can_page,
+        ),
     }
-
-    handle_text_from_path(state, path, Some(path), offset, force_text, true);
 }
 
-pub fn load_more_text(state: &mut AppState) {
-    if state.text_view_hex_preview.is_some() {
-        state.text_view_error = Some("binary_preview".into());
-        return;
-    }
-    let path = match state.text_view_path.clone() {
-        Some(p) => p,
-        None => {
-            state.text_view_error = Some("missing_path".into());
-            return;
-        }
-    };
-    let offset = state
-        .text_view_window_offset
-        .saturating_add(CHUNK_BYTES as u64);
-    let effective = effective_path(state, &path);
-    load_text_from_path_at_offset(state, &effective, offset, true);
-}
-
-pub fn load_prev_text(state: &mut AppState) {
-    let path = match state.text_view_path.clone() {
-        Some(p) => p,
-        None => {
-            state.text_view_error = Some("missing_path".into());
-            return;
-        }
-    };
-    let offset = state
-        .text_view_window_offset
-        .saturating_sub(CHUNK_BYTES as u64);
-    let effective = effective_path(state, &path);
-    load_text_from_path_at_offset(state, &effective, offset, true);
-}
-
-fn handle_text_from_path(
-    state: &mut AppState,
+fn load_from_path_internal(
     path_for_read: &str,
     display_path: Option<&str>,
     offset: u64,
     force_text: bool,
     can_page: bool,
-) {
-    let file = match File::open(path_for_read) {
-        Ok(f) => f,
-        Err(e) => {
-            state.text_view_error = Some(format!("open_failed:{e}"));
-            state.text_view_has_more = false;
-            state.text_view_has_previous = offset > 0;
-            return;
-        }
-    };
+) -> Result<TextViewLoadResult, String> {
+    let file = File::open(path_for_read).map_err(|e| format!("open_failed:{e}"))?;
     let total_bytes = file.metadata().ok().map(|m| m.len());
-    handle_text_chunk(
-        state,
+    build_result_from_reader(
         file,
+        path_for_read,
         display_path,
         total_bytes,
         offset,
         force_text,
         can_page,
-    );
+    )
 }
 
-fn handle_text_chunk<R: Read>(
-    state: &mut AppState,
+fn build_result_from_reader<R: Read>(
     reader: R,
-    path: Option<&str>,
+    path_for_read: &str,
+    display_path: Option<&str>,
     total_bytes: Option<u64>,
     offset: u64,
     force_text: bool,
     can_page: bool,
-) {
-    state.text_view_hex_preview = None;
+) -> Result<TextViewLoadResult, String> {
     let sniff_binary = offset == 0 && !force_text;
-
     match read_chunk(reader, sniff_binary) {
         Ok(chunk) => {
             let has_content = chunk.content.is_some();
-            if let Some(hex) = chunk.hex_preview {
-                state.text_view_hex_preview = Some(hex);
-                state.text_view_content = None;
-                state.text_view_error = Some("binary_preview".into());
-                state.text_view_has_more = false;
-                state.text_view_has_previous = false;
-                state.text_view_loaded_bytes = chunk.bytes_read as u64;
-                state.text_view_total_bytes = total_bytes;
-                return;
-            }
-
-            if let Some(text) = chunk.content {
-                state.text_view_content = Some(text);
-                state.text_view_error = None;
+            let path_val = display_path.unwrap_or(path_for_read).to_string();
+            let language = display_path.and_then(guess_language_from_path);
+            let cached_path = if display_path == Some(path_for_read) {
+                None
             } else {
-                state.text_view_content = None;
-                state.text_view_error = Some("read_failed".into());
+                Some(path_for_read.to_string())
+            };
+
+            if let Some(hex) = chunk.hex_preview {
+                return Ok(TextViewLoadResult {
+                    content: None,
+                    hex_preview: Some(hex),
+                    error: Some("binary_preview".into()),
+                    path: Some(path_val),
+                    cached_path,
+                    language,
+                    total_bytes,
+                    loaded_bytes: chunk.bytes_read as u64,
+                    window_offset: offset,
+                    has_more: false,
+                    has_previous: false,
+                });
             }
 
-            state.text_view_window_offset = offset;
-            state.text_view_loaded_bytes = offset.saturating_add(chunk.bytes_read as u64);
-            state.text_view_total_bytes = total_bytes;
+            let loaded_bytes = offset.saturating_add(chunk.bytes_read as u64);
             let eof_known = total_bytes
-                .map(|total| state.text_view_loaded_bytes >= total)
+                .map(|total| loaded_bytes >= total)
                 .unwrap_or(chunk.reached_eof);
-            state.text_view_has_more =
-                can_page && has_content && !eof_known && chunk.bytes_read > 0;
-            state.text_view_has_previous = can_page && offset > 0;
-        }
-        Err(e) => {
-            state.text_view_error = Some(e);
-            state.text_view_content = None;
-            state.text_view_loaded_bytes = offset;
-            state.text_view_has_more = false;
-            state.text_view_has_previous = offset > 0;
-        }
-    }
 
-    if let Some(p) = path {
-        state.text_view_path = Some(p.to_string());
-        state.text_view_language = guess_language_from_path(p);
+            Ok(TextViewLoadResult {
+                content: chunk.content,
+                hex_preview: None,
+                error: None,
+                path: Some(path_val),
+                cached_path,
+                language,
+                total_bytes,
+                loaded_bytes,
+                window_offset: offset,
+                has_more: can_page && has_content && !eof_known && chunk.bytes_read > 0,
+                has_previous: can_page && offset > 0,
+            })
+        }
+        Err(e) => Err(e),
     }
 }
 
-fn effective_path(state: &AppState, primary: &str) -> String {
-    state
-        .text_view_cached_path
-        .clone()
-        .unwrap_or_else(|| primary.to_string())
+pub fn apply_text_view_result(state: &mut AppState, result: TextViewLoadResult) {
+    state.text_view_content = result.content;
+    state.text_view_hex_preview = result.hex_preview;
+    state.text_view_error = result.error;
+    state.text_view_window_offset = result.window_offset;
+    state.text_view_loaded_bytes = result.loaded_bytes;
+    state.text_view_total_bytes = result.total_bytes;
+    state.text_view_has_more = result.has_more;
+    state.text_view_has_previous = result.has_previous;
+    if let Some(path) = result.path {
+        state.text_view_path = Some(path.clone());
+        if let Some(lang) = result.language {
+            state.text_view_language = Some(lang);
+        } else {
+            state.text_view_language = guess_language_from_path(&path);
+        }
+    }
+    if let Some(cached) = result.cached_path {
+        state.text_view_cached_path = Some(cached);
+    }
 }
 
 fn copy_fd_to_temp(file: &mut File) -> Result<String, String> {

@@ -20,8 +20,8 @@ use crate::features::misc_screens::{
 };
 use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
 use crate::features::pdf::{
-    handle_pdf_select, handle_pdf_sign, handle_pdf_title, perform_pdf_operation,
-    render_pdf_preview_screen, render_pdf_screen, PdfOperation,
+    handle_pdf_sign, perform_pdf_operation, perform_pdf_set_title, render_pdf_preview_screen,
+    render_pdf_screen, PdfOperation, PdfSetTitleResult,
 };
 use crate::features::pixel_art::{
     process_pixel_art, render_pixel_art_screen, reset_pixel_art, save_fd_to_temp as save_pixel_fd,
@@ -42,11 +42,10 @@ use crate::features::sensor_logger::{
     apply_status_from_bindings, parse_bindings as parse_sensor_bindings,
     render_sensor_logger_screen,
 };
+use crate::features::text_viewer::{apply_text_view_result, load_text_for_worker, TextViewLoadResult, TextViewSource};
+use crate::features::text_viewer::guess_language_from_path;
 use crate::features::text_tools::{handle_text_action, render_text_tools_screen, TextAction};
-use crate::features::text_viewer::{
-    guess_language_from_path, load_more_text, load_prev_text, load_text_from_fd,
-    load_text_from_path, load_text_from_path_at_offset, render_text_viewer_screen,
-};
+use crate::features::text_viewer::render_text_viewer_screen;
 use crate::features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use crate::ui::render_multi_hash_screen;
 
@@ -202,6 +201,13 @@ struct PdfWorkerResult {
 }
 
 #[derive(Clone)]
+struct PdfSelectResult {
+    page_count: u32,
+    title: Option<String>,
+    source_uri: Option<String>,
+}
+
+#[derive(Clone)]
 struct ArchiveCompressResult {
     open: ArchiveOpenResult,
     status: String,
@@ -246,6 +252,26 @@ enum WorkerJob {
         archive_path: String,
         index: u32,
     },
+    FileInfo {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    PdfSelect {
+        fd: i32,
+        uri: Option<String>,
+    },
+    TextViewerLoad {
+        source: TextViewSource,
+        offset: u64,
+        force_text: bool,
+        can_page: bool,
+    },
+    PdfSetTitle {
+        fd: i32,
+        uri: Option<String>,
+        title: Option<String>,
+    },
 }
 
 enum WorkerResult {
@@ -279,6 +305,18 @@ enum WorkerResult {
     ArchiveExtract {
         archive_path: String,
         value: Result<String, String>,
+    },
+    FileInfo {
+        value: Result<features::file_info::FileInfoResult, String>,
+    },
+    PdfSelect {
+        value: Result<PdfSelectResult, String>,
+    },
+    TextViewer {
+        value: Result<TextViewLoadResult, String>,
+    },
+    PdfSetTitle {
+        value: Result<PdfSetTitleResult, String>,
     },
 }
 
@@ -424,6 +462,46 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
                 archive_path,
                 value,
             }
+        }
+        WorkerJob::FileInfo { path, fd, error } => {
+            test_worker_delay();
+            let value = if let Some(err) = error {
+                Err(err)
+            } else if let Some(fd) = fd {
+                Ok(file_info_from_fd(fd as RawFd))
+            } else if let Some(p) = path {
+                Ok(file_info_from_path(&p))
+            } else {
+                Err("missing_path".into())
+            };
+            WorkerResult::FileInfo { value }
+        }
+        WorkerJob::PdfSelect { fd, uri } => {
+            test_worker_delay();
+            let value = match features::pdf::load_pdf_metadata(fd as RawFd) {
+                Ok((count, title)) => Ok(PdfSelectResult {
+                    page_count: count,
+                    title,
+                    source_uri: uri,
+                }),
+                Err(e) => Err(e),
+            };
+            WorkerResult::PdfSelect { value }
+        }
+        WorkerJob::TextViewerLoad {
+            source,
+            offset,
+            force_text,
+            can_page,
+        } => {
+            test_worker_delay();
+            let value = load_text_for_worker(source, offset, force_text, can_page);
+            WorkerResult::TextViewer { value }
+        }
+        WorkerJob::PdfSetTitle { fd, uri, title } => {
+            test_worker_delay();
+            let value = perform_pdf_set_title(fd as RawFd, uri.as_deref(), title.as_deref());
+            WorkerResult::PdfSetTitle { value }
         }
     }
 }
@@ -1809,32 +1887,20 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.last_error = None;
         }
         Action::FileInfo { path, fd, error } => {
-            let mut fd_handle = FdHandle::new(fd);
-            state.replace_current(Screen::FileInfo);
-            let info = if let Some(err) = error {
-                features::file_info::FileInfoResult {
-                    path: path.map(|p| p.to_string()),
-                    size_bytes: None,
-                    mime: None,
-                    hex_dump: None,
-                    is_utf8: None,
-                    error: Some(err),
-                }
-            } else if let Some(fd) = fd_handle.take() {
-                file_info_from_fd(fd as RawFd)
-            } else if let Some(path) = path.as_deref() {
-                file_info_from_path(path)
-            } else {
-                features::file_info::FileInfoResult {
-                    path: None,
-                    size_bytes: None,
-                    mime: None,
-                    hex_dump: None,
-                    is_utf8: None,
-                    error: Some("missing_path".into()),
-                }
-            };
-            state.last_file_info = Some(serde_json::to_string(&info).unwrap_or_default());
+            state.replace_current(Screen::Loading);
+            state.loading_message = Some("Reading file info...".into());
+            state.loading_with_spinner = true;
+            let job = WorkerJob::FileInfo { path, fd, error };
+            if let Err(e) = STATE.worker().enqueue(job) {
+                state.last_error = Some(e);
+                state.loading_message = None;
+                state.loading_with_spinner = false;
+                state.replace_current(Screen::FileInfo);
+            }
+            #[cfg(test)]
+            {
+                apply_worker_results(&mut state);
+            }
         }
         Action::TextToolsScreen { bindings } => {
             state.push_screen(Screen::TextTools);
@@ -2410,15 +2476,32 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
             state.push_screen(Screen::PdfTools);
             state.pdf.last_error = error.clone();
             state.pdf.preview_page = None;
-            let mut fd_handle = FdHandle::new(fd);
-            if error.is_none() {
-                if let Some(raw_fd) = fd_handle.take() {
-                    if let Err(e) = handle_pdf_select(state, Some(raw_fd), uri.as_deref()) {
-                        state.pdf.last_error = Some(e);
-                    }
-                } else {
-                    state.pdf.last_error = Some("missing_fd".into());
+            state.pdf.page_count = None;
+            state.pdf.selected_pages.clear();
+            state.pdf.last_output = None;
+            state.pdf.current_title = None;
+            state.pdf.signature_target_page = None;
+            state.pdf.signature_x_pct = None;
+            state.pdf.signature_y_pct = None;
+            if let Some(err) = error {
+                state.pdf.last_error = Some(err);
+            } else if let Some(raw_fd) = fd {
+                state.loading_message = Some("Loading PDF...".into());
+                state.loading_with_spinner = true;
+                state.replace_current(Screen::Loading);
+                let job = WorkerJob::PdfSelect {
+                    fd: raw_fd,
+                    uri: uri.clone(),
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.pdf.last_error = Some(e);
                 }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
+            } else {
+                state.pdf.last_error = Some("missing_fd".into());
             }
         }
         Action::PdfExtract { fd, uri, selection } => {
@@ -2543,10 +2626,20 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
         }
         Action::PdfSetTitle { fd, uri, title } => {
             state.push_screen(Screen::PdfTools);
-            let mut fd_handle = FdHandle::new(fd);
-            if let Some(raw_fd) = fd_handle.take() {
-                if let Err(e) = handle_pdf_title(state, raw_fd, uri.as_deref(), title.as_deref()) {
+            if let Some(raw_fd) = fd {
+                state.loading_message = Some("Updating title...".into());
+                state.loading_with_spinner = true;
+                let job = WorkerJob::PdfSetTitle {
+                    fd: raw_fd,
+                    uri: uri.clone(),
+                    title,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
@@ -2676,15 +2769,54 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
             state.text_view_window_offset = 0;
             state.text_view_has_previous = false;
             state.text_view_cached_path = None;
-            let mut fd_handle = FdHandle::new(fd);
             if error.is_some() {
                 state.text_view_content = None;
                 state.text_view_language = None;
                 state.text_view_hex_preview = None;
-            } else if let Some(raw_fd) = fd_handle.take() {
-                load_text_from_fd(state, raw_fd as RawFd, path.as_deref());
-            } else if let Some(p) = path.as_deref() {
-                load_text_from_path(state, p);
+            } else if let Some(raw_fd) = fd {
+                state.loading_message = Some("Loading text...".into());
+                state.loading_with_spinner = true;
+                state.replace_current(Screen::Loading);
+                let source = TextViewSource::Fd {
+                    fd: raw_fd,
+                    display_path: path.clone(),
+                };
+                let job = WorkerJob::TextViewerLoad {
+                    source,
+                    offset: 0,
+                    force_text: false,
+                    can_page: true,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.text_view_error = Some(e);
+                    state.replace_current(Screen::TextViewer);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
+            } else if let Some(p) = path.clone() {
+                state.loading_message = Some("Loading text...".into());
+                state.loading_with_spinner = true;
+                state.replace_current(Screen::Loading);
+                let source = TextViewSource::Path {
+                    read_path: p.clone(),
+                    display_path: Some(p),
+                };
+                let job = WorkerJob::TextViewerLoad {
+                    source,
+                    offset: 0,
+                    force_text: false,
+                    can_page: true,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.text_view_error = Some(e);
+                    state.replace_current(Screen::TextViewer);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
             } else {
                 state.text_view_error = Some("missing_source".into());
                 state.text_view_content = None;
@@ -2704,20 +2836,102 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
             state.text_view_hex_preview = None;
             if let Some(path) = state.text_view_path.clone() {
                 let effective = state.text_view_cached_path.clone().unwrap_or(path.clone());
-                load_text_from_path_at_offset(state, &effective, 0, true);
+                state.loading_message = Some("Loading text...".into());
+                state.loading_with_spinner = true;
+                state.replace_current(Screen::Loading);
+                let source = TextViewSource::Path {
+                    read_path: effective,
+                    display_path: Some(path),
+                };
+                let job = WorkerJob::TextViewerLoad {
+                    source,
+                    offset: 0,
+                    force_text: true,
+                    can_page: true,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.text_view_error = Some(e);
+                    state.replace_current(Screen::TextViewer);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
             } else {
                 state.text_view_error = Some("nothing_to_reload".into());
                 state.text_view_content = None;
+                state.replace_current(Screen::TextViewer);
             }
-            state.replace_current(Screen::TextViewer);
         }
         Action::TextViewerLoadMore => {
-            load_more_text(state);
-            state.replace_current(Screen::TextViewer);
+            let path = match state.text_view_path.clone() {
+                Some(p) => p,
+                None => {
+                    state.text_view_error = Some("missing_path".into());
+                    state.replace_current(Screen::TextViewer);
+                    return;
+                }
+            };
+            let offset = state
+                .text_view_window_offset
+                .saturating_add(features::text_viewer::CHUNK_BYTES as u64);
+            let effective = state.text_view_cached_path.clone().unwrap_or(path.clone());
+            state.loading_message = Some("Loading text...".into());
+            state.loading_with_spinner = true;
+            state.replace_current(Screen::Loading);
+            let source = TextViewSource::Path {
+                read_path: effective,
+                display_path: Some(path),
+            };
+            let job = WorkerJob::TextViewerLoad {
+                source,
+                offset,
+                force_text: true,
+                can_page: true,
+            };
+            if let Err(e) = STATE.worker().enqueue(job) {
+                state.text_view_error = Some(e);
+                state.replace_current(Screen::TextViewer);
+            }
+            #[cfg(test)]
+            {
+                apply_worker_results(state);
+            }
         }
         Action::TextViewerLoadPrev => {
-            load_prev_text(state);
-            state.replace_current(Screen::TextViewer);
+            let path = match state.text_view_path.clone() {
+                Some(p) => p,
+                None => {
+                    state.text_view_error = Some("missing_path".into());
+                    state.replace_current(Screen::TextViewer);
+                    return;
+                }
+            };
+            let offset = state
+                .text_view_window_offset
+                .saturating_sub(features::text_viewer::CHUNK_BYTES as u64);
+            let effective = state.text_view_cached_path.clone().unwrap_or(path.clone());
+            state.loading_message = Some("Loading text...".into());
+            state.loading_with_spinner = true;
+            state.replace_current(Screen::Loading);
+            let source = TextViewSource::Path {
+                read_path: effective,
+                display_path: Some(path),
+            };
+            let job = WorkerJob::TextViewerLoad {
+                source,
+                offset,
+                force_text: true,
+                can_page: true,
+            };
+            if let Err(e) = STATE.worker().enqueue(job) {
+                state.text_view_error = Some(e);
+                state.replace_current(Screen::TextViewer);
+            }
+            #[cfg(test)]
+            {
+                apply_worker_results(state);
+            }
         }
         Action::TextViewerJump { offset } => {
             let target = offset.unwrap_or(0);
@@ -2731,11 +2945,31 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                         target.min(max_offset)
                     })
                     .unwrap_or(target);
-                load_text_from_path_at_offset(state, &effective, clamped, true);
+                state.loading_message = Some("Loading text...".into());
+                state.loading_with_spinner = true;
+                state.replace_current(Screen::Loading);
+                let source = TextViewSource::Path {
+                    read_path: effective,
+                    display_path: Some(path),
+                };
+                let job = WorkerJob::TextViewerLoad {
+                    source,
+                    offset: clamped,
+                    force_text: true,
+                    can_page: true,
+                };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.text_view_error = Some(e);
+                    state.replace_current(Screen::TextViewer);
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
             } else {
                 state.text_view_error = Some("missing_path".into());
+                state.replace_current(Screen::TextViewer);
             }
-            state.replace_current(Screen::TextViewer);
         }
         Action::TextViewerFind { query, direction } => {
             if let Some(q) = query {
@@ -3641,6 +3875,7 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::os::unix::io::IntoRawFd;
+    use std::thread;
     use std::sync::{atomic::Ordering, Mutex};
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
@@ -4537,6 +4772,58 @@ mod tests {
         assert_eq!(state.last_error.as_deref(), Some("missing_path"));
         assert_eq!(state.last_hash_algo.as_deref(), Some("MD4"));
     }
+
+    #[test]
+    fn text_viewer_open_runs_on_worker() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let mut cmd = make_command("text_viewer_open");
+        cmd.path = Some(file.path().to_string_lossy().into_owned());
+        let ui_loading = handle_command(cmd).expect("text_viewer_open should enqueue");
+        assert_contains_text(&ui_loading, "Loading text");
+
+        thread::sleep(Duration::from_millis(10));
+        let _ = handle_command(make_command("snapshot")).unwrap();
+
+        let state = STATE.ui_lock();
+        assert!(matches!(state.current_screen(), Screen::TextViewer));
+        let content = state.text_view_content.as_deref().unwrap_or("");
+        assert!(content.contains(SAMPLE_CONTENT));
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn file_info_runs_on_worker_and_updates_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(SAMPLE_CONTENT.as_bytes()).unwrap();
+        file.flush().unwrap();
+
+        let mut cmd = make_command("file_info");
+        cmd.path = Some(file.path().to_string_lossy().into_owned());
+        let ui_loading = handle_command(cmd).expect("file_info should enqueue");
+        assert_contains_text(&ui_loading, "Reading file info");
+
+        thread::sleep(Duration::from_millis(10));
+        let _ = handle_command(make_command("snapshot")).unwrap();
+
+        let state = STATE.ui_lock();
+        assert_eq!(state.current_screen(), Screen::FileInfo);
+        assert!(state.last_file_info.is_some());
+        assert!(state.last_error.is_none());
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();
@@ -4704,6 +4991,61 @@ fn apply_worker_results(state: &mut AppState) {
                         state.archive.last_output = None;
                         state.replace_current(Screen::ArchiveTools);
                     }
+                }
+            },
+            WorkerResult::FileInfo { value } => match value {
+                Ok(info) => {
+                    state.last_file_info = Some(serde_json::to_string(&info).unwrap_or_default());
+                    state.last_error = None;
+                    state.replace_current(Screen::FileInfo);
+                }
+                Err(e) => {
+                    state.last_error = Some(e);
+                    state.last_file_info = None;
+                    state.replace_current(Screen::FileInfo);
+                }
+            },
+            WorkerResult::PdfSelect { value } => match value {
+                Ok(res) => {
+                    state.pdf.page_count = Some(res.page_count);
+                    state.pdf.current_title = res.title;
+                    state.pdf.source_uri = res.source_uri;
+                    state.pdf.selected_pages.clear();
+                    state.pdf.last_error = None;
+                    state.pdf.last_output = None;
+                    state.replace_current(Screen::PdfTools);
+                }
+                Err(e) => {
+                    state.pdf.last_error = Some(e);
+                    state.pdf.page_count = None;
+                    state.pdf.selected_pages.clear();
+                    state.pdf.last_output = None;
+                    state.replace_current(Screen::PdfTools);
+                }
+            },
+            WorkerResult::TextViewer { value } => match value {
+                Ok(res) => {
+                    apply_text_view_result(state, res);
+                    state.replace_current(Screen::TextViewer);
+                }
+                Err(e) => {
+                    state.text_view_error = Some(e);
+                    state.text_view_content = None;
+                    state.replace_current(Screen::TextViewer);
+                }
+            },
+            WorkerResult::PdfSetTitle { value } => match value {
+                Ok(res) => {
+                    state.pdf.last_output = Some(res.out_path.clone());
+                    state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());
+                    state.pdf.current_title = res.title.clone();
+                    state.pdf.page_count = Some(res.page_count);
+                    state.pdf.last_error = None;
+                    state.replace_current(Screen::PdfTools);
+                }
+                Err(e) => {
+                    state.pdf.last_error = Some(e);
+                    state.replace_current(Screen::PdfTools);
                 }
             },
         }
