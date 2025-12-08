@@ -1,36 +1,22 @@
-# Task In Progress: Offload Blocking File I/O to Worker Thread Pool
+# Task In Progress: Refine PDF Placement Overlay
 
 ## Status: Planning
 *   **Date:** 2025-12-08
-*   **Objective:** Eliminate UI freezes and ANRs caused by synchronous file I/O operations on the main JNI thread by moving them to the asynchronous worker thread pool.
+*   **Objective:** Improve the UX of the PDF signature placement overlay by ensuring the "tap to place" marker accurately reflects the scaled position on the rendered page thumbnail.
 *   **Plan:**
-    1.  **Define Worker Jobs (`router.rs`):**
-        *   Extend `WorkerJob` enum with:
-            *   `PdfLoad { fd: i32, uri: Option<String> }`
-            *   `PdfTitle { fd: i32, uri: Option<String>, title: String }`
-            *   `PdfSign { ... }` (capture all sign args)
-            *   `FileInfo { fd: Option<i32>, path: Option<String> }`
-            *   `TextLoad { fd: Option<i32>, path: Option<String> }`
-    2.  **Define Worker Results (`router.rs`):**
-        *   Extend `WorkerResult` enum with corresponding results:
-            *   `PdfLoaded { ... }`
-            *   `PdfSaved { out_path: String }`
-            *   `FileInfoReady { json: String }`
-            *   `TextLoaded { content: String, ... }`
-    3.  **Implement Execution Logic (`router.rs`):**
-        *   In `run_worker_job`, move the body of `handle_pdf_select`, `handle_file_info`, etc., into the worker thread.
-        *   Ensure file descriptors are correctly owned/closed by the worker.
-    4.  **Update Action Handlers (`router.rs`, `features/*.rs`):**
-        *   Refactor `Action::PdfSelect`, `Action::FileInfo`, etc., to:
-            *   Enqueue the job.
-            *   Set `state.loading_message`.
-            *   Switch to `Screen::Loading`.
-    5.  **Handle Results (`router.rs`):**
-        *   In `apply_worker_results`, handle the new result variants to update state and switch screens (e.g., back to `PdfTools` or `FileInfo`).
-    6.  **Verification:**
-        *   Use `TEST_FORCE_ASYNC_WORKER` to verify the loading state appears and then resolves.
+    1.  **Analyze Current State (`features/pdf.rs`):**
+        *   The current `PdfSignPlacement` component (in Kotlin, driven by JSON) sends `pdf_signature_x_pct` and `pdf_signature_y_pct`.
+        *   The preview thumbnail (`PdfSignPreview`) renders a marker based on these percentages.
+    2.  **Refinement Logic (`features/pdf.rs`):**
+        *   Update `render_pdf_screen` to ensure the `PdfSignPreview` component receives the aspect ratio of the page if available (from `page_dimensions`).
+        *   Currently, `page_dimensions` is internal. We might need to expose it or cache the page aspect ratio in `PdfState`.
+    3.  **UI Update (`features/pdf.rs`):**
+        *   When rendering `PdfSignPreview`, pass an explicit `aspect_ratio` field if known.
+        *   This allows the client (Kotlin) to draw the preview box with the correct aspect ratio, ensuring the normalized coordinates (0.0-1.0) visually map to the correct physical location on the PDF page.
+    4.  **Tests:**
+        *   Add a test case in `pdf.rs` to verify that `page_dimensions` extracts the correct media box and calculates the aspect ratio.
 
-## Previous Task: WebView Text Search
+## Previous Task: Offload Blocking File I/O to Worker Thread Pool
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Implemented search bar in Text Viewer. Exposed `find_query` in JSON payload for Kotlin integration.
+*   **Summary:** Moved blocking file I/O operations (PDF load, File Info, Text View) to the asynchronous worker thread pool to prevent UI freezes.

@@ -205,6 +205,7 @@ struct PdfSelectResult {
     page_count: u32,
     title: Option<String>,
     source_uri: Option<String>,
+    aspect_ratio: Option<f64>,
 }
 
 #[derive(Clone)]
@@ -497,10 +498,11 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
         WorkerJob::PdfSelect { fd, uri } => {
             test_worker_delay();
             let value = match features::pdf::load_pdf_metadata(fd as RawFd) {
-                Ok((count, title)) => Ok(PdfSelectResult {
+                Ok((count, title, aspect_ratio)) => Ok(PdfSelectResult {
                     page_count: count,
                     title,
                     source_uri: uri,
+                    aspect_ratio,
                 }),
                 Err(e) => Err(e),
             };
@@ -3932,6 +3934,8 @@ mod tests {
     use super::*;
     use crate::features::sensor_logger::parse_bindings as parse_sensor_bindings;
     use crate::ui::{Card as UiCard, Section as UiSection, Text as UiText};
+    use image::codecs::png::PngEncoder;
+    use image::{ColorType, ImageEncoder};
     use serde_json::Value;
     use std::collections::HashMap;
     use std::fs::File;
@@ -3941,6 +3945,7 @@ mod tests {
     use std::sync::{atomic::Ordering, Mutex};
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
+    use lopdf::dictionary;
     use zip::write::FileOptions;
 
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -4912,6 +4917,125 @@ mod tests {
 
         assert!(ui.get("find_query").is_none());
     }
+
+    #[test]
+    fn pdf_select_sets_aspect_ratio() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        TEST_FORCE_ASYNC_WORKER.store(true, Ordering::SeqCst);
+
+        // Build a tiny PDF with known aspect ratio 2:1
+        let mut doc = lopdf::Document::with_version("1.4");
+        let page_id = doc.new_object_id();
+        let contents_id = doc.add_object(lopdf::Stream::new(dictionary! {}, Vec::new()));
+        let pages_id = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Kids" => vec![lopdf::Object::Reference(page_id)],
+            "Count" => 1i64
+        });
+        let media_box = vec![0.into(), 0.into(), 200.into(), 100.into()];
+        let page_dict = dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => media_box,
+            "Contents" => contents_id,
+            "Resources" => dictionary! {}
+        };
+        doc.objects.insert(page_id, lopdf::Object::Dictionary(page_dict));
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        doc.save(file.path()).unwrap();
+        file.flush().unwrap();
+
+        let mut cmd = make_command("pdf_select");
+        cmd.fd = Some(File::open(file.path()).unwrap().into_raw_fd());
+        let _ = handle_command(cmd).expect("pdf_select should enqueue");
+
+        thread::sleep(Duration::from_millis(10));
+        let _ = handle_command(make_command("snapshot")).unwrap();
+
+        let state = STATE.ui_lock();
+        assert_eq!(state.pdf.page_count, Some(1));
+        assert_eq!(state.pdf.page_aspect_ratio, Some(2.0));
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn pdf_sign_runs_on_worker() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+
+        // Build a simple single-page PDF
+        let mut doc = lopdf::Document::with_version("1.4");
+        let page_id = doc.new_object_id();
+        let contents_id = doc.add_object(lopdf::Stream::new(dictionary! {}, Vec::new()));
+        let pages_id = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Kids" => vec![lopdf::Object::Reference(page_id)],
+            "Count" => 1i64
+        });
+        let media_box = vec![0.into(), 0.into(), 200.into(), 200.into()];
+        let page_dict = dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "MediaBox" => media_box,
+            "Contents" => contents_id,
+            "Resources" => dictionary! {}
+        };
+        doc.objects.insert(page_id, lopdf::Object::Dictionary(page_dict));
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id
+        });
+        doc.trailer.set("Root", catalog_id);
+
+        let mut pdf_file = tempfile::NamedTempFile::new().unwrap();
+        doc.save(pdf_file.path()).unwrap();
+        pdf_file.flush().unwrap();
+
+        // 1x1 transparent PNG
+        let mut png_buf = Vec::new();
+        {
+            let img = image::RgbaImage::from_pixel(1, 1, image::Rgba([0, 0, 0, 0]));
+            let encoder = PngEncoder::new(&mut png_buf);
+            encoder.write_image(&img, 1, 1, ColorType::Rgba8).unwrap();
+        }
+        use base64::Engine;
+        let sig_b64 = base64::engine::general_purpose::STANDARD.encode(&png_buf);
+
+        let mut cmd = make_command("pdf_sign");
+        cmd.fd = Some(File::open(pdf_file.path()).unwrap().into_raw_fd());
+        cmd.bindings = Some(HashMap::from_iter([
+            ("signature_base64".into(), sig_b64),
+            ("pdf_signature_page".into(), "1".into()),
+            ("pdf_signature_x_pct".into(), "0.5".into()),
+            ("pdf_signature_y_pct".into(), "0.5".into()),
+            ("pdf_signature_x".into(), "10".into()),
+            ("pdf_signature_y".into(), "20".into()),
+            ("pdf_signature_width".into(), "30".into()),
+            ("pdf_signature_height".into(), "40".into()),
+        ]));
+
+        let _ui = handle_command(cmd).expect("pdf_sign should enqueue");
+
+        let _ = handle_command(make_command("snapshot")).unwrap();
+
+        let state = STATE.ui_lock();
+        if let Some(err) = &state.pdf.last_error {
+            panic!("pdf_sign worker returned error: {err}");
+        }
+        assert!(state.pdf.last_output.is_some());
+        assert_eq!(state.current_screen(), Screen::PdfTools);
+
+        TEST_FORCE_ASYNC_WORKER.store(false, Ordering::SeqCst);
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();
@@ -5098,6 +5222,7 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.current_title = res.title;
                     state.pdf.source_uri = res.source_uri;
+                    state.pdf.page_aspect_ratio = res.aspect_ratio;
                     state.pdf.selected_pages.clear();
                     state.pdf.last_error = None;
                     state.pdf.last_output = None;
@@ -5106,6 +5231,7 @@ fn apply_worker_results(state: &mut AppState) {
                 Err(e) => {
                     state.pdf.last_error = Some(e);
                     state.pdf.page_count = None;
+                    state.pdf.page_aspect_ratio = None;
                     state.pdf.selected_pages.clear();
                     state.pdf.last_output = None;
                     state.replace_current(Screen::PdfTools);

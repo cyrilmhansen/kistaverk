@@ -110,6 +110,7 @@ fn log_pdf_debug(message: &str) {
 pub struct PdfState {
     pub source_uri: Option<String>,
     pub page_count: Option<u32>,
+    pub page_aspect_ratio: Option<f64>,
     pub selected_pages: Vec<u32>,
     pub last_output: Option<String>,
     pub last_error: Option<String>,
@@ -129,6 +130,7 @@ impl PdfState {
         Self {
             source_uri: None,
             page_count: None,
+            page_aspect_ratio: None,
             selected_pages: Vec::new(),
             last_output: None,
             last_error: None,
@@ -147,6 +149,7 @@ impl PdfState {
     pub fn reset(&mut self) {
         self.source_uri = None;
         self.page_count = None;
+        self.page_aspect_ratio = None;
         self.selected_pages.clear();
         self.last_output = None;
         self.last_error = None;
@@ -401,6 +404,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     );
     children.push(serde_json::to_value(UiButton::new("Set PDF title", "pdf_set_title")).unwrap());
     if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
+        let aspect = state.pdf.page_aspect_ratio;
         children.push(json!({
             "type": "PdfSignPlacement",
             "source_uri": uri,
@@ -411,7 +415,8 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             "bind_key_y_pct": "pdf_signature_y_pct",
             "selected_x_pct": state.pdf.signature_x_pct,
             "selected_y_pct": state.pdf.signature_y_pct,
-            "content_description": "Signature placement picker"
+            "content_description": "Signature placement picker",
+            "page_aspect_ratio": aspect
         }));
 
         // Compact thumbnail preview with overlay marker; mirrors placement state
@@ -425,7 +430,8 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             "bind_key_y_pct": "pdf_signature_y_pct",
             "selected_x_pct": state.pdf.signature_x_pct,
             "selected_y_pct": state.pdf.signature_y_pct,
-            "content_description": "Signature preview thumbnail"
+            "content_description": "Signature preview thumbnail",
+            "page_aspect_ratio": aspect
         }));
 
         // Quick placement grid (3x3 preset normalized coords)
@@ -765,12 +771,17 @@ fn reorder_pages(mut doc: Document, order: &[u32]) -> Result<Document, String> {
     Ok(doc)
 }
 
-pub fn load_pdf_metadata(fd: RawFd) -> Result<(u32, Option<String>), String> {
+pub fn load_pdf_metadata(fd: RawFd) -> Result<(u32, Option<String>, Option<f64>), String> {
     let doc = load_document(fd)?;
     let pages = doc.get_pages();
     let count = pages.len() as u32;
     let title = extract_pdf_title(&doc);
-    Ok((count, title))
+    let aspect = pages
+        .values()
+        .next()
+        .and_then(|id| page_dimensions(&doc, *id).ok())
+        .map(|(w, h)| if h > 0.0 { w / h } else { 0.0 });
+    Ok((count, title, aspect))
 }
 
 #[cfg(test)]
