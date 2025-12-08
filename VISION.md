@@ -122,3 +122,28 @@ extern "C" fn Java_com_microtools_core_Bridge_dispatch(
 ## 6. Build System
 *   **Rust:** Uses `cargo` and `cargo-ndk` to cross-compile `.so` libraries for `arm64-v8a`, `armeabi-v7a`, and `x86_64`.
 *   **Android:** Gradle hooks into the process to copy the generated `.so` files into `src/main/jniLibs` before packaging the APK.
+
+
+## Top 3 Missing Features (Roadmap)
+
+Given the "Swiss Army Knife" philosophy and the current capability set, these features would provide the highest value:
+
+### 1. File Encryption/Decryption (The "Vault")
+Why: The app focuses heavily on privacy and integrity (hashing). The missing piece is confidentiality.
+Implementation:
+Rust: Integrate the age crate (modern, secure file encryption) or aes-gcm.
+UI: A screen to "Encrypt File" (accepts file + password/key, outputs .age file) and "Decrypt File".
+Benefit: Fits perfectly with the offline, privacy-first mission.
+
+### 2. Batch Processing (Images & PDFs)
+Why: Currently, KotlinImageConversion.kt and pdf.rs handle single files. Users typically need to resize multiple photos for email or merge multiple PDFs at once.
+Implementation:
+Android: Update the ActivityResultContracts to GetMultipleContents.
+Rust (KotlinImageState): Change source_path to Vec<String>.
+UI: A VirtualList in Rust showing the queue with a "Process All" button.
+
+### 3. Search/Filtering within Tools
+Why: The Archive Viewer and Dependency List can become unwieldy with large inputs.
+Implementation:
+Rust (archive.rs): Add a filter_query field to ArchiveState. Filter entries before sending them to the VirtualList.
+UI: Reuse the TextInput with debounce_ms (which was recently implemented) to trigger live filtering updates in the Rust state.

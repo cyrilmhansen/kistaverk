@@ -12,6 +12,8 @@
 **Target Size:** < 5 MB.  
 **Philosophy:** 100% Local. No Internet Permission.
 
+See [PRIVACY.md](PRIVACY.md) for why specific permissions (Camera, Location) are requested and how data stays on-device.
+
 ---
 
 ## 🛠 Features

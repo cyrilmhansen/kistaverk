@@ -7,6 +7,12 @@ This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over
 - **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues. Image conversions/resizing run on the Kotlin side while Rust still owns navigation/state/results. Camera/QR scanning now lives in a dedicated `CameraManager`; sensor logging plus compass/barometer/magnetometer live in `AppSensorManager`, keeping `MainActivity` dispatch lean (<70 lines focus).
 - **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls. Heavy Rust commands can be enqueued; results are applied on the next dispatch to avoid the global UI mutex becoming a bottleneck.
 
+### Adding a new async worker job (Rust)
+1. Add a `WorkerJob` variant (inputs) and a `WorkerResult` variant (outputs) in `rust/src/router.rs`.
+2. Implement the work in `run_worker_job` and return the matching `WorkerResult`.
+3. Handle the result in `apply_worker_results` to update `AppState` and, if needed, `Screen`.
+4. In the action handler, set a loading UI state, enqueue via `STATE.worker().enqueue`, and return early. Tests can force sync via `TEST_FORCE_ASYNC_WORKER`.
+
 ## Navigation
 - `Vec<Screen>` stack in Rust; Home is root. Hardware Back calls `back` action; inline Back buttons shown when depth > 1 (QR, text tools, archive viewer, sensor logger, color tools, Kotlin image flows, text viewer).
 - `snapshot`/`restore_state` serialize/rehydrate `AppState` for Activity recreation.
