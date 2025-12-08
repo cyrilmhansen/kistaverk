@@ -91,6 +91,13 @@ pub fn handle_math_action(
 }
 
 pub fn evaluate_expression(expr: &str) -> Result<f64, String> {
+    if let Some((inner, var)) = extract_integ_call(expr) {
+        let ast = parse_symbolic(&inner)?;
+        let integral = integrate(&ast, &var);
+        let simplified = simplify(&integral);
+        let rendered = render_symbol(&simplified);
+        return Err(format!("symbolic_result:{rendered}"));
+    }
     if let Some(inner) = extract_deriv_call(expr) {
         let ast = parse_symbolic(&inner)?;
         let deriv = differentiate(&ast, "x");
@@ -130,6 +137,44 @@ fn extract_deriv_call(expr: &str) -> Option<String> {
     let end_idx = end?;
     let inner = trimmed.get(open + 1..end_idx)?;
     Some(inner.trim().to_string())
+}
+
+fn extract_integ_call(expr: &str) -> Option<(String, String)> {
+    let trimmed = expr.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("integ") {
+        return None;
+    }
+    let open = trimmed.find('(')?;
+    let mut depth = 0i32;
+    let mut end = None;
+    for (idx, ch) in trimmed.char_indices().skip(open) {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(idx);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let end_idx = end?;
+    let inner = trimmed.get(open + 1..end_idx)?;
+    let mut parts = inner.splitn(2, ',').map(|s| s.trim()).collect::<Vec<_>>();
+    let var = if parts.len() == 2 && !parts[1].is_empty() {
+        parts.pop().unwrap().to_string()
+    } else {
+        "x".to_string()
+    };
+    let expr_body = parts.first().cloned().unwrap_or("").to_string();
+    if expr_body.is_empty() {
+        None
+    } else {
+        Some((expr_body, var))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -276,6 +321,116 @@ fn differentiate(expr: &Symbol, var: &str) -> Symbol {
             Box::new(Mul(Box::new(Number(2.0)), Box::new(Sqrt(a.clone())))),
         ),
         Log(a) => Div(Box::new(differentiate(a, var)), a.clone()),
+    }
+}
+
+fn integrate(expr: &Symbol, var: &str) -> Symbol {
+    use Symbol::*;
+    match expr {
+        Number(c) => Mul(Box::new(Number(*c)), Box::new(Var(var.to_string()))),
+        Var(name) => {
+            if name == var {
+                Div(
+                    Box::new(Pow(
+                        Box::new(Var(name.clone())),
+                        Box::new(Number(2.0)),
+                    )),
+                    Box::new(Number(2.0)),
+                )
+            } else {
+                Mul(Box::new(Var(name.clone())), Box::new(Var(var.to_string())))
+            }
+        }
+        Add(a, b) => Add(Box::new(integrate(a, var)), Box::new(integrate(b, var))),
+        Sub(a, b) => Sub(Box::new(integrate(a, var)), Box::new(integrate(b, var))),
+        Mul(a, b) => {
+            match (&**a, &**b) {
+                (Number(c), rhs) => Mul(Box::new(Number(*c)), Box::new(integrate(rhs, var))),
+                (lhs, Number(c)) => Mul(Box::new(Number(*c)), Box::new(integrate(lhs, var))),
+                _ => Var("∫unsupported".into()),
+            }
+        }
+        Pow(base, exp) => match (&**base, &**exp) {
+            (Var(name), Number(n)) if name == var => {
+                if (*n - -1.0).abs() < f64::EPSILON {
+                    Log(Box::new(Var(name.clone())))
+                } else {
+                    let new_exp = *n + 1.0;
+                    Div(
+                        Box::new(Pow(
+                            Box::new(Var(name.clone())),
+                            Box::new(Number(new_exp)),
+                        )),
+                        Box::new(Number(new_exp)),
+                    )
+                }
+            }
+            (Var(name), Neg(inner)) if name == var => {
+                if let Symbol::Number(n) = inner.as_ref() {
+                    let exp_val = -*n;
+                    if (exp_val - -1.0).abs() < f64::EPSILON {
+                        Log(Box::new(Var(name.clone())))
+                    } else {
+                        let new_exp = exp_val + 1.0;
+                        Div(
+                            Box::new(Pow(
+                                Box::new(Var(name.clone())),
+                                Box::new(Number(new_exp)),
+                            )),
+                            Box::new(Number(new_exp)),
+                        )
+                    }
+                } else {
+                    Var("∫unsupported".into())
+                }
+            }
+            _ => Var("∫unsupported".into()),
+        },
+        Sin(a) => {
+            if matches!(&**a, Var(name) if name == var) {
+                Neg(Box::new(Cos(a.clone())))
+            } else {
+                Var("∫unsupported".into())
+            }
+        }
+        Cos(a) => {
+            if matches!(&**a, Var(name) if name == var) {
+                Sin(a.clone())
+            } else {
+                Var("∫unsupported".into())
+            }
+        }
+        Sqrt(a) => {
+            // ∫ sqrt(x) dx = 2/3 x^(3/2)
+            if matches!(&**a, Var(name) if name == var) {
+                Div(
+                    Box::new(Mul(
+                        Box::new(Number(2.0)),
+                        Box::new(Pow(
+                            Box::new(Var(var.to_string())),
+                            Box::new(Number(1.5)),
+                        )),
+                    )),
+                    Box::new(Number(3.0)),
+                )
+            } else {
+                Var("∫unsupported".into())
+            }
+        }
+        Log(a) => {
+            if matches!(&**a, Var(name) if name == var) {
+                Sub(
+                    Box::new(Mul(
+                        Box::new(Var(var.to_string())),
+                        Box::new(Log(Box::new(Var(var.to_string())))),
+                    )),
+                    Box::new(Var(var.to_string())),
+                )
+            } else {
+                Var("∫unsupported".into())
+            }
+        }
+        Div(_, _) | Neg(_) => Var("∫unsupported".into()),
     }
 }
 
@@ -821,6 +976,34 @@ mod tests {
         let sym_err = evaluate_expression("deriv(x^2)").unwrap_err();
         assert!(sym_err.starts_with("symbolic_result:"));
         assert!(sym_err.contains("2*x"));
+    }
+
+    #[test]
+    fn integrate_power_rule() {
+        let ast = parse_symbolic("x^2").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "x^3/3");
+    }
+
+    #[test]
+    fn integrate_trig_and_constants() {
+        let ast = parse_symbolic("2*cos(x)").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "2*sin(x)");
+    }
+
+    #[test]
+    fn integrate_inverse_x_to_log() {
+        let ast = parse_symbolic("x^-1").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "log(x)");
+    }
+
+    #[test]
+    fn integrate_dispatches_in_eval() {
+        let res = evaluate_expression("integ(x^3)").unwrap_err();
+        assert!(res.starts_with("symbolic_result:"));
+        assert!(res.contains("x^4/4"));
     }
 
     #[test]

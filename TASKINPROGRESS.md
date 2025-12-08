@@ -1,22 +1,26 @@
-# Task In Progress: JSON-Backed RecyclerView Adapter
+# Task In Progress: Symbolic Integration (Math Tool)
 
 ## Status: Planning
 *   **Date:** 2025-12-08
-*   **Objective:** Address the "UI Scalability" technical debt by implementing a virtualized list component (`VirtualList`) in the JSON protocol. This allows the Android `RecyclerView` to render large datasets without OOM errors, replacing the current `LinearLayout` approach for history/logs.
+*   **Objective:** Extend the Symbolic CAS in the Math Tool to support basic indefinite integration (anti-derivatives), as requested in `WORKINPROGRESS.md`.
 *   **Plan:**
-    1.  **Protocol Update (`ui.rs`):**
-        *   Define a new component type `VirtualList` in the JSON schema.
-        *   It should accept a list of items (data) and a template (how to render each item).
-    2.  **State Management (`state.rs`):**
-        *   No global state changes needed immediately, but features like `SensorLogger` (logs) or `MathTool` (history) will be consumers.
-    3.  **Implementation (`ui.rs`):**
-        *   Implement `VirtualList` struct and `Serialize` impl.
-    4.  **Integration (Feature: Math Tool):**
-        *   Update `render_math_tool_screen` to use `VirtualList` for the history instead of a manual `Column` loop.
-    5.  **Tests:**
-        *   Verify that `VirtualList` serializes correctly to the expected JSON structure.
+    1.  **Logic (`features/math_tool.rs`):**
+        *   Implement `integrate(expr: &Symbol, var: &str) -> Symbol`.
+        *   Support basic rules:
+            *   Power rule: `x^n -> x^(n+1)/(n+1)` (handle `n=-1` case `1/x -> ln(x)`).
+            *   Linearity: `integrate(a + b) -> integrate(a) + integrate(b)`.
+            *   Trig functions: `sin(x) -> -cos(x)`, `cos(x) -> sin(x)`.
+            *   Exponential: `e^x -> e^x` (represented as `exp` in parser if needed, or `e^x`).
+        *   Update `evaluate_expression` to detect `integ(...)` calls.
+    2.  **Parser Update (`features/math_tool.rs`):**
+        *   Ensure `tokenize` handles `integ` keyword.
+    3.  **Integration (`features/math_tool.rs`):**
+        *   Wire `integ(...)` string inputs to the new `integrate` function.
+        *   Return symbolic result string similar to `deriv`.
+    4.  **Tests:**
+        *   Unit tests for basic polynomial and trig integration.
 
-## Previous Task: PDF 3x3 Placement Grid
+## Previous Task: JSON-Backed RecyclerView Adapter
 *   **Status:** Implemented
 *   **Date:** 2025-12-08
-*   **Summary:** Added a 3x3 grid for quick signature placement in the PDF tool.
+*   **Summary:** Implemented `VirtualList` in JSON protocol and integrated it into the Math Tool history for scalable list rendering.
