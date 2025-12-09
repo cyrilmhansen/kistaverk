@@ -395,10 +395,12 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
             test_worker_delay();
             let value = match op {
                 CompressionOp::Compress => {
-                    gzip_compress(&path).map(|out| format!("Compressed to {}", out.display()))
+                    gzip_compress(&path)
+                        .map(|out| format!("Result saved to: {}", out.display()))
                 }
                 CompressionOp::Decompress => {
-                    gzip_decompress(&path).map(|out| format!("Decompressed to {}", out.display()))
+                    gzip_decompress(&path)
+                        .map(|out| format!("Result saved to: {}", out.display()))
                 }
             };
             WorkerResult::Compression { value }

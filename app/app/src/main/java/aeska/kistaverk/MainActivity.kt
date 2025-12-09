@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
                 val path = t.removePrefix("Result saved to:").trim()
                 if (path.isNotEmpty()) {
                     lastFileOutputPath = path
-                    lastFileOutputMime = "application/pdf"
+                    lastFileOutputMime = guessMimeFromPath(path)
                 }
             } else if (t.startsWith("Path:")) {
                 val path = t.removePrefix("Path:").trim()
@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
     private fun guessMimeFromPath(path: String): String? {
         return when {
             path.lowercase(Locale.US).endsWith(".pdf") -> "application/pdf"
+            path.lowercase(Locale.US).endsWith(".gz") -> "application/gzip"
             path.lowercase(Locale.US).endsWith(".png") -> "image/png"
             path.lowercase(Locale.US).endsWith(".webp") -> "image/webp"
             path.lowercase(Locale.US).endsWith(".jpg") || path.lowercase(Locale.US).endsWith(".jpeg") -> "image/jpeg"
@@ -382,6 +383,11 @@ class MainActivity : ComponentActivity() {
             }
             if (action == "kotlin_image_save_as") {
                 val mime = lastFileOutputMime ?: "image/*"
+                launchSaveAs(lastFileOutputPath, mime)
+                return@UiRenderer
+            }
+            if (action == "gzip_save_as") {
+                val mime = lastFileOutputMime ?: "application/gzip"
                 launchSaveAs(lastFileOutputPath, mime)
                 return@UiRenderer
             }

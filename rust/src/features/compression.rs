@@ -47,6 +47,17 @@ pub fn render_compression_screen(state: &AppState) -> Value {
                 .content_description("gzip_status"),
             "gzip_status",
         ));
+        let has_output_path = msg
+            .strip_prefix("Result saved to:")
+            .map(str::trim)
+            .map(|p| !p.is_empty())
+            .unwrap_or(false);
+        if has_output_path && state.compression_error.is_none() {
+            children.push(to_value_or_text(
+                UiButton::new("Save as…", "gzip_save_as").id("gzip_save_as_btn"),
+                "gzip_save_as_btn",
+            ));
+        }
     }
 
     if let Some(err) = &state.compression_error {
@@ -127,6 +138,37 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    fn find_action(node: &Value, target: &str) -> bool {
+        match node {
+            Value::Object(map) => {
+                if map
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .map(|a| a == target)
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+                map.get("children")
+                    .and_then(|c| c.as_array())
+                    .map(|children| children.iter().any(|child| find_action(child, target)))
+                    .unwrap_or(false)
+            }
+            Value::Array(arr) => arr.iter().any(|child| find_action(child, target)),
+            _ => false,
+        }
+    }
+
+    #[test]
+    fn renders_save_as_button_on_success_status() {
+        let mut state = AppState::new();
+        state.compression_status = Some("Result saved to: /tmp/output.gz".into());
+
+        let ui = render_compression_screen(&state);
+
+        assert!(find_action(&ui, "gzip_save_as"));
+    }
 
     #[test]
     fn gzip_roundtrip_preserves_content() {
