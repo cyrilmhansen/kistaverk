@@ -1,31 +1,31 @@
-# Task In Progress: Batch Processing (Images & PDFs)
+# Task In Progress: Search/Filtering within Tools
 
 ## Status: Implemented
 *   **Date:** 2025-12-09
-*   **Objective:** Enable batch processing for images (resizing/conversion) and PDFs (merging) to improve user efficiency. Currently, tools only handle single files.
+*   **Objective:** Implement search/filtering capabilities in the Archive Viewer to help users find specific files within large archives.
 *   **Plan:**
-    1.  **UI Protocol (`rust/src/ui.rs`):**
-        *   Update `Button` struct: Add `allow_multiple_files: Option<bool>`.
-    2.  **Android Renderer (`MainActivity.kt`):**
-        *   Update `pickFileLauncher`: Switch to `ActivityResultContracts.OpenMultipleDocuments()` when `allow_multiple_files` is true.
-        *   Handle list of URIs in `handlePickerResult`.
-        *   Update `dispatch` to send `path_list` (JSON array of strings) in extras when multiple files are picked.
-    3.  **Rust State (`rust/src/state.rs`):**
-        *   Update `KotlinImageState` to include `batch_queue: Vec<String>`.
-        *   Update `PdfState` to include `merge_queue: Vec<String>`.
-    4.  **Rust Logic:**
-        *   **Images (`rust/src/features/kotlin_image.rs`):**
-            *   Update `render_kotlin_image_screen`: Show a `VirtualList` of selected files if queue is not empty.
-            *   Add "Process Batch" button.
-            *   Implement batch processing loop in `handle_kotlin_image_result` or via a new worker job `BatchImageProcess`.
-        *   **PDFs (`rust/src/features/pdf.rs`):**
-            *   Update merge flow to accept a list of files instead of just primary/secondary.
-            *   Update `PdfOperation::Merge` to take `Vec<i32>` (fds) or `Vec<String>` (uris).
-    5.  **Integration (`rust/src/router.rs`):**
-        *   Handle `path_list` in `Command` struct.
-        *   Route batch selections to appropriate state fields.
+    1.  **State (`rust/src/features/archive.rs`):**
+        *   Update `ArchiveState` struct to include `filter_query: Option<String>`.
+        *   Initialize `filter_query` to `None` in `ArchiveState::new`.
+    2.  **Implementation (`rust/src/features/archive.rs`):**
+        *   Update `render_archive_screen` to include a `TextInput` for `archive_filter`.
+        *   Configure the `TextInput` with `debounce_ms` (e.g., 200ms) to trigger updates without explicit submission.
+        *   Filter the displayed `entries` based on the `filter_query` before rendering the list.
+        *   Ensure the "Extract" buttons use the correct index from the original (unfiltered) list or map indices correctly. *Correction:* Since `extract_entry` takes an index, we need to be careful. It might be safer to pass the entry name or ensure the UI index maps back to the `ZipArchive` index. However, `ZipArchive` works by index. A simple way is to store the original index in `ArchiveEntry`.
+    3.  **Refactoring (`rust/src/features/archive.rs`):**
+        *   Update `ArchiveEntry` struct to include `original_index: usize`.
+        *   Update `read_archive_entries` to populate `original_index`.
+        *   Update `extract_entry` calls in `render_archive_screen` to use `entry.original_index`.
+    4.  **Integration (`rust/src/router.rs`):**
+        *   Handle the binding update for `archive_filter` implicitly via state update (or explicit action if needed, but `TextInput` binding should suffice if we refresh the screen).
+        *   Actually, `TextInput` updates `bindings` map in Kotlin, and we need an action to sync it to Rust state. We can use a generic "refresh" or specific "archive_filter_update" action triggered by `debounce_ms`.
+        *   Let's add `ArchiveFilter { query: String }` to `Action` and `WorkerJob` is not needed if filtering happens in `render`. Wait, `render` is pure function of `state`. We need to update `state.archive.filter_query`.
+        *   So, add `Action::ArchiveFilter` which updates state and re-renders.
+    5.  **Tests:**
+        *   **Filtering Logic:** Create a test with a mock `ArchiveState` containing multiple entries, apply a filter, and verify the rendered list contains only matches.
+        *   **Index Integrity:** Verify that extracting a filtered item uses the correct original index.
 
-## Previous Task: File Encryption/Decryption (The "Vault")
+## Previous Task: Batch Processing (Images & PDFs)
 *   **Status:** Implemented
 *   **Date:** 2025-12-09
-*   **Summary:** Implemented secure file encryption/decryption using the `age` crate. Added `VaultState`, `WorkerJob::Vault`, and updated UI/Android layers to support password masking and "Save As".
+*   **Summary:** Implemented batch processing for images and PDFs. Added multi-file picking, queues in state, and batch operations in Rust core.

@@ -1,7 +1,7 @@
 use crate::features::storage::output_dir_for;
 use crate::features::text_viewer::read_text_from_reader;
 use crate::state::AppState;
-use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText};
+use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
@@ -16,6 +16,7 @@ pub struct ArchiveEntry {
     pub name: String,
     pub size: u64,
     pub is_dir: bool,
+    pub original_index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +26,7 @@ pub struct ArchiveState {
     pub error: Option<String>,
     pub truncated: bool,
     pub last_output: Option<String>,
+    pub filter_query: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +44,7 @@ impl ArchiveState {
             error: None,
             truncated: false,
             last_output: None,
+            filter_query: None,
         }
     }
 
@@ -51,6 +54,7 @@ impl ArchiveState {
         self.error = None;
         self.truncated = false;
         self.last_output = None;
+        self.filter_query = None;
     }
 }
 
@@ -78,6 +82,7 @@ fn read_archive_entries(
                 name: file.name().to_string(),
                 size: file.size(),
                 is_dir: file.name().ends_with('/'),
+                original_index: i,
             });
         }
     }
@@ -251,12 +256,36 @@ pub fn render_archive_screen(state: &AppState) -> Value {
     }
 
     if !state.archive.entries.is_empty() {
+        let current_filter = state
+            .archive
+            .filter_query
+            .as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        children.push(to_value_or_text(
+            UiTextInput::new("archive_filter")
+                .hint("Filter entries")
+                .text(current_filter)
+                .debounce_ms(200)
+                .action_on_submit("archive_filter"),
+            "archive_filter_input",
+        ));
         children.push(to_value_or_text(
             UiText::new("Contents:").size(16.0),
             "archive_contents",
         ));
+        let filter = state
+            .archive
+            .filter_query
+            .as_deref()
+            .map(|s| s.to_ascii_lowercase());
         let mut rows = Vec::new();
-        for (idx, entry) in state.archive.entries.iter().enumerate() {
+        for entry in state.archive.entries.iter() {
+            if let Some(fq) = &filter {
+                if !entry.name.to_ascii_lowercase().contains(fq) {
+                    continue;
+                }
+            }
             let icon = if entry.is_dir { "📁" } else { "📄" };
             let size_str = if entry.is_dir {
                 String::new()
@@ -266,7 +295,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             let label = format!("{icon} {} {size_str}", entry.name);
             let mut entry_children = Vec::new();
             if is_text_entry(entry) {
-                let action = format!("archive_open_text:{idx}");
+                let action = format!("archive_open_text:{}", entry.original_index);
                 entry_children.push(to_value_or_text(
                     UiButton::new(&label, &action).content_description("archive_entry_text"),
                     "archive_entry_text",
@@ -280,7 +309,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
                 ));
             }
             entry_children.push(to_value_or_text(
-                UiButton::new("Extract", &format!("archive_extract_entry:{idx}"))
+                UiButton::new("Extract", &format!("archive_extract_entry:{}", entry.original_index))
                     .content_description("archive_extract_entry"),
                 "archive_extract_entry",
             ));
@@ -487,6 +516,7 @@ pub fn archive_output_root(path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::AppState;
     use tempfile::tempdir;
     use zip::write::FileOptions;
 
@@ -560,5 +590,41 @@ mod tests {
             .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
             .collect();
         assert_eq!(names, vec!["single.txt".to_string()]);
+    }
+
+    #[test]
+    fn render_applies_filter_and_preserves_indices() {
+        let mut state = AppState::new();
+        state.archive.path = Some("archive.zip".into());
+        state.archive.entries = vec![
+            ArchiveEntry {
+                name: "foo.txt".into(),
+                size: 10,
+                is_dir: false,
+                original_index: 0,
+            },
+            ArchiveEntry {
+                name: "logs/output.log".into(),
+                size: 100,
+                is_dir: false,
+                original_index: 5,
+            },
+        ];
+        state.archive.filter_query = Some("log".into());
+
+        let ui = render_archive_screen(&state);
+        let ui_str = ui.to_string();
+        assert!(
+            ui_str.contains("output.log"),
+            "filtered entry should be present"
+        );
+        assert!(
+            !ui_str.contains("foo.txt"),
+            "non-matching entry should be hidden"
+        );
+        assert!(
+            ui_str.contains("archive_extract_entry:5"),
+            "original index should be preserved in actions"
+        );
     }
 }

@@ -888,6 +888,9 @@ enum Action {
     ArchiveExtractEntry {
         index: u32,
     },
+    ArchiveFilter {
+        query: Option<String>,
+    },
     CompressionScreen,
     GzipCompress {
         path: Option<String>,
@@ -1380,6 +1383,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "qr_receive_save" => Ok(Action::QrReceiveSave),
         "archive_tools_screen" => Ok(Action::ArchiveToolsScreen),
         "archive_open" => Ok(Action::ArchiveOpen { fd, path, error }),
+        "archive_filter" => Ok(Action::ArchiveFilter {
+            query: bindings.get("archive_filter").cloned(),
+        }),
         "archive_compress" => Ok(Action::ArchiveCompress { path, fd, error }),
         "gzip_screen" => Ok(Action::CompressionScreen),
         "gzip_compress" => Ok(Action::GzipCompress { path, fd, error }),
@@ -1684,7 +1690,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::ArchiveCompress { .. }
         | a @ Action::ArchiveOpenText { .. }
         | a @ Action::ArchiveExtractAll
-        | a @ Action::ArchiveExtractEntry { .. } => {
+        | a @ Action::ArchiveExtractEntry { .. }
+        | a @ Action::ArchiveFilter { .. } => {
             if let Some(ui) = handle_archive_actions(&mut state, a) {
                 return Ok(ui);
             }
@@ -2239,6 +2246,11 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
             state.archive.reset();
             None
         }
+        Action::ArchiveFilter { query } => {
+            state.replace_current(Screen::ArchiveTools);
+            state.archive.filter_query = query.filter(|q| !q.trim().is_empty());
+            None
+        }
         Action::ArchiveOpen { fd, path, error } => {
             state.push_screen(Screen::ArchiveTools);
             state.archive.error = error.clone();
@@ -2246,6 +2258,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
             state.archive.entries.clear();
             state.archive.truncated = false;
             state.archive.path = path.clone();
+            state.archive.filter_query = None;
             let mut fd_handle = FdHandle::new(fd);
             if let Some(err) = error {
                 state.archive.error = Some(err);
@@ -5456,6 +5469,20 @@ mod tests {
         let state = STATE.ui_lock();
         assert_eq!(state.image.batch_queue, vec!["/tmp/1.png", "/tmp/2.png"]);
     }
+
+    #[test]
+    fn archive_filter_action_updates_state() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        let mut cmd = make_command("archive_filter");
+        cmd.bindings = Some(HashMap::from_iter([(
+            "archive_filter".into(),
+            "log".into(),
+        )]));
+        handle_command(cmd).expect("filter action should succeed");
+        let state = STATE.ui_lock();
+        assert_eq!(state.archive.filter_query, Some("log".into()));
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();
@@ -5578,6 +5605,7 @@ fn apply_worker_results(state: &mut AppState) {
                     state.archive.truncated = res.truncated;
                     state.archive.error = None;
                     state.archive.last_output = None;
+                    state.archive.filter_query = None;
                     state.replace_current(Screen::ArchiveTools);
                 }
                 Err(e) => {
@@ -5585,6 +5613,7 @@ fn apply_worker_results(state: &mut AppState) {
                     state.archive.last_output = None;
                     state.archive.entries.clear();
                     state.archive.truncated = false;
+                    state.archive.filter_query = None;
                     state.replace_current(Screen::ArchiveTools);
                 }
             },
@@ -5595,6 +5624,7 @@ fn apply_worker_results(state: &mut AppState) {
                     state.archive.truncated = res.open.truncated;
                     state.archive.error = None;
                     state.archive.last_output = Some(res.status);
+                    state.archive.filter_query = None;
                     state.replace_current(Screen::ArchiveTools);
                 }
                 Err(e) => {

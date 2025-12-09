@@ -724,6 +724,7 @@ class UiRenderer(
         val bindKey = data.optString("bind_key", "")
         val initial = data.optString("text", "")
         val hasExplicitText = data.has("text")
+        val debounceMs = data.optLong("debounce_ms", 0L).coerceAtLeast(0L)
         if (hasExplicitText && editText.text.toString() != initial) {
             editText.setText(initial)
         } else if (!hasExplicitText && existing == null) {
@@ -752,10 +753,24 @@ class UiRenderer(
             }
         }
 
+        val submitAction = data.optString("action_on_submit", "")
         if (bindKey.isNotEmpty() && editText.getTag(bindKeyTag) != bindKey) {
             editText.addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) {
-                    scheduleBindingUpdate(bindKey, s?.toString().orEmpty())
+                    val changeAction = if (debounceMs > 0 && submitAction.isNotEmpty()) {
+                        submitAction
+                    } else {
+                        null
+                    }
+                    val delay = if (changeAction != null && debounceMs > 0) debounceMs else 120L
+                    scheduleBindingUpdate(
+                        bindKey,
+                        s?.toString().orEmpty(),
+                        changeAction,
+                        false,
+                        false,
+                        delay
+                    )
                 }
 
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -764,7 +779,6 @@ class UiRenderer(
             editText.setTag(bindKeyTag, bindKey)
         }
 
-        val submitAction = data.optString("action_on_submit", "")
         if (submitAction.isNotEmpty()) {
             editText.setOnEditorActionListener { _, actionId, _ ->
                 val isDone = actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_NULL
@@ -1724,14 +1738,24 @@ class UiRenderer(
         }
     }
 
-    private fun scheduleBindingUpdate(bindKey: String, value: String) {
+    private fun scheduleBindingUpdate(
+        bindKey: String,
+        value: String,
+        actionName: String? = null,
+        needsFilePicker: Boolean = false,
+        allowMultiple: Boolean = false,
+        delayMs: Long = 120L
+    ) {
         pendingBindingUpdates.remove(bindKey)?.let { mainHandler.removeCallbacks(it) }
         val runnable = Runnable {
             bindings[bindKey] = value
             pendingBindingUpdates.remove(bindKey)
+            if (!actionName.isNullOrEmpty()) {
+                onAction(actionName, needsFilePicker, allowMultiple, bindings.toMap())
+            }
         }
         pendingBindingUpdates[bindKey] = runnable
-        mainHandler.postDelayed(runnable, 120)
+        mainHandler.postDelayed(runnable, delayMs)
     }
 
     private fun flushPendingBindings() {
