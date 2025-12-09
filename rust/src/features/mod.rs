@@ -22,3 +22,4 @@ pub mod uuid_gen;
 pub mod math_tool;
 pub mod vault;
 pub mod logic;
+pub mod jwt;

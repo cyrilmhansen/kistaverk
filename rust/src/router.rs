@@ -1007,6 +1007,14 @@ enum Action {
         predicate: Option<String>,
         object: Option<String>,
     },
+    JwtScreen,
+    JwtDecode {
+        token: Option<String>,
+    },
+    JwtClear,
+    JwtPaste {
+        token: Option<String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -1191,6 +1199,14 @@ fn parse_action(command: Command) -> Result<Action, String> {
             subject: bindings.get("logic_query_s").cloned(),
             predicate: bindings.get("logic_query_p").cloned(),
             object: bindings.get("logic_query_o").cloned(),
+        }),
+        "jwt_screen" => Ok(Action::JwtScreen),
+        "jwt_decode" => Ok(Action::JwtDecode {
+            token: bindings.get("jwt_input").cloned(),
+        }),
+        "jwt_clear" => Ok(Action::JwtClear),
+        "jwt_paste" => Ok(Action::JwtPaste {
+            token: bindings.get("clipboard").cloned(),
         }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
@@ -1745,6 +1761,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
             if let Some(ui) = handle_logic_actions(&mut state, a) {
                 return Ok(ui);
             }
+        }
+        a @ Action::JwtScreen
+        | a @ Action::JwtDecode { .. }
+        | a @ Action::JwtClear
+        | a @ Action::JwtPaste { .. } => {
+            handle_jwt_actions(&mut state, a);
         }
         Action::SystemInfoScreen => {
             state.push_screen(Screen::SystemInfo);
@@ -2690,6 +2712,61 @@ fn handle_logic_actions(state: &mut AppState, action: Action) -> Option<Value> {
             None
         }
         _ => None,
+    }
+}
+
+fn handle_jwt_actions(state: &mut AppState, action: Action) {
+    match action {
+        Action::JwtScreen => {
+            state.push_screen(Screen::Jwt);
+            state.replace_current(Screen::Jwt);
+            state.jwt.input_token.clear();
+            state.jwt.decoded_header = None;
+            state.jwt.decoded_payload = None;
+            state.jwt.error = None;
+        }
+        Action::JwtDecode { token } => {
+            state.replace_current(Screen::Jwt);
+            let token = token.unwrap_or_else(|| state.jwt.input_token.clone());
+            state.jwt.input_token = token.clone();
+            if token.trim().is_empty() {
+                state.jwt.error = Some("jwt_empty".into());
+                state.jwt.decoded_header = None;
+                state.jwt.decoded_payload = None;
+                return;
+            }
+            match features::jwt::decode_jwt(&token) {
+                Ok((h, p)) => {
+                    state.jwt.decoded_header = Some(h);
+                    state.jwt.decoded_payload = Some(p);
+                    state.jwt.error = None;
+                }
+                Err(e) => {
+                    state.jwt.error = Some(e);
+                    state.jwt.decoded_header = None;
+                    state.jwt.decoded_payload = None;
+                }
+            }
+        }
+        Action::JwtClear => {
+            state.replace_current(Screen::Jwt);
+            state.jwt.input_token.clear();
+            state.jwt.decoded_header = None;
+            state.jwt.decoded_payload = None;
+            state.jwt.error = None;
+        }
+        Action::JwtPaste { token } => {
+            state.replace_current(Screen::Jwt);
+            if let Some(t) = token {
+                state.jwt.input_token = t.clone();
+                if let Ok((h, p)) = features::jwt::decode_jwt(&t) {
+                    state.jwt.decoded_header = Some(h);
+                    state.jwt.decoded_payload = Some(p);
+                    state.jwt.error = None;
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -3884,6 +3961,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::QrReceive => render_qr_receive_screen(state),
         Screen::Vault => features::vault::render_vault_screen(state),
         Screen::Logic => features::logic::render_logic_screen(state),
+        Screen::Jwt => features::jwt::render_jwt_screen(state),
     }
 }
 
@@ -4138,6 +4216,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "logic_screen",
             requires_file_picker: false,
             description: "triples + simple queries",
+        },
+        Feature {
+            id: "jwt_decoder",
+            name: "🔓 JWT decoder",
+            category: "🧰 Utilities",
+            action: "jwt_screen",
+            requires_file_picker: false,
+            description: "inspect JWT header/payload offline",
         },
         Feature {
             id: "pixel_art",

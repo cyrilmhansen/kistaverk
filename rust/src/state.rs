@@ -2,6 +2,7 @@ use crate::features::archive::ArchiveState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::logic::LogicState;
 use crate::features::pdf::PdfState;
+use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::sensor_logger::SensorSelection;
@@ -44,6 +45,7 @@ pub enum Screen {
     MathTool,
     Vault,
     Logic,
+    Jwt,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -206,6 +208,7 @@ pub struct AppState {
     pub math_tool: MathToolState,
     pub vault: VaultState,
     pub logic: LogicState,
+    pub jwt: JwtState,
 }
 
 impl AppState {
@@ -295,6 +298,7 @@ impl AppState {
             math_tool: MathToolState::new(),
             vault: VaultState::new(),
             logic: LogicState::new(),
+            jwt: JwtState::new(),
         }
     }
 
@@ -420,6 +424,7 @@ impl AppState {
         self.math_tool = MathToolState::new();
         self.vault = VaultState::new();
         self.logic = LogicState::new();
+        self.jwt = JwtState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }
