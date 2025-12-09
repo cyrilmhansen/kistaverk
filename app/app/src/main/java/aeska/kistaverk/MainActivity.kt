@@ -418,6 +418,11 @@ class MainActivity : ComponentActivity() {
                 launchSaveAs(lastFileOutputPath, mime)
                 return@UiRenderer
             }
+            if (action == "hex_editor_save_as_picker") {
+                dispatchWithOptionalLoading(action, bindings = bindings)
+                launchSaveAs(lastFileOutputPath, lastFileOutputMime ?: "application/octet-stream")
+                return@UiRenderer
+            }
             if (action == "system_info_update") {
                 val bindingsWithMetrics = bindings + collectSystemInfoBindings()
                 dispatchWithOptionalLoading(action, bindings = bindingsWithMetrics)

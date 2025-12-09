@@ -36,6 +36,10 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 *   **Sensor Logger:** CSV export of device sensors.
 *   **Math Tool:** Symbolic differentiation and expression evaluation.
 
+### Developer Tools
+*   **Hex/Binary Editor:** View and patch files at the byte level.
+*   **JWT Decoder:** Inspect JSON Web Tokens without network calls.
+
 ---
 
 ## 🚀 Upcoming Features (Roadmap)
@@ -51,9 +55,7 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
     *   **Ping/Traceroute:** Diagnostic tools.
 *   *Note: This conflicts with the strict "No Internet" philosophy, so it might remain a separate experimental branch or plugin.*
 
-### 3. Developer Tools
-*   **JWT Decoder:** Parse and inspect JSON Web Tokens locally.
-*   **Hex/Binary Editor:** Capable of editing large files via memory mapping (improving the current read-only hex view).
+### 3. Automation
 *   **Cron/Task Scheduler:** Allow users to chain tools (e.g., "Every day at 9 AM, take sensor log, compress to ZIP, encrypt").
 
 ---

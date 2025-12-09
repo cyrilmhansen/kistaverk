@@ -864,6 +864,25 @@ enum Action {
         query: Option<String>,
         direction: Option<String>,
     },
+    HexEditorScreen,
+    HexEditorOpen {
+        fd: Option<i32>,
+        path: Option<String>,
+        error: Option<String>,
+    },
+    HexEditorNav {
+        direction: String,
+        offset: Option<u64>,
+    },
+    HexEditorPatch {
+        offset: Option<u64>,
+        byte: Option<u8>,
+    },
+    HexEditorSave,
+    HexEditorSaveAs {
+        path: Option<String>,
+    },
+    HexEditorSaveAsPicker,
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -1245,6 +1264,29 @@ fn parse_action(command: Command) -> Result<Action, String> {
             query: Some(String::new()),
             direction: None,
         }),
+        "hex_editor_screen" => Ok(Action::HexEditorScreen),
+        "hex_editor_open" => Ok(Action::HexEditorOpen { fd, path, error }),
+        "hex_editor_prev" => Ok(Action::HexEditorNav {
+            direction: "prev".into(),
+            offset: None,
+        }),
+        "hex_editor_next" => Ok(Action::HexEditorNav {
+            direction: "next".into(),
+            offset: None,
+        }),
+        "hex_editor_jump" => Ok(Action::HexEditorNav {
+            direction: "jump".into(),
+            offset: features::hex_editor::parse_offset_binding(&bindings, "hex_jump_offset"),
+        }),
+        "hex_editor_patch" => Ok(Action::HexEditorPatch {
+            offset: features::hex_editor::parse_offset_binding(&bindings, "hex_patch_offset"),
+            byte: features::hex_editor::parse_byte_binding(&bindings, "hex_patch_value"),
+        }),
+        "hex_editor_save" => Ok(Action::HexEditorSave),
+        "hex_editor_save_as" => Ok(Action::HexEditorSaveAs {
+            path: bindings.get("hex_save_as_path").cloned(),
+        }),
+        "hex_editor_save_as_picker" => Ok(Action::HexEditorSaveAsPicker),
         "sensor_logger_screen" => Ok(Action::SensorLoggerScreen),
         "sensor_logger_start" => Ok(Action::SensorLoggerStart { bindings }),
         "sensor_logger_stop" => Ok(Action::SensorLoggerStop),
@@ -2083,6 +2125,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::TextViewerJump { .. }
         | a @ Action::TextViewerFind { .. } => {
             handle_text_viewer_actions(&mut state, a);
+        }
+        a @ Action::HexEditorScreen
+        | a @ Action::HexEditorOpen { .. }
+        | a @ Action::HexEditorNav { .. }
+        | a @ Action::HexEditorPatch { .. }
+        | a @ Action::HexEditorSave
+        | a @ Action::HexEditorSaveAs { .. }
+        | a @ Action::HexEditorSaveAsPicker => {
+            handle_hex_editor_actions(&mut state, a);
         }
         a @ Action::SensorLoggerScreen
         | a @ Action::SensorLoggerStart { .. }
@@ -3587,6 +3638,121 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
     }
 }
 
+fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
+    use crate::features::hex_editor;
+    match action {
+        Action::HexEditorScreen => {
+            state.hex_editor.reset();
+            state.push_screen(Screen::HexEditor);
+        }
+        Action::HexEditorOpen { fd, path, error } => {
+            state.push_screen(Screen::HexEditor);
+            state.hex_editor.status = None;
+            if let Some(err) = error {
+                state.hex_editor.error = Some(err);
+                state.hex_editor.current_dump = None;
+                return;
+            }
+            if let Some(raw) = fd {
+                match hex_editor::copy_fd_to_temp(raw as RawFd) {
+                    Ok(tmp) => {
+                        if let Err(e) =
+                            hex_editor::set_file(&mut state.hex_editor, tmp.clone(), path.clone())
+                        {
+                            state.hex_editor.error = Some(e);
+                        }
+                    }
+                    Err(e) => state.hex_editor.error = Some(e),
+                }
+            } else if let Some(p) = path {
+                if let Err(e) =
+                    hex_editor::set_file(&mut state.hex_editor, p.clone(), Some(p.clone()))
+                {
+                    state.hex_editor.error = Some(e);
+                }
+            } else {
+                state.hex_editor.error = Some("missing_source".into());
+                state.hex_editor.current_dump = None;
+            }
+        }
+        Action::HexEditorNav { direction, offset } => {
+            state.replace_current(Screen::HexEditor);
+            let mut target = state.hex_editor.offset;
+            match direction.as_str() {
+                "next" => {
+                    target = target.saturating_add(state.hex_editor.chunk_size as u64);
+                }
+                "prev" => {
+                    target = target.saturating_sub(state.hex_editor.chunk_size as u64);
+                }
+                "jump" => {
+                    if let Some(off) = offset {
+                        target = off;
+                    }
+                }
+                _ => {}
+            }
+            state.hex_editor.offset = target;
+            if let Err(e) = hex_editor::refresh_view(&mut state.hex_editor) {
+                state.hex_editor.error = Some(e);
+            }
+        }
+        Action::HexEditorPatch { offset, byte } => {
+            state.replace_current(Screen::HexEditor);
+            let off = match offset {
+                Some(v) => v,
+                None => {
+                    state.hex_editor.error = Some("missing_offset".into());
+                    return;
+                }
+            };
+            let value = match byte {
+                Some(v) => v,
+                None => {
+                    state.hex_editor.error = Some("missing_byte".into());
+                    return;
+                }
+            };
+            if let Err(e) = hex_editor::patch_byte(&mut state.hex_editor, off, value) {
+                state.hex_editor.error = Some(e);
+            }
+        }
+        Action::HexEditorSave => {
+            state.replace_current(Screen::HexEditor);
+            if let Err(e) = hex_editor::save_changes(&mut state.hex_editor) {
+                state.hex_editor.error = Some(e);
+            }
+        }
+        Action::HexEditorSaveAs { path } => {
+            state.replace_current(Screen::HexEditor);
+            let target = path.or_else(|| {
+                state
+                    .hex_editor
+                    .file_path
+                    .as_ref()
+                    .map(|p| format!("{p}.patched"))
+            });
+            match target {
+                Some(p) => {
+                    if let Err(e) = hex_editor::save_as(&mut state.hex_editor, &p) {
+                        state.hex_editor.error = Some(e);
+                    }
+                }
+                None => {
+                    state.hex_editor.error = Some("save_as_path_missing".into());
+                }
+            }
+        }
+        Action::HexEditorSaveAsPicker => {
+            state.replace_current(Screen::HexEditor);
+            if let Err(e) = hex_editor::export_to_temp(&mut state.hex_editor) {
+                state.hex_editor.error = Some(e);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_sensor_actions(state: &mut AppState, action: Action) {
     match action {
         Action::SensorLoggerScreen => {
@@ -3976,6 +4142,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Vault => features::vault::render_vault_screen(state),
         Screen::Logic => features::logic::render_logic_screen(state),
         Screen::Jwt => features::jwt::render_jwt_screen(state),
+        Screen::HexEditor => features::hex_editor::render_hex_editor_screen(state),
     }
 }
 
@@ -4310,6 +4477,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "text_viewer_screen",
             requires_file_picker: true,
             description: "preview text/CSV",
+        },
+        Feature {
+            id: "hex_editor",
+            name: "Hex / Binary editor",
+            category: "📁 Files",
+            action: "hex_editor_screen",
+            requires_file_picker: false,
+            description: "view and patch bytes",
         },
         Feature {
             id: "archive_tools",

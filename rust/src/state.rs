@@ -1,4 +1,5 @@
 use crate::features::archive::ArchiveState;
+use crate::features::hex_editor::HexEditorState;
 use crate::features::kotlin_image::KotlinImageState;
 use crate::features::logic::LogicState;
 use crate::features::pdf::PdfState;
@@ -46,6 +47,7 @@ pub enum Screen {
     Vault,
     Logic,
     Jwt,
+    HexEditor,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -210,6 +212,7 @@ pub struct AppState {
     pub vault: VaultState,
     pub logic: LogicState,
     pub jwt: JwtState,
+    pub hex_editor: HexEditorState,
 }
 
 impl AppState {
@@ -301,6 +304,7 @@ impl AppState {
             vault: VaultState::new(),
             logic: LogicState::new(),
             jwt: JwtState::new(),
+            hex_editor: HexEditorState::new(),
         }
     }
 
@@ -428,6 +432,7 @@ impl AppState {
         self.vault = VaultState::new();
         self.logic = LogicState::new();
         self.jwt = JwtState::new();
+        self.hex_editor = HexEditorState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }
