@@ -18,7 +18,7 @@ import org.junit.Test
 class UiRendererTextInputTest {
 
     private fun render(json: String, actions: MutableList<Triple<String, Boolean, Map<String, String>>>): View {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, bindings ->
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, _, bindings ->
             actions.add(Triple(action, picker, bindings))
         }
         return TestViews.unwrap(renderer.render(json))

@@ -19,7 +19,7 @@ class UiRendererPdfSignPlacementTest {
     @Test
     fun tapSetsNormalizedCoordsAndBindings() {
         val recorded = mutableListOf<Pair<String, Map<String, String>>>()
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, _, bindings ->
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, _, _, bindings ->
             recorded.add(action to bindings)
         }
         val ui = """
@@ -47,7 +47,7 @@ class UiRendererPdfSignPlacementTest {
     @Test
     fun pagingButtonsUpdatePageBinding() {
         val recorded = mutableListOf<Pair<String, Map<String, String>>>()
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, _, bindings ->
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, _, _, bindings ->
             recorded.add(action to bindings)
         }
         val ui = """

@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var cameraManager: CameraManager
     private var pendingActionAfterPicker: String? = null
     private var pendingBindingsAfterPicker: Map<String, String> = emptyMap()
+    private var pendingAllowMultiple: Boolean = false
     private var selectedOutputDir: Uri? = null
     private var pdfSourceUri: Uri? = null
     private var rootContainer: FrameLayout? = null
@@ -73,7 +74,19 @@ class MainActivity : ComponentActivity() {
         val bindings = pendingBindingsAfterPicker
         pendingActionAfterPicker = null
         pendingBindingsAfterPicker = emptyMap()
+        pendingAllowMultiple = false
         handlePickerResult(action, uri, bindings)
+    }
+
+    private val pickFilesLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val action = pendingActionAfterPicker
+        val bindings = pendingBindingsAfterPicker
+        pendingActionAfterPicker = null
+        pendingBindingsAfterPicker = emptyMap()
+        pendingAllowMultiple = false
+        handlePickerResultMultiple(action, uris, bindings)
     }
 
     private fun cacheLastResult(json: String) {
@@ -304,7 +317,15 @@ class MainActivity : ComponentActivity() {
             dispatchAction = { action, bindings -> dispatchWithOptionalLoading(action, bindings = bindings) }
         )
 
-        renderer = UiRenderer(this) { action, needsFilePicker, bindings ->
+        renderer = UiRenderer(this) { action, needsFilePicker, allowMultiple, bindings ->
+            if (action == "kotlin_image_batch_process") {
+                processKotlinImageBatch(bindings)
+                return@UiRenderer
+            }
+            if (action == "pdf_merge_batch") {
+                processPdfMergeBatch(bindings)
+                return@UiRenderer
+            }
             if (KotlinImageConversion.isConversionAction(action)) {
                 val sourcePath = bindings["image_source_path"]
                 if (sourcePath != null) {
@@ -414,12 +435,17 @@ class MainActivity : ComponentActivity() {
             if (needsFilePicker) {
                 pendingActionAfterPicker = action
                 pendingBindingsAfterPicker = bindings
+                pendingAllowMultiple = allowMultiple
                 val mimeTypes = when {
                     action.startsWith("pdf_") -> arrayOf("application/pdf")
                     action == "text_viewer_open" -> arrayOf("text/*", "text/plain", "text/csv", "application/csv")
                     else -> arrayOf("*/*")
                 }
-                pickFileLauncher.launch(mimeTypes)
+                if (allowMultiple) {
+                    pickFilesLauncher.launch(mimeTypes)
+                } else {
+                    pickFileLauncher.launch(mimeTypes)
+                }
             } else {
                 if (action == "reset") {
                     selectedOutputDir = null
@@ -879,6 +905,38 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    private fun handlePickerResultMultiple(
+        actionInput: String?,
+        uris: List<Uri>?,
+        bindings: Map<String, String>
+    ): Boolean {
+        val action = actionInput ?: return false
+        val list = uris ?: return false
+        if (list.isEmpty()) return false
+        if (list.size == 1) {
+            return handlePickerResult(action, list.first(), bindings)
+        }
+        val extras = mutableMapOf<String, Any?>()
+        val paths = list.map { it.toString() }
+        val arr = org.json.JSONArray()
+        val fdArr = org.json.JSONArray()
+        paths.forEachIndexed { idx, p ->
+            arr.put(p)
+            val fd = openFdForUri(list[idx])
+            if (fd != null) {
+                fdArr.put(fd)
+            }
+        }
+        extras["path_list"] = arr
+        extras["fd_list"] = fdArr
+        dispatchWithOptionalLoading(
+            action = action,
+            bindings = bindings,
+            extras = extras
+        )
+        return true
+    }
+
     private fun handleViewIntent(intent: Intent?): Boolean {
         val data = intent?.data ?: return false
         val action = intent.action ?: return false
@@ -981,6 +1039,64 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun parsePathList(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(raw)
+            (0 until arr.length()).mapNotNull { idx -> arr.optString(idx, null) }
+        } catch (_: Exception) {
+            raw.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
+
+    private fun processKotlinImageBatch(bindings: Map<String, String>) {
+        val paths = parsePathList(bindings["image_batch_paths"])
+        if (paths.isEmpty()) return
+        val mode = bindings["image_batch_mode"] ?: "convert"
+        val target = bindings["image_batch_target"] ?: "webp"
+        lifecycleScope.launch {
+            for (path in paths) {
+                val file = File(path)
+                val action = if (mode == "resize") {
+                    "kotlin_image_resize"
+                } else {
+                    when (target.lowercase(Locale.US)) {
+                        "png" -> "kotlin_image_convert_png"
+                        "jpeg", "jpg" -> "kotlin_image_convert_jpeg"
+                        else -> "kotlin_image_convert_webp"
+                    }
+                }
+                val merged = bindings.toMutableMap()
+                merged["image_source_path"] = file.absolutePath
+                val uri = Uri.fromFile(file)
+                handleKotlinImageConversion(uri, action, merged)
+            }
+        }
+    }
+
+    private fun processPdfMergeBatch(bindings: Map<String, String>) {
+        val paths = parsePathList(bindings["pdf_merge_paths"])
+        if (paths.isEmpty()) return
+        val pathArr = org.json.JSONArray()
+        val fdArr = org.json.JSONArray()
+        paths.forEach { p ->
+            pathArr.put(p)
+            val fd = openFdForUri(Uri.parse(p))
+            if (fd != null) {
+                fdArr.put(fd)
+            }
+        }
+        val extras = mapOf(
+            "path_list" to pathArr,
+            "fd_list" to fdArr
+        )
+        dispatchWithOptionalLoading(
+            action = "pdf_merge_batch",
+            bindings = bindings,
+            extras = extras
+        )
     }
 
     private fun dispatchWithOptionalLoading(

@@ -14,7 +14,7 @@ class UiRendererButtonValidationTest {
 
     @Test
     fun button_missing_action_and_copytext_renders_error() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "Column",

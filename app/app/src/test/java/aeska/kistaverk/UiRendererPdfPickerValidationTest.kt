@@ -15,7 +15,7 @@ import org.robolectric.annotation.Config
 class UiRendererPdfPickerValidationTest {
 
     private fun render(ui: String): Pair<TextView, TextView> {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val root = TestViews.unwrap(renderer.render(ui)) as ScrollView
         val column = root.getChildAt(0) as LinearLayout
         val title = column.getChildAt(0) as TextView

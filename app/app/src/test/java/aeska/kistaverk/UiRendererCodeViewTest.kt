@@ -19,7 +19,7 @@ class UiRendererCodeViewTest {
 
     @Test
     fun codeViewRendersHtmlBase() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "CodeView",
@@ -37,7 +37,7 @@ class UiRendererCodeViewTest {
 
     @Test
     fun codeViewMissingTextFailsValidation() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """{ "type": "CodeView", "language": "rust" }"""
         val scroll = TestViews.unwrap(renderer.render(ui)) as ScrollView
         val root = scroll.getChildAt(0) as LinearLayout

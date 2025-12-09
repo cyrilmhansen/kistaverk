@@ -54,7 +54,7 @@ import kotlin.math.sin
 // Added 'onAction' callback: (String, Boolean) -> Unit where the boolean flags file picker needs
 class UiRenderer(
     private val context: Context,
-    private val onAction: (String, Boolean, Map<String, String>) -> Unit
+    private val onAction: (String, Boolean, Boolean, Map<String, String>) -> Unit
 ) {
     private data class RenderMeta(val type: String, val nodeId: String?)
     private data class PdfPickerCache(val uri: String, val pageCount: Int)
@@ -74,6 +74,7 @@ class UiRenderer(
         "Checkbox" to { data, matched -> createCheckbox(data, matched as? CheckBox) },
         "Progress" to { data, matched -> createProgress(data, matched as? LinearLayout) },
         "Grid" to { data, matched -> createGrid(data, matched as? LinearLayout) },
+        "VirtualList" to { data, matched -> createVirtualList(data, matched as? LinearLayout) },
         "ImageBase64" to { data, matched -> createImageBase64(data, matched as? LinearLayout) },
         "ColorSwatch" to { data, matched -> createColorSwatch(data, matched) },
         "PdfPagePicker" to { data, matched -> createPdfPagePicker(data, matched as? HorizontalScrollView) },
@@ -125,7 +126,8 @@ class UiRenderer(
         "CodeView",
         "Compass",
         "Barometer",
-        "Magnetometer"
+        "Magnetometer",
+        "VirtualList"
     )
 
     fun render(jsonString: String): View {
@@ -164,7 +166,7 @@ class UiRenderer(
 
         layout.addView(Button(context).apply {
             text = "Back"
-            setOnClickListener { onAction("reset", false, emptyMap()) }
+            setOnClickListener { onAction("reset", false, false, emptyMap()) }
         })
 
         return ScrollView(context).apply {
@@ -304,7 +306,7 @@ class UiRenderer(
         if (type == "Magnetometer" && !node.has("magnitude_ut")) {
             return "Magnetometer missing magnitude_ut"
         }
-        if (type == "Grid" || type == "Column" || type == "Section" || type == "Card") {
+        if (type == "Grid" || type == "Column" || type == "Section" || type == "Card" || type == "VirtualList") {
             val children = node.optJSONArray("children") ?: return "$type missing children"
             for (i in 0 until children.length()) {
                 val childErr = validate(children.getJSONObject(i))
@@ -350,6 +352,11 @@ class UiRenderer(
         }
         setMeta(layout, "Column", resolveNodeId(data))
         return layout
+    }
+
+    private fun createVirtualList(data: JSONObject, existing: LinearLayout?): View {
+        // For now, render similarly to Column; VirtualList semantics are handled by Rust-side paging.
+        return createColumn(data, existing)
     }
 
     private fun createSection(data: JSONObject, existing: LinearLayout?): View {
@@ -679,6 +686,7 @@ class UiRenderer(
         // Retrieve the action defined in the Rust JSON (e.g., "hash_file")
         val actionName = data.optString("action")
         val needsFilePicker = data.optBoolean("requires_file_picker", false)
+        val allowMultipleFiles = data.optBoolean("allow_multiple_files", false)
         val copyText = data.optString("copy_text", "")
         val payload = data.optJSONObject("payload")
 
@@ -697,7 +705,7 @@ class UiRenderer(
                         merged[k] = v
                     }
                 }
-                onAction(actionName, needsFilePicker, merged.toMap())
+                onAction(actionName, needsFilePicker, allowMultipleFiles, merged.toMap())
             }
         }
         setMeta(btn, "Button", resolveNodeId(data))
@@ -762,7 +770,7 @@ class UiRenderer(
                 val isDone = actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_NULL
                 if (isDone) {
                     flushPendingBindings()
-                    onAction(submitAction, false, bindings.toMap())
+                    onAction(submitAction, false, false, bindings.toMap())
                 }
                 isDone
             }
@@ -860,7 +868,7 @@ class UiRenderer(
                 bindings[bindKey] = isChecked.toString()
                 flushPendingBindings()
                 if (actionName.isNotEmpty()) {
-                    onAction(actionName, needsFilePicker, bindings.toMap())
+                    onAction(actionName, needsFilePicker, false, bindings.toMap())
                 }
             }
         }
@@ -1086,7 +1094,7 @@ class UiRenderer(
                 setOnClickListener {
                     flushPendingBindings()
                     if (actionName.isNotEmpty()) {
-                        onAction(actionName, false, mapOf("page" to pageIndex.toString()))
+                        onAction(actionName, false, false, mapOf("page" to pageIndex.toString()))
                     }
                 }
             }

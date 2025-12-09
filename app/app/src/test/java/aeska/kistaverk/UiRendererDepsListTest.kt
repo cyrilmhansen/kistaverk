@@ -16,7 +16,7 @@ class UiRendererDepsListTest {
 
     @Test
     fun depsListRendersEntriesWhenAssetPresent() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """{ "type": "Column", "children": [ { "type": "DepsList" } ] }""".trimIndent()
 
         val root = TestViews.unwrap(renderer.render(ui)) as? ScrollView ?: error("Expected ScrollView root")

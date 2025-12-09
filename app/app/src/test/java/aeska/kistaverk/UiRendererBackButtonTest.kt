@@ -16,7 +16,7 @@ class UiRendererBackButtonTest {
 
     @Test
     fun backButtonAppearsWhenDeclared() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "Column",

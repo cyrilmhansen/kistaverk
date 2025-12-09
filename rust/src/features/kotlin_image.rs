@@ -14,6 +14,7 @@ pub struct KotlinImageState {
     pub resize_target_kb: Option<u64>,
     pub resize_use_webp: bool,
     pub output_dir: Option<String>,
+    pub batch_queue: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +34,7 @@ impl KotlinImageState {
             resize_target_kb: None,
             resize_use_webp: false,
             output_dir: None,
+            batch_queue: Vec::new(),
         }
     }
 
@@ -44,6 +46,7 @@ impl KotlinImageState {
         self.resize_quality = 85;
         self.resize_target_kb = None;
         self.resize_use_webp = false;
+        self.batch_queue.clear();
     }
 }
 
@@ -172,6 +175,12 @@ fn render_converter(state: &AppState) -> Value {
             Button::new("Select Image", "kotlin_image_pick").requires_file_picker(true),
             "picker",
         ),
+        to_value_or_text(
+            Button::new("Select Images (batch)", "kotlin_image_batch_pick")
+                .requires_file_picker(true)
+                .allow_multiple_files(true),
+            "picker_batch",
+        ),
     ];
 
     if let Some(path) = &state.image.source_path {
@@ -204,6 +213,40 @@ fn render_converter(state: &AppState) -> Value {
         ));
     }
 
+    if !state.image.batch_queue.is_empty() {
+        children.push(render_batch_list(&state.image.batch_queue, "convert"));
+        let batch_buttons = vec![
+            to_value_or_text(
+                Button::new("Process batch → WebP", "kotlin_image_batch_process")
+                    .payload(json!({
+                        "image_batch_paths": state.image.batch_queue,
+                        "image_batch_target": "webp",
+                        "image_batch_mode": "convert"
+                    })),
+                "batch_webp",
+            ),
+            to_value_or_text(
+                Button::new("Process batch → PNG", "kotlin_image_batch_process")
+                    .payload(json!({
+                        "image_batch_paths": state.image.batch_queue,
+                        "image_batch_target": "png",
+                        "image_batch_mode": "convert"
+                    })),
+                "batch_png",
+            ),
+            to_value_or_text(
+                Button::new("Process batch → JPEG", "kotlin_image_batch_process")
+                    .payload(json!({
+                        "image_batch_paths": state.image.batch_queue,
+                        "image_batch_target": "jpeg",
+                        "image_batch_mode": "convert"
+                    })),
+                "batch_jpeg",
+            ),
+        ];
+        children.push(to_value_or_text(Column::new(batch_buttons), "batch_actions"));
+    }
+
     render_result_area(&mut children, state);
 
     maybe_push_back(&mut children, state);
@@ -216,6 +259,12 @@ fn render_resizer(state: &AppState) -> Value {
         to_value_or_text(
             Button::new("Select Image", "kotlin_image_pick").requires_file_picker(true),
             "picker",
+        ),
+        to_value_or_text(
+            Button::new("Select Images (batch)", "kotlin_image_batch_pick")
+                .requires_file_picker(true)
+                .allow_multiple_files(true),
+            "picker_batch",
         ),
     ];
 
@@ -236,8 +285,7 @@ fn render_resizer(state: &AppState) -> Value {
         children.push(to_value_or_text(Text::new("Scale % (5-100)"), "lbl_scale"));
         children.push(to_value_or_text(
             TextInput::new("resize_scale_pct")
-                .text(&state.image.resize_scale_pct.to_string())
-                .input_type("number"), // Assuming input_type exists or fallback
+                .text(&state.image.resize_scale_pct.to_string()),
             "input_scale",
         ));
 
@@ -248,8 +296,7 @@ fn render_resizer(state: &AppState) -> Value {
         ));
         children.push(to_value_or_text(
             TextInput::new("resize_quality")
-                .text(&state.image.resize_quality.to_string())
-                .input_type("number"),
+                .text(&state.image.resize_quality.to_string()),
             "input_quality",
         ));
 
@@ -266,8 +313,7 @@ fn render_resizer(state: &AppState) -> Value {
         children.push(to_value_or_text(
             TextInput::new("resize_target_kb")
                 .text(&target_val)
-                .hint("e.g. 500")
-                .input_type("number"),
+                .hint("e.g. 500"),
             "input_target",
         ));
 
@@ -282,6 +328,17 @@ fn render_resizer(state: &AppState) -> Value {
         children.push(to_value_or_text(
             Button::new("Process Image", "kotlin_image_resize"),
             "btn_process",
+        ));
+    }
+
+    if !state.image.batch_queue.is_empty() {
+        children.push(render_batch_list(&state.image.batch_queue, "resize"));
+        children.push(to_value_or_text(
+            Button::new("Process batch (resize)", "kotlin_image_batch_process").payload(json!({
+                "image_batch_paths": state.image.batch_queue,
+                "image_batch_mode": "resize"
+            })),
+            "batch_resize",
         ));
     }
 
@@ -331,21 +388,28 @@ fn render_result_area(children: &mut Vec<Value>, state: &AppState) {
     }
 }
 
-// Extension trait for TextInput to add input_type if not present in ui.rs
-// ui.rs doesn't have input_type. But usually specialized inputs are handled via specific kinds or just generic text.
-// Since I can't add methods to TextInput defined in ui.rs easily from here without trait.
-// I'll just ignore input_type for now, user has to type numbers.
-// Or I can verify if `ui::TextInput` has `input_type` field I missed.
-// Checked ui.rs: TextInput has `kind`, `bind_key`, `text`, `hint`, `action_on_submit`, `content_description`, `single_line`, `max_lines`. NO input_type.
-// So I remove `.input_type(...)`.
-
-trait TextInputExt {
-    fn input_type(self, _t: &str) -> Self;
-}
-impl TextInputExt for TextInput<'_> {
-    fn input_type(self, _t: &str) -> Self {
-        self
-    }
+fn render_batch_list(paths: &[String], _mode: &str) -> Value {
+    let items: Vec<Value> = paths
+        .iter()
+        .map(|p| {
+            to_value_or_text(
+                Column::new(vec![
+                    to_value_or_text(Text::new(p).size(12.0), "batch_item_text"),
+                    to_value_or_text(
+                        Button::new("Remove", "kotlin_image_batch_remove")
+                            .payload(json!({ "image_batch_path": p })),
+                        "batch_remove_btn",
+                    ),
+                ])
+                .padding(4),
+                "batch_item",
+            )
+        })
+        .collect();
+    to_value_or_text(
+        crate::ui::VirtualList::new(items).estimated_item_height(48),
+        "batch_list",
+    )
 }
 
 #[cfg(test)]

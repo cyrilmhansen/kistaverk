@@ -15,7 +15,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class UiRendererSectionCardTest {
 
-    private fun render(json: String) = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+    private fun render(json: String) = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         .render(json)
         .let { TestViews.unwrap(it) as ScrollView }
 

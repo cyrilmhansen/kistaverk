@@ -15,7 +15,7 @@ class UiRendererProgressTest {
 
     @Test
     fun progress_widget_renders_and_is_accessible() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "Column",

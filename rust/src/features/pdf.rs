@@ -84,7 +84,7 @@ fn output_filename(source_uri: Option<&str>) -> String {
 use crate::state::{AppState, Screen};
 use crate::ui::{
     maybe_push_back, Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker,
-    Text as UiText,
+    Text as UiText, VirtualList as UiVirtualList,
 };
 
 #[cfg(target_os = "android")]
@@ -123,6 +123,7 @@ pub struct PdfState {
     pub signature_width_pt: Option<f64>,
     pub signature_height_pt: Option<f64>,
     pub signature_grid_selection: Option<(u32, f64, f64)>,
+    pub merge_queue: Vec<String>,
 }
 
 impl PdfState {
@@ -143,6 +144,7 @@ impl PdfState {
             signature_height_pt: None,
             signature_grid_selection: None,
             preview_page: None,
+            merge_queue: Vec::new(),
         }
     }
 
@@ -162,6 +164,7 @@ impl PdfState {
         self.signature_height_pt = None;
         self.signature_grid_selection = None;
         self.preview_page = None;
+        self.merge_queue.clear();
     }
 }
 
@@ -175,6 +178,13 @@ pub enum PdfOperation {
 
 #[derive(Debug, Clone)]
 pub struct PdfOperationResult {
+    pub out_path: String,
+    pub page_count: u32,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PdfMergeManyResult {
     pub out_path: String,
     pub page_count: u32,
     pub title: Option<String>,
@@ -243,6 +253,30 @@ pub fn perform_pdf_operation(
     })
 }
 
+pub fn merge_many(fds: &[i32], uris: &[String]) -> Result<PdfMergeManyResult, String> {
+    if fds.is_empty() {
+        return Err("missing_fd".into());
+    }
+    let mut iter = fds.iter();
+    let first_fd = *iter
+        .next()
+        .ok_or_else(|| "missing_fd".to_string())? as RawFd;
+    let mut base = load_document(first_fd)?;
+    for fd in iter {
+        let doc = load_document(*fd as RawFd)?;
+        base = merge_documents(base, doc)?;
+    }
+    let page_count = base.get_pages().len() as u32;
+    let title = extract_pdf_title(&base);
+    let primary_uri = uris.first().map(|s| s.as_str());
+    let out_path = write_pdf(base, primary_uri)?;
+    Ok(PdfMergeManyResult {
+        out_path,
+        page_count,
+        title,
+    })
+}
+
 #[allow(dead_code)]
 pub fn handle_pdf_operation(
     state: &mut AppState,
@@ -285,6 +319,13 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             UiButton::new("Pick PDF", "pdf_select")
                 .requires_file_picker(true)
                 .content_description("Pick a PDF to edit"),
+        )
+        .unwrap(),
+        serde_json::to_value(
+            UiButton::new("Pick PDFs (batch merge)", "pdf_merge_pick")
+                .requires_file_picker(true)
+                .allow_multiple_files(true)
+                .content_description("Pick multiple PDFs to merge"),
         )
         .unwrap(),
     ];
@@ -377,6 +418,36 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         children.push(
             serde_json::to_value(
                 UiButton::new("Open viewer", "pdf_preview_screen").id("pdf_preview_btn"),
+            )
+            .unwrap(),
+        );
+    }
+
+    if !state.pdf.merge_queue.is_empty() {
+        let items: Vec<Value> = state
+            .pdf
+            .merge_queue
+            .iter()
+            .map(|p| {
+                serde_json::to_value(UiColumn::new(vec![
+                    serde_json::to_value(UiText::new(p).size(12.0)).unwrap(),
+                    serde_json::to_value(
+                        UiButton::new("Remove", "pdf_merge_remove")
+                            .payload(json!({ "pdf_merge_path": p })),
+                    )
+                    .unwrap(),
+                ]))
+                .unwrap()
+            })
+            .collect();
+        children.push(
+            serde_json::to_value(UiVirtualList::new(items).estimated_item_height(48)).unwrap(),
+        );
+        children.push(
+            serde_json::to_value(
+                UiButton::new("Merge batch", "pdf_merge_batch").payload(json!({
+                    "pdf_merge_paths": state.pdf.merge_queue
+                })),
             )
             .unwrap(),
         );

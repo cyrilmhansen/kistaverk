@@ -19,7 +19,7 @@ class MainActivityClipboardTest {
     @Test
     fun copyTextButton_writesClipboard() {
         val actions = mutableListOf<Triple<String, Boolean, Map<String, String>>>()
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, bindings ->
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, _, bindings ->
             actions.add(Triple(action, picker, bindings))
         }
         val ui = """

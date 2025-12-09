@@ -251,6 +251,10 @@ enum WorkerJob {
         scale: u32,
     },
     PdfOperation(PdfWorkerArgs),
+    PdfMergeMany {
+        fds: Vec<i32>,
+        uris: Vec<String>,
+    },
     ArchiveOpen {
         fd: i32,
         path: Option<String>,
@@ -351,6 +355,9 @@ enum WorkerResult {
     },
     PdfSign {
         value: Result<PdfSignResult, String>,
+    },
+    PdfMergeMany {
+        value: Result<PdfWorkerResult, String>,
     },
 }
 
@@ -589,6 +596,17 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
             });
             WorkerResult::PdfSign { value }
         }
+        WorkerJob::PdfMergeMany { fds, uris } => {
+            test_worker_delay();
+            let value = features::pdf::merge_many(&fds, &uris).map(|res| PdfWorkerResult {
+                out_path: res.out_path,
+                page_count: res.page_count,
+                title: res.title,
+                selected_pages: Vec::new(),
+                source_uri: uris.first().cloned(),
+            });
+            WorkerResult::PdfMergeMany { value }
+        }
     }
 }
 
@@ -616,7 +634,9 @@ fn test_worker_delay() {}
 struct Command {
     action: String,
     path: Option<String>,
+    path_list: Option<Vec<String>>,
     fd: Option<i32>,
+    fd_list: Option<Vec<i32>>,
     error: Option<String>,
     target: Option<String>,
     result_path: Option<String>,
@@ -792,6 +812,22 @@ enum Action {
         img_height_px: Option<f64>,
         img_dpi: Option<f64>,
     },
+    PdfMergePick {
+        paths: Vec<String>,
+    },
+    PdfMergeRemove {
+        path: String,
+    },
+    PdfMergeBatch {
+        paths: Vec<String>,
+        fds: Vec<i32>,
+    },
+    KotlinImageBatchPick {
+        paths: Vec<String>,
+    },
+    KotlinImageBatchRemove {
+        path: String,
+    },
     PdfSignGrid {
         page: u32,
         x_pct: f64,
@@ -966,6 +1002,26 @@ impl FdHandle {
     }
 }
 
+struct FdListHandle(Vec<Option<i32>>);
+
+impl FdListHandle {
+    fn new(fds: Vec<i32>) -> Self {
+        Self(fds.into_iter().map(Some).collect())
+    }
+
+    fn take_all(&mut self) -> Vec<i32> {
+        self.0.iter_mut().filter_map(|fd| fd.take()).collect()
+    }
+}
+
+impl Drop for FdListHandle {
+    fn drop(&mut self) {
+        for fd in self.0.iter_mut().filter_map(|f| f.take()) {
+            unsafe { File::from_raw_fd(fd as RawFd) };
+        }
+    }
+}
+
 impl Drop for FdHandle {
     fn drop(&mut self) {
         if let Some(fd) = self.0.take() {
@@ -978,7 +1034,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
     let Command {
         action,
         path,
+        path_list,
         fd,
+        fd_list,
         error,
         target,
         result_path,
@@ -1031,6 +1089,20 @@ fn parse_action(command: Command) -> Result<Action, String> {
             primary_uri: primary_path,
             secondary_fd: fd,
             secondary_uri: path,
+        }),
+        "pdf_merge_pick" => Ok(Action::PdfMergePick {
+            paths: path_list.unwrap_or_default(),
+        }),
+        "pdf_merge_remove" => Ok(Action::PdfMergeRemove {
+            path: bindings
+                .get("pdf_merge_path")
+                .cloned()
+                .or_else(|| path.clone())
+                .unwrap_or_default(),
+        }),
+        "pdf_merge_batch" => Ok(Action::PdfMergeBatch {
+            paths: path_list.unwrap_or_default(),
+            fds: fd_list.unwrap_or_default(),
         }),
         "pdf_sign" => Ok(Action::PdfSign {
             fd,
@@ -1156,6 +1228,16 @@ fn parse_action(command: Command) -> Result<Action, String> {
             output_dir,
         }),
         "kotlin_image_pick" => Ok(Action::KotlinImagePick { path, fd, error }),
+        "kotlin_image_batch_pick" => Ok(Action::KotlinImageBatchPick {
+            paths: path_list.unwrap_or_default(),
+        }),
+        "kotlin_image_batch_remove" => Ok(Action::KotlinImageBatchRemove {
+            path: bindings
+                .get("image_batch_path")
+                .cloned()
+                .or_else(|| path.clone())
+                .unwrap_or_default(),
+        }),
         "dithering_screen" => Ok(Action::DitheringScreen),
         "dithering_pick_image" => Ok(Action::DitheringPickImage { path, fd, error }),
         "dithering_mode_fs" => Ok(Action::DitheringSetMode {
@@ -1463,7 +1545,9 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_dispatch(
         let command: Command = serde_json::from_str(&input_str).unwrap_or(Command {
             action: "error".into(),
             path: None,
+            path_list: None,
             fd: None,
+            fd_list: None,
             error: Some("invalid_json".into()),
             target: None,
             result_path: None,
@@ -1609,6 +1693,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::GzipCompress { .. }
         | a @ Action::GzipDecompress { .. } => {
             handle_compression_actions(&mut state, a);
+        }
+        a @ Action::KotlinImageBatchPick { .. } | a @ Action::KotlinImageBatchRemove { .. } => {
+            handle_kotlin_image_batch_actions(&mut state, a);
         }
         a @ Action::VaultScreen
         | a @ Action::VaultPick { .. }
@@ -1881,6 +1968,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::PdfDelete { .. }
         | a @ Action::PdfReorder { .. }
         | a @ Action::PdfMerge { .. }
+        | a @ Action::PdfMergePick { .. }
+        | a @ Action::PdfMergeRemove { .. }
+        | a @ Action::PdfMergeBatch { .. }
         | a @ Action::PdfSetTitle { .. }
         | a @ Action::PdfPreviewScreen
         | a @ Action::PdfPageOpen { .. }
@@ -2354,6 +2444,20 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
             } else {
                 state.compression_error = Some("missing_path".into());
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_kotlin_image_batch_actions(state: &mut AppState, action: Action) {
+    match action {
+        Action::KotlinImageBatchPick { paths } => {
+            state.replace_current(Screen::KotlinImage);
+            state.image.batch_queue.extend(paths);
+        }
+        Action::KotlinImageBatchRemove { path } => {
+            state.replace_current(Screen::KotlinImage);
+            state.image.batch_queue.retain(|p| p != &path);
         }
         _ => {}
     }
@@ -2865,6 +2969,41 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                 }
             } else {
                 state.pdf.last_error = Some("missing_fd".into());
+            }
+        }
+        Action::PdfMergePick { paths } => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.merge_queue.extend(paths);
+        }
+        Action::PdfMergeRemove { path } => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.merge_queue.retain(|p| p != &path);
+        }
+        Action::PdfMergeBatch { paths, fds } => {
+            state.push_screen(Screen::PdfTools);
+            state.pdf.last_error = None;
+            if paths.is_empty() || fds.is_empty() || paths.len() != fds.len() {
+                state.pdf.last_error = Some("pdf_merge_batch_requires_paths".into());
+            } else {
+                let mut fd_handle = FdListHandle::new(fds);
+                let raw_fds = fd_handle.take_all();
+                if raw_fds.is_empty() {
+                    state.pdf.last_error = Some("missing_fd".into());
+                    return;
+                }
+                state.loading_with_spinner = true;
+                state.loading_message = Some("Merging PDFs...".into());
+                state.replace_current(Screen::Loading);
+                let job = WorkerJob::PdfMergeMany { fds: raw_fds, uris: paths };
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.pdf.last_error = Some(e);
+                    state.loading_with_spinner = false;
+                    state.loading_message = None;
+                }
+                #[cfg(test)]
+                {
+                    apply_worker_results(state);
+                }
             }
         }
         Action::PdfSetTitle { fd, uri, title } => {
@@ -4162,7 +4301,9 @@ mod tests {
         Command {
             action: action.into(),
             path: None,
+            path_list: None,
             fd: None,
+            fd_list: None,
             error: None,
             target: None,
             result_path: None,
@@ -5293,6 +5434,28 @@ mod tests {
         assert_eq!(section.get("icon").and_then(|v| v.as_str()), Some("🔐"));
         assert_eq!(section.get("title").and_then(|v| v.as_str()), Some("Hashes"));
     }
+
+    #[test]
+    fn pdf_merge_pick_populates_queue() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        let mut cmd = make_command("pdf_merge_pick");
+        cmd.path_list = Some(vec!["a.pdf".into(), "b.pdf".into()]);
+        handle_command(cmd).expect("merge pick should succeed");
+        let state = STATE.ui_lock();
+        assert_eq!(state.pdf.merge_queue, vec!["a.pdf", "b.pdf"]);
+    }
+
+    #[test]
+    fn kotlin_image_batch_pick_populates_queue() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        reset_state();
+        let mut cmd = make_command("kotlin_image_batch_pick");
+        cmd.path_list = Some(vec!["/tmp/1.png".into(), "/tmp/2.png".into()]);
+        handle_command(cmd).expect("batch pick should succeed");
+        let state = STATE.ui_lock();
+        assert_eq!(state.image.batch_queue, vec!["/tmp/1.png", "/tmp/2.png"]);
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     let results = STATE.drain_worker_results();
@@ -5539,6 +5702,21 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());
                     state.pdf.current_title = res.title.clone();
                     state.pdf.page_count = Some(res.page_count);
+                    state.pdf.last_error = None;
+                    state.replace_current(Screen::PdfTools);
+                }
+                Err(e) => {
+                    state.pdf.last_error = Some(e);
+                    state.replace_current(Screen::PdfTools);
+                }
+            },
+            WorkerResult::PdfMergeMany { value } => match value {
+                Ok(res) => {
+                    state.pdf.last_output = Some(res.out_path.clone());
+                    state.pdf.source_uri = res.source_uri.clone().or_else(|| state.pdf.source_uri.clone());
+                    state.pdf.current_title = res.title.clone();
+                    state.pdf.page_count = Some(res.page_count);
+                    state.pdf.merge_queue.clear();
                     state.pdf.last_error = None;
                     state.replace_current(Screen::PdfTools);
                 }

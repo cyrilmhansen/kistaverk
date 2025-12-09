@@ -17,7 +17,7 @@ class UiRendererSensorBindingsTest {
     @Test
     fun startButton_carries_sensor_bindings_and_interval() {
         val actions = mutableListOf<Triple<String, Boolean, Map<String, String>>>()
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, bindings ->
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { action, picker, _, bindings ->
             actions.add(Triple(action, picker, bindings))
         }
 

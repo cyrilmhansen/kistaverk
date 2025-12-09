@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 class UiRendererValidationTest {
 
     private fun render(json: String): Pair<TextView, TextView> {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val view = TestViews.unwrap(renderer.render(json)) as ScrollView
         val root = view.getChildAt(0) as LinearLayout
         val title = root.getChildAt(0) as TextView

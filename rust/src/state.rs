@@ -415,5 +415,7 @@ impl AppState {
         self.qr_receive.reset();
         self.math_tool = MathToolState::new();
         self.vault = VaultState::new();
+        self.image.batch_queue.clear();
+        self.pdf.merge_queue.clear();
     }
 }

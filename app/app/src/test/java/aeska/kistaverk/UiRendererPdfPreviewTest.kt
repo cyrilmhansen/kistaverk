@@ -21,7 +21,7 @@ class UiRendererPdfPreviewTest {
     fun pdf_preview_grid_renders_cells() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = createTestPdf(ctx.cacheDir, "preview_grid.pdf", 2)
-        val renderer = UiRenderer(ctx) { _, _, _ -> }
+        val renderer = UiRenderer(ctx) { _, _, _, _ -> }
         val ui = """
             {
               "type": "PdfPreviewGrid",
@@ -40,7 +40,7 @@ class UiRendererPdfPreviewTest {
     fun pdf_single_page_renders_image() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         val file = createTestPdf(ctx.cacheDir, "preview_single.pdf", 1)
-        val renderer = UiRenderer(ctx) { _, _, _ -> }
+        val renderer = UiRenderer(ctx) { _, _, _, _ -> }
         val ui = """
             {
               "type": "PdfSinglePage",

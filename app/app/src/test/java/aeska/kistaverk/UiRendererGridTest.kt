@@ -14,7 +14,7 @@ class UiRendererGridTest {
 
     @Test
     fun grid_lays_out_children_in_rows() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "Column",

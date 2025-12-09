@@ -14,7 +14,7 @@ class UiRendererMalformedJsonTest {
 
     @Test
     fun unknown_type_renders_error_view() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """
             {
               "type": "Column",
@@ -34,7 +34,7 @@ class UiRendererMalformedJsonTest {
 
     @Test
     fun missing_children_in_column_renders_error() {
-        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _ -> }
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
         val ui = """{ "type": "Column" }"""
 
         val view = TestViews.unwrap(renderer.render(ui)) as ScrollView
