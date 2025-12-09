@@ -2,7 +2,7 @@ use crate::state::AppState;
 use crate::ui::{
     maybe_push_back, Barometer as UiBarometer, Button as UiButton, Column as UiColumn,
     Compass as UiCompass, DepsList as UiDepsList, Magnetometer as UiMagnetometer,
-    Progress as UiProgress, Text as UiText,
+    Progress as UiProgress, Text as UiText, TextInput as UiTextInput,
 };
 use serde_json::{json, Value};
 
@@ -171,6 +171,11 @@ pub fn render_progress_demo_screen(state: &AppState) -> Value {
 }
 
 pub fn render_about_screen(state: &AppState) -> Value {
+    let filter_value = state.deps_filter_query.as_deref().unwrap_or("");
+    let mut deps_list = UiDepsList::new();
+    if !filter_value.is_empty() {
+        deps_list = deps_list.query(filter_value);
+    }
     let mut children = vec![
         serde_json::to_value(UiText::new("About Kistaverk").size(20.0)).unwrap(),
         serde_json::to_value(
@@ -184,7 +189,16 @@ pub fn render_about_screen(state: &AppState) -> Value {
                 .size(12.0),
         )
         .unwrap(),
-        serde_json::to_value(UiDepsList::new()).unwrap(),
+        serde_json::to_value(
+            UiTextInput::new("deps_filter")
+                .hint("Filter dependencies")
+                .text(filter_value)
+                .single_line(true)
+                .debounce_ms(200)
+                .action_on_submit("deps_filter"),
+        )
+        .unwrap(),
+        serde_json::to_value(deps_list).unwrap(),
     ];
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(24).scrollable(false)).unwrap()

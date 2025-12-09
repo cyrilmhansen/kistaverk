@@ -43,6 +43,7 @@ Everything runs locally on your device using a high-performance Rust core.
 ### 📝 Text & Dev Tools
 - **Text Viewer:** Syntax highlighting for JSON, Markdown, Rust, TOML, etc. (via PrismJS). Supports large logs via windowed loading.
 - **Regex Tester:** Test regular expressions against text input.
+- **JWT Decoder:** Parse and inspect JSON Web Tokens locally.
 - **Archive Viewer:** Peek inside ZIP files without extracting them (with search filtering).
 - **Logical Engine:** Inspect and query structured data (RDF-like triples) offline.
 

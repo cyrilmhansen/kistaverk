@@ -3,6 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-09)
+- **JWT Decoder**: Implemented JWT Decoder in `features/jwt.rs`. Users can now parse and inspect JWT tokens (Header/Payload) offline without network calls.
 - **GZIP Save As**: Implemented "Save As" flow for GZIP compression. Standardized worker output to "Result saved to: ..." and updated Android layer to dynamically guess MIME types (including .gz) and launch system file picker.
 - **File Encryption (The Vault)**: Implemented secure file encryption/decryption using `age` crate. Added `VaultState`, `WorkerJob::Vault`, and updated UI protocol to support `password_mask` for secure input.
 - **Batch Processing**: Implemented batch processing for Images (Resize/Convert) and PDFs (Merge). Added `allow_multiple_files` to `Button`, updated Android `OpenMultipleDocuments` handling, and added batch queues (`VirtualList`) in Rust state.

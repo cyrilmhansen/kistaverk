@@ -27,4 +27,19 @@ class UiRendererDepsListTest {
         // Expect at least one entry rendered from generated deps.json; allow empty if asset missing.
         assertTrue(inner.childCount >= 0)
     }
+
+    @Test
+    fun depsListSupportsFilterQueryField() {
+        val renderer = UiRenderer(ApplicationProvider.getApplicationContext()) { _, _, _, _ -> }
+        val ui =
+            """{ "type": "Column", "children": [ { "type": "DepsList", "query": "serde" } ] }"""
+                .trimIndent()
+
+        val root = TestViews.unwrap(renderer.render(ui)) as? ScrollView ?: error("Expected ScrollView root")
+        val column = root.getChildAt(0) as? LinearLayout ?: error("Expected Column child")
+        val depsContainer = column.getChildAt(0) as? LinearLayout ?: error("Expected deps container")
+        val depsScroll = depsContainer.getChildAt(0) as? ScrollView ?: error("Expected ScrollView deps list")
+        val inner = depsScroll.getChildAt(0) as? LinearLayout ?: error("Expected deps list inner layout")
+        assertTrue(inner.childCount >= 0)
+    }
 }

@@ -705,6 +705,8 @@ pub struct DepsList<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
 }
 
@@ -712,8 +714,14 @@ impl<'a> DepsList<'a> {
     pub fn new() -> Self {
         Self {
             kind: "DepsList",
+            query: None,
             content_description: None,
         }
+    }
+
+    pub fn query(mut self, query: &'a str) -> Self {
+        self.query = Some(query);
+        self
     }
 
     #[allow(dead_code)]

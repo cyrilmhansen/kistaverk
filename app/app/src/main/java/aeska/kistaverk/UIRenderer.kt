@@ -40,6 +40,7 @@ import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 import org.json.JSONArray
 import android.text.Editable
 import android.text.TextWatcher
@@ -1189,14 +1190,29 @@ class UiRenderer(
         inner.removeAllViews()
 
         val deps = readDepsGrouped()
+        val query = data.optString("query", "").trim()
+        val filteredDeps = if (query.isBlank()) {
+            deps
+        } else {
+            val needle = query.lowercase(Locale.ROOT)
+            deps.mapValues { (_, items) ->
+                items.filter { it.lowercase(Locale.ROOT).contains(needle) }
+            }.filterValues { it.isNotEmpty() }
+        }
+
         if (deps.isEmpty()) {
             inner.addView(TextView(context).apply {
                 text = "Dependencies unavailable"
                 textSize = 12f
             })
+        } else if (filteredDeps.isEmpty()) {
+            inner.addView(TextView(context).apply {
+                text = "No dependencies match \"$query\""
+                textSize = 12f
+            })
         } else {
-            deps.keys.sorted().forEach { lic ->
-                val items = deps[lic].orEmpty()
+            filteredDeps.keys.sorted().forEach { lic ->
+                val items = filteredDeps[lic].orEmpty()
                 inner.addView(TextView(context).apply {
                     text = "$lic (${items.size})"
                     textSize = 13f

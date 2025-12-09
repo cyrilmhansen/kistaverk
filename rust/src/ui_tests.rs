@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::ui::{TextInput, VirtualList};
+    use crate::features::misc_screens::render_about_screen;
+    use crate::state::AppState;
+    use crate::ui::{DepsList, TextInput, VirtualList};
     use serde_json::json;
 
     #[test]
@@ -31,5 +33,37 @@ mod tests {
         let input = TextInput::new("plain").hint("Type");
         let val = serde_json::to_value(input).unwrap();
         assert!(val.get("debounce_ms").is_none());
+    }
+
+    #[test]
+    fn deps_list_serializes_query() {
+        let deps = DepsList::new().query("serde");
+        let val = serde_json::to_value(deps).unwrap();
+        assert_eq!(val.get("query").and_then(|v| v.as_str()), Some("serde"));
+    }
+
+    #[test]
+    fn about_screen_forwards_filter_query() {
+        let mut state = AppState::new();
+        state.deps_filter_query = Some("openssl".to_string());
+        let ui = render_about_screen(&state);
+        let children = ui
+            .get("children")
+            .and_then(|v| v.as_array())
+            .expect("column children");
+        assert!(
+            children
+                .iter()
+                .any(|c| c.get("type").and_then(|t| t.as_str()) == Some("TextInput")),
+            "expected filter input"
+        );
+        let deps = children
+            .iter()
+            .find(|c| c.get("type").and_then(|t| t.as_str()) == Some("DepsList"))
+            .expect("deps list present");
+        assert_eq!(
+            deps.get("query").and_then(|v| v.as_str()),
+            Some("openssl")
+        );
     }
 }

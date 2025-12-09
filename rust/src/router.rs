@@ -843,6 +843,9 @@ enum Action {
     },
     PdfSignatureClear,
     About,
+    DepsFilter {
+        query: Option<String>,
+    },
     TextViewerScreen,
     TextViewerOpen {
         fd: Option<i32>,
@@ -1209,6 +1212,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
             token: bindings.get("clipboard").cloned(),
         }),
         "about" => Ok(Action::About),
+        "deps_filter" => Ok(Action::DepsFilter {
+            query: bindings.get("deps_filter").cloned(),
+        }),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
         "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
@@ -2058,6 +2064,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         Action::About => {
             state.push_screen(Screen::About);
+        }
+        Action::DepsFilter { query } => {
+            let trimmed = query.and_then(|q| {
+                let t = q.trim().to_string();
+                if t.is_empty() { None } else { Some(t) }
+            });
+            state.deps_filter_query = trimmed;
+            state.replace_current(Screen::About);
         }
         a @ Action::TextViewerScreen
         | a @ Action::TextViewerOpen { .. }
