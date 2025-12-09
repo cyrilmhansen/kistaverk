@@ -201,6 +201,7 @@ impl<'a> VirtualList<'a> {
         self
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn estimated_item_height(mut self, height: u32) -> Self {
         self.estimated_item_height = Some(height);
         self
@@ -511,6 +512,7 @@ impl<'a> TextInput<'a> {
         self
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn debounce_ms(mut self, value: u32) -> Self {
         self.debounce_ms = Some(value);
         self

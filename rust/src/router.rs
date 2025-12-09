@@ -86,6 +86,7 @@ impl GlobalState {
         }
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn ui_lock(&self) -> MutexGuard<'_, AppState> {
         self.ui.lock().expect("ui mutex poisoned")
     }
@@ -3536,14 +3537,23 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         );
 
         let subtitle = format!("{} tools", feats.len());
-        let mut section = UiSection::new(section_children)
-            .title(category)
-            .subtitle(&subtitle)
-            .padding(12);
+        let mut title = category;
+        let mut icon: Option<&str> = None;
         if let Some(first) = category.split_whitespace().next() {
             if first.chars().all(|c| !c.is_ascii_alphanumeric()) {
-                section = section.icon(first);
+                icon = Some(first);
+                let trimmed = category[first.len()..].trim_start();
+                if !trimmed.is_empty() {
+                    title = trimmed;
+                }
             }
+        }
+        let mut section = UiSection::new(section_children)
+            .title(title)
+            .subtitle(&subtitle)
+            .padding(12);
+        if let Some(ic) = icon {
+            section = section.icon(ic);
         }
         children.push(serde_json::to_value(section).unwrap());
     }
@@ -3833,7 +3843,7 @@ fn feature_catalog() -> Vec<Feature> {
         Feature {
             id: "shader_demo",
             name: "Shader demo",
-            category: "Graphics",
+            category: "🎨 Graphics",
             action: "shader_demo",
             requires_file_picker: false,
             description: "GLSL sample",
@@ -3921,7 +3931,7 @@ fn feature_catalog() -> Vec<Feature> {
         Feature {
             id: "about",
             name: "ℹ️ About",
-            category: "Info",
+            category: "ℹ️ Info",
             action: "about",
             requires_file_picker: false,
             description: "version & license",
@@ -5060,6 +5070,36 @@ mod tests {
         assert_eq!(state.pdf.signature_x_pct, Some(0.8));
         assert_eq!(state.pdf.signature_y_pct, Some(0.3));
         assert_eq!(state.pdf.signature_grid_selection, Some((2, 0.8, 0.3)));
+    }
+
+    #[test]
+    fn render_menu_uses_icon_without_dup_title() {
+        let state = AppState::new();
+        let catalog = vec![Feature {
+            id: "hash_sha256",
+            name: "SHA-256",
+            category: "🔐 Hashes",
+            action: "hash_file_sha256",
+            requires_file_picker: true,
+            description: "secure hash",
+        }];
+        let ui = render_menu(&state, &catalog);
+        fn find_section(node: &Value) -> Option<&Value> {
+            if node.get("type").and_then(|t| t.as_str()) == Some("Section") {
+                return Some(node);
+            }
+            if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+                for child in children {
+                    if let Some(sec) = find_section(child) {
+                        return Some(sec);
+                    }
+                }
+            }
+            None
+        }
+        let section = find_section(&ui).expect("section present");
+        assert_eq!(section.get("icon").and_then(|v| v.as_str()), Some("🔐"));
+        assert_eq!(section.get("title").and_then(|v| v.as_str()), Some("Hashes"));
     }
 }
 fn apply_worker_results(state: &mut AppState) {

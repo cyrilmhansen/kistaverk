@@ -60,15 +60,15 @@ class UiRendererPdfPreviewTest {
 
     private fun createTestPdf(dir: File, name: String, pages: Int): File {
         val file = File(dir, name)
-        PdfDocument().use { doc ->
-            repeat(pages) { index ->
-                val pageInfo = PdfDocument.PageInfo.Builder(300, 400, index + 1).create()
-                val page = doc.startPage(pageInfo)
-                page.canvas.drawText("Page ${index + 1}", 50f, 200f, android.graphics.Paint())
-                doc.finishPage(page)
-            }
-            FileOutputStream(file).use { out -> doc.writeTo(out) }
+        val doc = PdfDocument()
+        repeat(pages) { index ->
+            val pageInfo = PdfDocument.PageInfo.Builder(300, 400, index + 1).create()
+            val page = doc.startPage(pageInfo)
+            page.canvas.drawText("Page ${index + 1}", 50f, 200f, android.graphics.Paint())
+            doc.finishPage(page)
         }
+        FileOutputStream(file).use { out -> doc.writeTo(out) }
+        doc.close()
         return file
     }
 }

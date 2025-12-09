@@ -147,3 +147,10 @@ Why: The Archive Viewer and Dependency List can become unwieldy with large input
 Implementation:
 Rust (archive.rs): Add a filter_query field to ArchiveState. Filter entries before sending them to the VirtualList.
 UI: Reuse the TextInput with debounce_ms (which was recently implemented) to trigger live filtering updates in the Rust state.
+
+### 4. Logical Engine (RDF-like Data Sets)
+Why: Enable structured data inspection, simple logic operations, and relationships between entities entirely offline.
+Implementation:
+Rust: Introduce a lightweight RDF/logic module for triples, simple queries (match subject/predicate/object), and set operations.
+UI: A JSON-driven table/tree to inspect datasets, filter, and run queries; actions to import/export small datasets.
+Benefit: Adds a programmable data notebook feel without requiring a network or heavyweight DB, aligning with the Swiss Army Knife ethos.
