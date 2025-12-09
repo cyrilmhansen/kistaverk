@@ -462,6 +462,8 @@ pub struct TextInput<'a> {
     pub max_lines: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debounce_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password_mask: Option<bool>,
 }
 
 impl<'a> TextInput<'a> {
@@ -476,6 +478,7 @@ impl<'a> TextInput<'a> {
             single_line: None,
             max_lines: None,
             debounce_ms: None,
+            password_mask: None,
         }
     }
 
@@ -515,6 +518,12 @@ impl<'a> TextInput<'a> {
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn debounce_ms(mut self, value: u32) -> Self {
         self.debounce_ms = Some(value);
+        self
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn password_mask(mut self, value: bool) -> Self {
+        self.password_mask = Some(value);
         self
     }
 }

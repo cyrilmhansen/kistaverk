@@ -5,6 +5,7 @@ use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::sensor_logger::SensorSelection;
 use crate::features::system_info::SystemInfoState;
+use crate::features::vault::VaultState;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,6 +41,7 @@ pub enum Screen {
     QrSlideshow,
     QrReceive,
     MathTool,
+    Vault,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -200,6 +202,7 @@ pub struct AppState {
     pub qr_slideshow: QrSlideshowState,
     pub qr_receive: QrReceiveState,
     pub math_tool: MathToolState,
+    pub vault: VaultState,
 }
 
 impl AppState {
@@ -287,6 +290,7 @@ impl AppState {
             qr_slideshow: QrSlideshowState::new(),
             qr_receive: QrReceiveState::new(),
             math_tool: MathToolState::new(),
+            vault: VaultState::new(),
         }
     }
 
@@ -410,5 +414,6 @@ impl AppState {
         self.qr_slideshow.reset();
         self.qr_receive.reset();
         self.math_tool = MathToolState::new();
+        self.vault = VaultState::new();
     }
 }

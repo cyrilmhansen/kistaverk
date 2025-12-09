@@ -1,23 +1,48 @@
-# Task In Progress: Standardize "Save As" Flow (GZIP)
+# Task In Progress: File Encryption/Decryption (The "Vault")
 
 ## Status: Implemented
 *   **Date:** 2025-12-09
-*   **Objective:** Implement a "Save As" flow for the GZIP Compression tool (and standardize the mechanism) to allow users to save processed files to a location of their choice. Currently, results are saved to an internal directory without a convenient way to export them.
+*   **Objective:** Implement secure file encryption and decryption using the `age` crate. This aligns with the app's privacy-first mission ("The Vault").
 *   **Plan:**
-    1.  **Kotlin (`MainActivity.kt`):**
-        *   **Fix `cacheLastResult`**: Update the parsing logic for "Result saved to:" to use `guessMimeFromPath(path)` instead of hardcoding "application/pdf".
-        *   **Update `guessMimeFromPath`**: Add support for `.gz` ("application/gzip") and potentially other common types to ensure correct MIME handling.
-        *   **Handle Action**: Add a handler for `gzip_save_as` in the `UiRenderer` callback. It should call `launchSaveAs(lastFileOutputPath, lastFileOutputMime ?: "application/gzip")`.
-    2.  **Rust (`router.rs`):**
-        *   Update `WorkerJob::Compression` output to prefix the result path with "Result saved to: ". This triggers the path capture in Kotlin.
-    3.  **Rust (`features/compression.rs`):**
-        *   Update `render_compression_screen` to conditionally display a "Save as…" button (action: `gzip_save_as`) when `state.compression_status` contains "Result saved to:".
-    4.  **Tests:**
-        *   **Rust UI Test**: Add a test in `features/compression.rs` to verify that the `gzip_save_as` button is rendered when the status message indicates a success.
-        *   **MIME Resolution**: Verify `guessMimeFromPath` correctly identifies `.gz` files.
+    1.  **Dependencies (`rust/Cargo.toml`):**
+        *   Add `age = "0.10"` (or compatible version).
+        *   Add `secrecy` or similar if needed for password handling, or just use `String` for simplicity in this prototype.
+    2.  **State (`rust/src/state.rs`):**
+        *   Define `VaultState` struct:
+            *   `input_path: Option<String>`
+            *   `password: String`
+            *   `status: Option<String>`
+            *   `error: Option<String>`
+            *   `is_processing: bool`
+    3.  **UI Protocol (`rust/src/ui.rs`):**
+        *   Update `TextInput` struct and builder to include `password_mask: Option<bool>`.
+        *   This is required to visually mask the password in the Android client.
+    4.  **Implementation (`rust/src/features/vault.rs`):**
+        *   Implement `encrypt_file(path: &str, password: &str) -> Result<PathBuf, String>`.
+            *   Use `age::Encryptor::with_user_passphrase`.
+            *   Output: `filename.age`.
+        *   Implement `decrypt_file(path: &str, password: &str) -> Result<PathBuf, String>`.
+            *   Use `age::Decryptor::new`.
+            *   Output: Remove `.age` suffix or append `.dec`.
+        *   Implement `render_vault_screen(state: &AppState) -> Value`.
+            *   UI Components: FilePicker, PasswordInput (with `password_mask(true)`), Encrypt Button, Decrypt Button.
+            *   "Save as…" button (similar to GZIP feature) on success.
+    5.  **Integration:**
+        *   Register module in `rust/src/features/mod.rs`.
+        *   Add `VaultState` to `AppState`.
+        *   Add `WorkerJob::Vault { ... }` and `WorkerResult::Vault { ... }` in `rust/src/router.rs`.
+        *   Handle actions: `vault_screen`, `vault_pick`, `vault_encrypt`, `vault_decrypt`, `vault_save_as`.
+    6.  **Kotlin (`MainActivity.kt`):**
+        *   Reuse existing `launchSaveAs` logic for `vault_save_as`.
+        *   Ensure `.age` extension is handled in `guessMimeFromPath` (application/age-encryption or application/octet-stream).
+    7.  **Tests:**
+        *   **Roundtrip Test:** Encrypt a sample file -> Decrypt it -> Assert content matches original.
+        *   **Bad Password Test:** Encrypt a file -> Attempt decrypt with wrong password -> Assert error.
+        *   **Invalid File Test:** Attempt decrypt on a random file -> Assert error.
+        *   **UI Password Mask Test:** Verify `TextInput` serializes `password_mask: true` correctly.
+        *   **UI Success State Test:** Verify "Save As" button appears only on success.
 
-## Previous Task: Input Debouncing
+## Previous Task: Standardize "Save As" Flow (GZIP)
 *   **Status:** Implemented
-*   **Date:** 2025-12-08
-*   **Summary:** Implemented `debounce_ms` for `TextInput` and applied it to Math Tool and Text Viewer.
-*   **Note:** Needs a unit test for serialization.
+*   **Date:** 2025-12-09
+*   **Summary:** Implemented "Save As" for GZIP tools. Fixed MIME type detection in Kotlin and updated Rust worker output to support path capture.

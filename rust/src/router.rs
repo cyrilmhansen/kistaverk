@@ -168,6 +168,12 @@ enum CompressionOp {
     Decompress,
 }
 
+#[derive(Clone, Copy)]
+enum VaultOp {
+    Encrypt,
+    Decrypt,
+}
+
 #[derive(Clone)]
 struct PdfWorkerArgs {
     op: PdfOperation,
@@ -228,6 +234,11 @@ enum WorkerJob {
     Compression {
         op: CompressionOp,
         path: String,
+    },
+    Vault {
+        op: VaultOp,
+        path: String,
+        password: String,
     },
     Dithering {
         source_path: String,
@@ -302,6 +313,9 @@ enum WorkerResult {
         value: Result<HashVerifyResult, String>,
     },
     Compression {
+        value: Result<String, String>,
+    },
+    Vault {
         value: Result<String, String>,
     },
     Dithering {
@@ -404,6 +418,16 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
                 }
             };
             WorkerResult::Compression { value }
+        }
+        WorkerJob::Vault { op, path, password } => {
+            test_worker_delay();
+            let value = match op {
+                VaultOp::Encrypt => features::vault::encrypt_file(&path, &password)
+                    .map(|out| format!("Result saved to: {}", out.display())),
+                VaultOp::Decrypt => features::vault::decrypt_file(&path, &password)
+                    .map(|out| format!("Result saved to: {}", out.display())),
+            };
+            WorkerResult::Vault { value }
         }
         WorkerJob::Dithering {
             source_path,
@@ -910,6 +934,24 @@ enum Action {
     RandomStringGenerate {
         bindings: HashMap<String, String>,
     },
+    VaultScreen,
+    VaultPick {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    VaultEncrypt {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+        password: Option<String>,
+    },
+    VaultDecrypt {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+        password: Option<String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -1033,6 +1075,20 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "uuid_screen" => Ok(Action::UuidScreen),
         "uuid_generate" => Ok(Action::UuidGenerate),
         "random_string_generate" => Ok(Action::RandomStringGenerate { bindings }),
+        "vault_screen" => Ok(Action::VaultScreen),
+        "vault_pick" => Ok(Action::VaultPick { path, fd, error }),
+        "vault_encrypt" => Ok(Action::VaultEncrypt {
+            path,
+            fd,
+            error,
+            password: bindings.get("vault_password").cloned(),
+        }),
+        "vault_decrypt" => Ok(Action::VaultDecrypt {
+            path,
+            fd,
+            error,
+            password: bindings.get("vault_password").cloned(),
+        }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
@@ -1553,6 +1609,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::GzipCompress { .. }
         | a @ Action::GzipDecompress { .. } => {
             handle_compression_actions(&mut state, a);
+        }
+        a @ Action::VaultScreen
+        | a @ Action::VaultPick { .. }
+        | a @ Action::VaultEncrypt { .. }
+        | a @ Action::VaultDecrypt { .. } => {
+            handle_vault_actions(&mut state, a);
         }
         Action::SystemInfoScreen => {
             state.push_screen(Screen::SystemInfo);
@@ -2291,6 +2353,125 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
                 state.compression_error = Some("gzip_requires_path".into());
             } else {
                 state.compression_error = Some("missing_path".into());
+            }
+        }
+        _ => {}
+    }
+}
+
+fn handle_vault_actions(state: &mut AppState, action: Action) {
+    match action {
+        Action::VaultScreen => {
+            state.push_screen(Screen::Vault);
+            state.vault.reset();
+        }
+        Action::VaultPick { path, fd, error } => {
+            state.push_screen(Screen::Vault);
+            state.vault.status = None;
+            state.vault.error = None;
+            state.vault.is_processing = false;
+            if let Some(err) = error {
+                state.vault.error = Some(err);
+            } else if fd.is_some() {
+                state.vault.error = Some("vault_requires_path".into());
+            } else if let Some(p) = path {
+                state.vault.input_path = Some(p);
+            } else {
+                state.vault.error = Some("vault_missing_input".into());
+            }
+        }
+        Action::VaultEncrypt {
+            path,
+            fd,
+            error,
+            password,
+        } => {
+            state.push_screen(Screen::Vault);
+            state.vault.status = None;
+            state.vault.error = None;
+            state.vault.is_processing = false;
+            if let Some(err) = error {
+                state.vault.error = Some(err);
+                return;
+            }
+            if fd.is_some() {
+                state.vault.error = Some("vault_requires_path".into());
+                return;
+            }
+            let pwd = password.unwrap_or_else(|| state.vault.password.clone());
+            state.vault.password = pwd.clone();
+            if pwd.trim().is_empty() {
+                state.vault.error = Some("vault_missing_password".into());
+                return;
+            }
+            let Some(src_path) = path.or_else(|| state.vault.input_path.clone()) else {
+                state.vault.error = Some("vault_missing_input".into());
+                return;
+            };
+            state.vault.is_processing = true;
+            state.loading_with_spinner = true;
+            state.loading_message = Some("Encrypting...".into());
+            let job = WorkerJob::Vault {
+                op: VaultOp::Encrypt,
+                path: src_path,
+                password: pwd,
+            };
+            if let Err(e) = STATE.worker().enqueue(job) {
+                state.vault.error = Some(e);
+                state.vault.is_processing = false;
+                state.loading_with_spinner = false;
+                state.loading_message = None;
+            }
+            #[cfg(test)]
+            {
+                apply_worker_results(state);
+            }
+        }
+        Action::VaultDecrypt {
+            path,
+            fd,
+            error,
+            password,
+        } => {
+            state.push_screen(Screen::Vault);
+            state.vault.status = None;
+            state.vault.error = None;
+            state.vault.is_processing = false;
+            if let Some(err) = error {
+                state.vault.error = Some(err);
+                return;
+            }
+            if fd.is_some() {
+                state.vault.error = Some("vault_requires_path".into());
+                return;
+            }
+            let pwd = password.unwrap_or_else(|| state.vault.password.clone());
+            state.vault.password = pwd.clone();
+            if pwd.trim().is_empty() {
+                state.vault.error = Some("vault_missing_password".into());
+                return;
+            }
+            let Some(src_path) = path.or_else(|| state.vault.input_path.clone()) else {
+                state.vault.error = Some("vault_missing_input".into());
+                return;
+            };
+            state.vault.is_processing = true;
+            state.loading_with_spinner = true;
+            state.loading_message = Some("Decrypting...".into());
+            let job = WorkerJob::Vault {
+                op: VaultOp::Decrypt,
+                path: src_path,
+                password: pwd,
+            };
+            if let Err(e) = STATE.worker().enqueue(job) {
+                state.vault.error = Some(e);
+                state.vault.is_processing = false;
+                state.loading_with_spinner = false;
+                state.loading_message = None;
+            }
+            #[cfg(test)]
+            {
+                apply_worker_results(state);
             }
         }
         _ => {}
@@ -3451,6 +3632,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PresetSave => render_save_preset_dialog(state),
         Screen::QrSlideshow => render_qr_slideshow_screen(state),
         Screen::QrReceive => render_qr_receive_screen(state),
+        Screen::Vault => features::vault::render_vault_screen(state),
     }
 }
 
@@ -3689,6 +3871,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hash_file_md5",
             requires_file_picker: true,
             description: "legacy hash",
+        },
+        Feature {
+            id: "vault",
+            name: "🔐 The Vault",
+            category: "🔐 Security",
+            action: "vault_screen",
+            requires_file_picker: false,
+            description: "age-based file lockbox",
         },
         Feature {
             id: "pixel_art",
@@ -5160,6 +5350,20 @@ fn apply_worker_results(state: &mut AppState) {
                     state.compression_error = Some(e);
                     state.compression_status = None;
                     state.replace_current(Screen::Compression);
+                }
+            },
+            WorkerResult::Vault { value } => match value {
+                Ok(status) => {
+                    state.vault.status = Some(status);
+                    state.vault.error = None;
+                    state.vault.is_processing = false;
+                    state.replace_current(Screen::Vault);
+                }
+                Err(e) => {
+                    state.vault.error = Some(e);
+                    state.vault.status = None;
+                    state.vault.is_processing = false;
+                    state.replace_current(Screen::Vault);
                 }
             },
             WorkerResult::Dithering { value } => match value {

@@ -32,6 +32,7 @@ uuid = { version = "1", features = ["v4", "fast-rng"], default-features = false 
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
 rxing = { version = "0.8.2", default-features = false, features = ["image", "client_support"] }
+age = "0.10"
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"

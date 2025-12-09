@@ -24,6 +24,8 @@ import android.view.ViewGroup
 import android.view.Gravity
 import android.graphics.Matrix
 import android.view.inputmethod.EditorInfo
+import android.text.method.PasswordTransformationMethod
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.CheckBox
@@ -731,6 +733,16 @@ class UiRenderer(
         editText.isSingleLine = singleLine
         val maxLines = data.optInt("max_lines", 0)
         editText.maxLines = if (maxLines > 0) maxLines else Int.MAX_VALUE
+        val mask = data.optBoolean("password_mask", false)
+        if (mask) {
+            editText.transformationMethod = PasswordTransformationMethod.getInstance()
+            editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        } else {
+            editText.transformationMethod = null
+            if (editText.inputType == (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)) {
+                editText.inputType = InputType.TYPE_CLASS_TEXT
+            }
+        }
 
         if (bindKey.isNotEmpty() && editText.getTag(bindKeyTag) != bindKey) {
             editText.addTextChangedListener(object : TextWatcher {

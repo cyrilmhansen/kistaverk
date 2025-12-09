@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
         return when {
             path.lowercase(Locale.US).endsWith(".pdf") -> "application/pdf"
             path.lowercase(Locale.US).endsWith(".gz") -> "application/gzip"
+            path.lowercase(Locale.US).endsWith(".age") -> "application/age-encryption"
             path.lowercase(Locale.US).endsWith(".png") -> "image/png"
             path.lowercase(Locale.US).endsWith(".webp") -> "image/webp"
             path.lowercase(Locale.US).endsWith(".jpg") || path.lowercase(Locale.US).endsWith(".jpeg") -> "image/jpeg"
@@ -388,6 +389,11 @@ class MainActivity : ComponentActivity() {
             }
             if (action == "gzip_save_as") {
                 val mime = lastFileOutputMime ?: "application/gzip"
+                launchSaveAs(lastFileOutputPath, mime)
+                return@UiRenderer
+            }
+            if (action == "vault_save_as") {
+                val mime = lastFileOutputMime ?: "application/octet-stream"
                 launchSaveAs(lastFileOutputPath, mime)
                 return@UiRenderer
             }

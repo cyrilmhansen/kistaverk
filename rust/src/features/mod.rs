@@ -20,3 +20,4 @@ pub mod text_tools;
 pub mod text_viewer;
 pub mod uuid_gen;
 pub mod math_tool;
+pub mod vault;

@@ -24,6 +24,9 @@ class MainActivityMimeTest {
         val mime = method.invoke(activity, "/tmp/output.gz") as? String
         assertEquals("application/gzip", mime)
 
+        val age = method.invoke(activity, "/tmp/secret.age") as? String
+        assertEquals("application/age-encryption", age)
+
         val unknown = method.invoke(activity, "/tmp/file.unknown") as? String
         assertNull(unknown)
 

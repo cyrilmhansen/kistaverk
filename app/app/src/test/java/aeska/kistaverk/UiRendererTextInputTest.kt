@@ -6,6 +6,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.text.method.PasswordTransformationMethod
 import androidx.test.core.app.ApplicationProvider
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -79,5 +80,25 @@ class UiRendererTextInputTest {
         assertEquals("text_tools_word_count", action)
         assertEquals(false, needsPicker)
         assertEquals("one two three", bindings["text_input"])
+    }
+
+    @Test
+    fun passwordMask_setsTransformationMethod() {
+        val actions = mutableListOf<Triple<String, Boolean, Map<String, String>>>()
+        val ui = """
+            {
+              "type": "Column",
+              "children": [
+                { "type": "TextInput", "bind_key": "pwd", "password_mask": true },
+                { "type": "Text", "text": "helper" }
+              ]
+            }
+        """.trimIndent()
+
+        val view = render(ui, actions)
+        val rootLayout = (view as ScrollView).getChildAt(0) as LinearLayout
+        val editText = rootLayout.getChildAt(0) as EditText
+
+        assertTrue(editText.transformationMethod is PasswordTransformationMethod)
     }
 }
