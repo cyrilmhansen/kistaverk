@@ -991,6 +991,22 @@ enum Action {
         error: Option<String>,
         password: Option<String>,
     },
+    LogicScreen,
+    LogicAddTriple {
+        subject: Option<String>,
+        predicate: Option<String>,
+        object: Option<String>,
+    },
+    LogicImport {
+        path: Option<String>,
+        fd: Option<i32>,
+        error: Option<String>,
+    },
+    LogicQuery {
+        subject: Option<String>,
+        predicate: Option<String>,
+        object: Option<String>,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -1163,6 +1179,18 @@ fn parse_action(command: Command) -> Result<Action, String> {
             fd,
             error,
             password: bindings.get("vault_password").cloned(),
+        }),
+        "logic_screen" => Ok(Action::LogicScreen),
+        "logic_add_triple" => Ok(Action::LogicAddTriple {
+            subject: bindings.get("logic_add_s").cloned(),
+            predicate: bindings.get("logic_add_p").cloned(),
+            object: bindings.get("logic_add_o").cloned(),
+        }),
+        "logic_import" => Ok(Action::LogicImport { path, fd, error }),
+        "logic_query" => Ok(Action::LogicQuery {
+            subject: bindings.get("logic_query_s").cloned(),
+            predicate: bindings.get("logic_query_p").cloned(),
+            object: bindings.get("logic_query_o").cloned(),
         }),
         "about" => Ok(Action::About),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
@@ -1709,6 +1737,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::VaultEncrypt { .. }
         | a @ Action::VaultDecrypt { .. } => {
             handle_vault_actions(&mut state, a);
+        }
+        a @ Action::LogicScreen
+        | a @ Action::LogicAddTriple { .. }
+        | a @ Action::LogicImport { .. }
+        | a @ Action::LogicQuery { .. } => {
+            if let Some(ui) = handle_logic_actions(&mut state, a) {
+                return Ok(ui);
+            }
         }
         Action::SystemInfoScreen => {
             state.push_screen(Screen::SystemInfo);
@@ -2592,6 +2628,68 @@ fn handle_vault_actions(state: &mut AppState, action: Action) {
             }
         }
         _ => {}
+    }
+}
+
+fn handle_logic_actions(state: &mut AppState, action: Action) -> Option<Value> {
+    match action {
+        Action::LogicScreen => {
+            state.push_screen(Screen::Logic);
+            state.logic.import_error = None;
+            None
+        }
+        Action::LogicAddTriple {
+            subject,
+            predicate,
+            object,
+        } => {
+            state.push_screen(Screen::Logic);
+            let s = subject.unwrap_or_default();
+            let p = predicate.unwrap_or_default();
+            let o = object.unwrap_or_default();
+            if s.is_empty() || p.is_empty() || o.is_empty() {
+                state.logic.import_error = Some("logic_add_missing_fields".into());
+            } else {
+                features::logic::add_triple(state, &s, &p, &o);
+                state.logic.import_error = None;
+            }
+            None
+        }
+        Action::LogicImport { path, fd, error } => {
+            state.push_screen(Screen::Logic);
+            state.logic.import_error = error.clone();
+            if let Some(err) = error {
+                state.logic.import_error = Some(err);
+            } else if let Some(raw_fd) = fd {
+                if let Err(e) = features::logic::import_csv_from_fd(state, raw_fd) {
+                    state.logic.import_error = Some(e);
+                } else {
+                    state.logic.import_error = None;
+                }
+            } else if let Some(p) = path {
+                if let Err(e) = features::logic::import_csv_from_path(state, &p) {
+                    state.logic.import_error = Some(e);
+                } else {
+                    state.logic.import_error = None;
+                }
+            } else {
+                state.logic.import_error = Some("logic_import_missing_path".into());
+            }
+            None
+        }
+        Action::LogicQuery {
+            subject,
+            predicate,
+            object,
+        } => {
+            state.push_screen(Screen::Logic);
+            let s = subject.unwrap_or_default();
+            let p = predicate.unwrap_or_default();
+            let o = object.unwrap_or_default();
+            features::logic::run_query(state, &s, &p, &o);
+            None
+        }
+        _ => None,
     }
 }
 
@@ -3785,6 +3883,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::QrSlideshow => render_qr_slideshow_screen(state),
         Screen::QrReceive => render_qr_receive_screen(state),
         Screen::Vault => features::vault::render_vault_screen(state),
+        Screen::Logic => features::logic::render_logic_screen(state),
     }
 }
 
@@ -4031,6 +4130,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "vault_screen",
             requires_file_picker: false,
             description: "age-based file lockbox",
+        },
+        Feature {
+            id: "logic_engine",
+            name: "🧠 Logic engine",
+            category: "🧰 Utilities",
+            action: "logic_screen",
+            requires_file_picker: false,
+            description: "triples + simple queries",
         },
         Feature {
             id: "pixel_art",

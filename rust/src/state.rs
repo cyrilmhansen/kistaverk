@@ -1,5 +1,6 @@
 use crate::features::archive::ArchiveState;
 use crate::features::kotlin_image::KotlinImageState;
+use crate::features::logic::LogicState;
 use crate::features::pdf::PdfState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
@@ -42,6 +43,7 @@ pub enum Screen {
     QrReceive,
     MathTool,
     Vault,
+    Logic,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -203,6 +205,7 @@ pub struct AppState {
     pub qr_receive: QrReceiveState,
     pub math_tool: MathToolState,
     pub vault: VaultState,
+    pub logic: LogicState,
 }
 
 impl AppState {
@@ -291,6 +294,7 @@ impl AppState {
             qr_receive: QrReceiveState::new(),
             math_tool: MathToolState::new(),
             vault: VaultState::new(),
+            logic: LogicState::new(),
         }
     }
 
@@ -415,6 +419,7 @@ impl AppState {
         self.qr_receive.reset();
         self.math_tool = MathToolState::new();
         self.vault = VaultState::new();
+        self.logic = LogicState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }

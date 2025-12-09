@@ -438,6 +438,7 @@ class MainActivity : ComponentActivity() {
                 pendingAllowMultiple = allowMultiple
                 val mimeTypes = when {
                     action.startsWith("pdf_") -> arrayOf("application/pdf")
+                    action == "logic_import" -> arrayOf("text/*", "text/csv", "application/csv")
                     action == "text_viewer_open" -> arrayOf("text/*", "text/plain", "text/csv", "application/csv")
                     else -> arrayOf("*/*")
                 }

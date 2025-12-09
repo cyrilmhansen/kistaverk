@@ -1,31 +1,41 @@
-# Task In Progress: Search/Filtering within Tools
+# Task In Progress: Logical Engine (RDF-like Data Sets)
 
 ## Status: Implemented
 *   **Date:** 2025-12-09
-*   **Objective:** Implement search/filtering capabilities in the Archive Viewer to help users find specific files within large archives.
+*   **Objective:** Implement a lightweight RDF/logic module to enable structured data inspection, simple queries, and set operations offline.
 *   **Plan:**
-    1.  **State (`rust/src/features/archive.rs`):**
-        *   Update `ArchiveState` struct to include `filter_query: Option<String>`.
-        *   Initialize `filter_query` to `None` in `ArchiveState::new`.
-    2.  **Implementation (`rust/src/features/archive.rs`):**
-        *   Update `render_archive_screen` to include a `TextInput` for `archive_filter`.
-        *   Configure the `TextInput` with `debounce_ms` (e.g., 200ms) to trigger updates without explicit submission.
-        *   Filter the displayed `entries` based on the `filter_query` before rendering the list.
-        *   Ensure the "Extract" buttons use the correct index from the original (unfiltered) list or map indices correctly. *Correction:* Since `extract_entry` takes an index, we need to be careful. It might be safer to pass the entry name or ensure the UI index maps back to the `ZipArchive` index. However, `ZipArchive` works by index. A simple way is to store the original index in `ArchiveEntry`.
-    3.  **Refactoring (`rust/src/features/archive.rs`):**
-        *   Update `ArchiveEntry` struct to include `original_index: usize`.
-        *   Update `read_archive_entries` to populate `original_index`.
-        *   Update `extract_entry` calls in `render_archive_screen` to use `entry.original_index`.
+    1.  **Dependencies (`rust/Cargo.toml`):**
+        *   No new heavy dependencies needed; can implement a simple triple store in pure Rust or use a lightweight crate if available (e.g., `oxigraph` might be too heavy, so a custom `Vec<Triple>` implementation is preferred for "lightweight").
+    2.  **State (`rust/src/state.rs`):**
+        *   Define `LogicState` struct:
+            *   `triples: Vec<(String, String, String)>` (Subject, Predicate, Object)
+            *   `query: Option<String>`
+            *   `results: Vec<(String, String, String)>`
+            *   `import_error: Option<String>`
+    3.  **Implementation (`rust/src/features/logic.rs`):**
+        *   Implement `TripleStore` struct with methods:
+            *   `add(subject, predicate, object)`
+            *   `query(subject_pattern, predicate_pattern, object_pattern)` -> returns matches.
+            *   `import_csv(content: &str)` -> parses CSV into triples.
+        *   Implement `render_logic_screen(state: &AppState) -> Value`.
+            *   UI:
+                *   Input for adding triples manually (S, P, O).
+                *   Button to "Import CSV" (Subject, Predicate, Object).
+                *   Query inputs (S, P, O) with wildcards (empty or "*").
+                *   Results list (`VirtualList`).
     4.  **Integration (`rust/src/router.rs`):**
-        *   Handle the binding update for `archive_filter` implicitly via state update (or explicit action if needed, but `TextInput` binding should suffice if we refresh the screen).
-        *   Actually, `TextInput` updates `bindings` map in Kotlin, and we need an action to sync it to Rust state. We can use a generic "refresh" or specific "archive_filter_update" action triggered by `debounce_ms`.
-        *   Let's add `ArchiveFilter { query: String }` to `Action` and `WorkerJob` is not needed if filtering happens in `render`. Wait, `render` is pure function of `state`. We need to update `state.archive.filter_query`.
-        *   So, add `Action::ArchiveFilter` which updates state and re-renders.
-    5.  **Tests:**
-        *   **Filtering Logic:** Create a test with a mock `ArchiveState` containing multiple entries, apply a filter, and verify the rendered list contains only matches.
-        *   **Index Integrity:** Verify that extracting a filtered item uses the correct original index.
+        *   Register module in `rust/src/features/mod.rs`.
+        *   Add `LogicState` to `AppState`.
+        *   Add `Action` variants: `LogicScreen`, `LogicAddTriple`, `LogicImportCsv`, `LogicQuery`.
+        *   Handle actions in `handle_command`.
+    5.  **Kotlin (`MainActivity.kt`):**
+        *   Ensure file picker handles CSV for import.
+    6.  **Tests:**
+        *   **Store Logic:** Test adding and querying triples.
+        *   **Import:** Test parsing simple CSV data.
+        *   **Query:** Test wildcard matching.
 
-## Previous Task: Batch Processing (Images & PDFs)
+## Previous Task: Search/Filtering within Tools
 *   **Status:** Implemented
 *   **Date:** 2025-12-09
-*   **Summary:** Implemented batch processing for images and PDFs. Added multi-file picking, queues in state, and batch operations in Rust core.
+*   **Summary:** Implemented search/filtering in Archive Viewer. Added `filter_query` to state, updated renderer to filter entries, and ensured original indices are preserved for extraction actions.
