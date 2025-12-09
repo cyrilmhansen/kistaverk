@@ -40,13 +40,15 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 *   **Hex/Binary Editor:** View and patch files at the byte level.
 *   **JWT Decoder:** Inspect JSON Web Tokens without network calls.
 
+### Data Analysis (The "Lab")
+*   **Plotting:** Generate Line, Scatter, and Histogram charts from CSV files using `poloto`.
+
 ---
 
 ## 🚀 Upcoming Features (Roadmap)
 
 ### 1. Advanced Data Analysis (The "Lab")
 *   **CSV/JSON SQL Engine:** Treat local files as tables and run SQL queries (via `polars` or `sqlite`).
-*   **Plotting:** Generate simple charts (line, bar) from CSV data using a Rust plotting library rendered to an image.
 
 ### 2. Networking Diagnostics (The "Probe")
 *   While the *core* app has no internet, an optional "Probe" build flavor could enable:

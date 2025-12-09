@@ -36,6 +36,8 @@ use crate::features::qr_transfer::{
     load_slideshow_from_fd, load_slideshow_from_path, render_qr_receive_screen,
     render_qr_slideshow_screen, save_received_file,
 };
+use crate::features::plotting;
+use crate::features::plotting::render_plotting_screen;
 use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::sensor_utils::{low_pass_angle, low_pass_scalar};
 use crate::features::sensor_logger::{
@@ -49,7 +51,7 @@ use crate::features::text_viewer::render_text_viewer_screen;
 use crate::features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use crate::ui::render_multi_hash_screen;
 
-use crate::state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, Screen};
+use crate::state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, PlotType, Screen};
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
@@ -883,6 +885,22 @@ enum Action {
         path: Option<String>,
     },
     HexEditorSaveAsPicker,
+    PlottingScreen,
+    PlottingPick {
+        fd: Option<i32>,
+        path: Option<String>,
+        error: Option<String>,
+    },
+    PlottingSetX {
+        col: Option<String>,
+    },
+    PlottingSetY {
+        col: Option<String>,
+    },
+    PlottingSetType {
+        plot_type: PlotType,
+    },
+    PlottingGenerate,
     SensorLoggerScreen,
     SensorLoggerStart {
         bindings: HashMap<String, String>,
@@ -1234,6 +1252,24 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "deps_filter" => Ok(Action::DepsFilter {
             query: bindings.get("deps_filter").cloned(),
         }),
+        "plotting_screen" => Ok(Action::PlottingScreen),
+        "plotting_pick" => Ok(Action::PlottingPick { fd, path, error }),
+        "plotting_set_x" => Ok(Action::PlottingSetX {
+            col: bindings.get("plot_x_col").cloned(),
+        }),
+        "plotting_set_y" => Ok(Action::PlottingSetY {
+            col: bindings.get("plot_y_col").cloned(),
+        }),
+        "plotting_type_line" => Ok(Action::PlottingSetType {
+            plot_type: PlotType::Line,
+        }),
+        "plotting_type_scatter" => Ok(Action::PlottingSetType {
+            plot_type: PlotType::Scatter,
+        }),
+        "plotting_type_hist" => Ok(Action::PlottingSetType {
+            plot_type: PlotType::Histogram,
+        }),
+        "plotting_generate" => Ok(Action::PlottingGenerate),
         "text_viewer_screen" => Ok(Action::TextViewerScreen),
         "text_viewer_open" => Ok(Action::TextViewerOpen { fd, path, error }),
         "text_viewer_toggle_theme" => Ok(Action::TextViewerToggleTheme),
@@ -2134,6 +2170,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::HexEditorSaveAs { .. }
         | a @ Action::HexEditorSaveAsPicker => {
             handle_hex_editor_actions(&mut state, a);
+        }
+        a @ Action::PlottingScreen
+        | a @ Action::PlottingPick { .. }
+        | a @ Action::PlottingSetX { .. }
+        | a @ Action::PlottingSetY { .. }
+        | a @ Action::PlottingSetType { .. }
+        | a @ Action::PlottingGenerate => {
+            handle_plotting_actions(&mut state, a);
         }
         a @ Action::SensorLoggerScreen
         | a @ Action::SensorLoggerStart { .. }
@@ -3638,6 +3682,80 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
     }
 }
 
+fn handle_plotting_actions(state: &mut AppState, action: Action) {
+    match action {
+        Action::PlottingScreen => {
+            state.plotting = crate::state::PlottingState::new();
+            state.push_screen(Screen::Plotting);
+        }
+        Action::PlottingPick { fd, path, error } => {
+            state.push_screen(Screen::Plotting);
+            state.plotting.generated_svg = None;
+            if let Some(err) = error {
+                state.plotting.error = Some(err);
+                return;
+            }
+            let target_path = if let Some(fd) = fd {
+                plotting::copy_csv_from_fd(fd, "plot.csv")
+            } else if let Some(p) = path.clone() {
+                Ok(p)
+            } else {
+                Err("missing_source".into())
+            };
+            match target_path {
+                Ok(p) => {
+                    state.plotting.file_path = Some(p.clone());
+                    state.plotting.display_path = Some(path.unwrap_or(p.clone()));
+                    match plotting::load_headers(&p) {
+                        Ok(headers) => {
+                            state.plotting.headers = headers;
+                            state.plotting.error = None;
+                        }
+                        Err(e) => state.plotting.error = Some(e),
+                    }
+                }
+                Err(e) => state.plotting.error = Some(e),
+            }
+        }
+        Action::PlottingSetX { col } => {
+            state.replace_current(Screen::Plotting);
+            let value = col.and_then(|c| {
+                let t = c.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t.to_string())
+                }
+            });
+            state.plotting.x_col = value;
+        }
+        Action::PlottingSetY { col } => {
+            state.replace_current(Screen::Plotting);
+            let value = col.and_then(|c| {
+                let t = c.trim();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t.to_string())
+                }
+            });
+            state.plotting.y_col = value;
+        }
+        Action::PlottingSetType { plot_type } => {
+            state.replace_current(Screen::Plotting);
+            state.plotting.plot_type = plot_type;
+        }
+        Action::PlottingGenerate => {
+            state.replace_current(Screen::Plotting);
+            match plotting::generate_plot(&mut state.plotting) {
+                Ok(_) => {}
+                Err(e) => state.plotting.error = Some(e),
+            }
+        }
+        _ => {}
+    }
+}
+
 fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
     use crate::features::hex_editor;
     match action {
@@ -4143,6 +4261,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Logic => features::logic::render_logic_screen(state),
         Screen::Jwt => features::jwt::render_jwt_screen(state),
         Screen::HexEditor => features::hex_editor::render_hex_editor_screen(state),
+        Screen::Plotting => render_plotting_screen(state),
     }
 }
 
@@ -4485,6 +4604,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "hex_editor_screen",
             requires_file_picker: false,
             description: "view and patch bytes",
+        },
+        Feature {
+            id: "plotting",
+            name: "📈 The Lab",
+            category: "🧰 Utilities",
+            action: "plotting_screen",
+            requires_file_picker: false,
+            description: "plot CSV columns",
         },
         Feature {
             id: "archive_tools",

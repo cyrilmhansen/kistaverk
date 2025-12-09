@@ -1366,6 +1366,13 @@
       "homepage": null
     },
     {
+      "name": "poloto",
+      "version": "19.1.2",
+      "license": "MIT",
+      "repository": "https://github.com/tiby312/poloto-project",
+      "homepage": null
+    },
+    {
       "name": "poly1305",
       "version": "0.8.0",
       "license": "Apache-2.0 OR MIT",
@@ -1846,6 +1853,13 @@
       "version": "2.0.111",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/dtolnay/syn",
+      "homepage": null
+    },
+    {
+      "name": "tagu",
+      "version": "0.1.6",
+      "license": "MIT",
+      "repository": "https://github.com/tiby312/tagu",
       "homepage": null
     },
     {

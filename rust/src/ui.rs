@@ -799,6 +799,40 @@ impl<'a> CodeView<'a> {
     }
 }
 
+#[derive(Serialize)]
+pub struct HtmlView<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    pub html: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_dp: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+impl<'a> HtmlView<'a> {
+    pub fn new(html: &'a str) -> Self {
+        Self {
+            kind: "HtmlView",
+            html,
+            height_dp: None,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn height_dp(mut self, value: u32) -> Self {
+        self.height_dp = Some(value);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
 pub fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
     if state.nav_depth() > 1 {
         children.push(json!({

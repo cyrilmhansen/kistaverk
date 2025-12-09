@@ -24,3 +24,4 @@ pub mod vault;
 pub mod logic;
 pub mod jwt;
 pub mod hex_editor;
+pub mod plotting;

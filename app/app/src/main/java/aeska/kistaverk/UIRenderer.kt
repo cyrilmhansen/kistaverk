@@ -86,6 +86,7 @@ class UiRenderer(
         "PdfSinglePage" to { data, matched -> createPdfSinglePage(data, matched as? ImageView) },
         "DepsList" to { data, matched -> createDepsList(data, matched as? LinearLayout) },
         "CodeView" to { data, matched -> createCodeView(data, matched as? WebView) },
+        "HtmlView" to { data, matched -> createHtmlView(data, matched as? WebView) },
         "Compass" to { data, matched -> createCompass(data, matched) },
         "Barometer" to { data, matched -> createBarometer(data, matched as? SensorShaderView) },
         "Magnetometer" to { data, matched -> createMagnetometer(data, matched as? SensorShaderView) },
@@ -125,6 +126,7 @@ class UiRenderer(
         "DepsList"
         ,
         "CodeView",
+        "HtmlView",
         "Compass",
         "Barometer",
         "Magnetometer",
@@ -647,6 +649,43 @@ class UiRenderer(
 
         setMeta(webView, "CodeView", resolveNodeId(data))
         pooledCodeView = webView
+        return webView
+    }
+
+    private fun createHtmlView(data: JSONObject, existing: WebView?): View {
+        val html = data.optString("html", "")
+        if (html.isBlank()) return createErrorView("Missing html")
+        val heightDp = data.optInt("height_dp", 0)
+        val webView = existing ?: WebView(context)
+        val settings: WebSettings = webView.settings
+        settings.javaScriptEnabled = false
+        settings.domStorageEnabled = false
+        settings.loadWithOverviewMode = true
+        settings.useWideViewPort = true
+        settings.builtInZoomControls = true
+        settings.displayZoomControls = false
+
+        val lastHtml = webView.getTag(dataTag) as? String
+        if (lastHtml != html) {
+            webView.setTag(dataTag, html)
+            webView.loadDataWithBaseURL(
+                null,
+                html,
+                "text/html",
+                "utf-8",
+                null
+            )
+        }
+
+        val lp = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            if (heightDp > 0) dpToPx(context, heightDp.toFloat()) else LayoutParams.WRAP_CONTENT
+        )
+        val margin = dpToPx(context, 8f)
+        lp.topMargin = margin
+        lp.bottomMargin = margin
+        webView.layoutParams = lp
+        setMeta(webView, "HtmlView", resolveNodeId(data))
         return webView
     }
 

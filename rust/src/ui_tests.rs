@@ -2,7 +2,7 @@
 mod tests {
     use crate::features::misc_screens::render_about_screen;
     use crate::state::AppState;
-    use crate::ui::{DepsList, TextInput, VirtualList};
+    use crate::ui::{DepsList, HtmlView, TextInput, VirtualList};
     use serde_json::json;
 
     #[test]
@@ -33,6 +33,14 @@ mod tests {
         let input = TextInput::new("plain").hint("Type");
         let val = serde_json::to_value(input).unwrap();
         assert!(val.get("debounce_ms").is_none());
+    }
+
+    #[test]
+    fn html_view_serializes_height() {
+        let html = HtmlView::new("<p>ok</p>").height_dp(200);
+        let val = serde_json::to_value(html).unwrap();
+        assert_eq!(val.get("height_dp").and_then(|v| v.as_u64()), Some(200));
+        assert_eq!(val.get("html").and_then(|v| v.as_str()), Some("<p>ok</p>"));
     }
 
     #[test]

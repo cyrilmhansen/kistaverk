@@ -1365,6 +1365,7 @@ dependencies = [
  "base64",
  "blake3",
  "crc32fast",
+ "csv",
  "flate2",
  "image 0.24.9",
  "infer",
@@ -1373,6 +1374,7 @@ dependencies = [
  "md-5",
  "md4",
  "memmap2",
+ "poloto",
  "qrcode",
  "rand 0.8.5",
  "regex",
@@ -1865,6 +1867,15 @@ dependencies = [
  "fdeflate",
  "flate2",
  "miniz_oxide",
+]
+
+[[package]]
+name = "poloto"
+version = "19.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "164dbd541c9832e92fa34452e9c2e98b515a548a3f8549fb2402fe1cd5e46b96"
+dependencies = [
+ "tagu",
 ]
 
 [[package]]
@@ -2525,6 +2536,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "tagu"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eddb6b06d20fba9ed21fca3d696ee1b6e870bca0bcf9fa2971f6ae2436de576a"
 
 [[package]]
 name = "tempfile"

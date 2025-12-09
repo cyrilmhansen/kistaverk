@@ -48,6 +48,7 @@ pub enum Screen {
     Logic,
     Jwt,
     HexEditor,
+    Plotting,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -117,6 +118,40 @@ pub struct UuidGeneratorState {
 pub struct MathHistoryEntry {
     pub expression: String,
     pub result: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PlotType {
+    Line,
+    Scatter,
+    Histogram,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlottingState {
+    pub file_path: Option<String>,
+    pub display_path: Option<String>,
+    pub headers: Vec<String>,
+    pub x_col: Option<String>,
+    pub y_col: Option<String>,
+    pub plot_type: PlotType,
+    pub generated_svg: Option<String>,
+    pub error: Option<String>,
+}
+
+impl PlottingState {
+    pub const fn new() -> Self {
+        Self {
+            file_path: None,
+            display_path: None,
+            headers: Vec::new(),
+            x_col: None,
+            y_col: None,
+            plot_type: PlotType::Line,
+            generated_svg: None,
+            error: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,6 +248,7 @@ pub struct AppState {
     pub logic: LogicState,
     pub jwt: JwtState,
     pub hex_editor: HexEditorState,
+    pub plotting: PlottingState,
 }
 
 impl AppState {
@@ -305,6 +341,7 @@ impl AppState {
             logic: LogicState::new(),
             jwt: JwtState::new(),
             hex_editor: HexEditorState::new(),
+            plotting: PlottingState::new(),
         }
     }
 
@@ -433,6 +470,7 @@ impl AppState {
         self.logic = LogicState::new();
         self.jwt = JwtState::new();
         self.hex_editor = HexEditorState::new();
+        self.plotting = PlottingState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }
