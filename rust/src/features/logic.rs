@@ -79,15 +79,11 @@ impl TripleStore {
             if trimmed.is_empty() {
                 continue;
             }
-            let cols: Vec<&str> = trimmed.split(',').map(|c| c.trim_matches('"')).collect();
+            let cols = parse_csv_record(trimmed).map_err(|e| format!("{e}:{idx}"))?;
             if cols.len() != 3 {
                 return Err(format!("logic_csv_bad_row:{idx}"));
             }
-            self.add(
-                cols[0].to_string(),
-                cols[1].to_string(),
-                cols[2].to_string(),
-            );
+            self.add(cols[0].clone(), cols[1].clone(), cols[2].clone());
         }
         Ok(())
     }
@@ -237,6 +233,42 @@ fn import_csv_content(state: &mut AppState, content: &str) -> Result<(), String>
     Ok(())
 }
 
+fn parse_csv_record(line: &str) -> Result<Vec<String>, String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                if in_quotes {
+                    if let Some('"') = chars.peek() {
+                        // Escaped quote
+                        current.push('"');
+                        chars.next();
+                    } else {
+                        in_quotes = false;
+                    }
+                } else {
+                    in_quotes = true;
+                }
+            }
+            ',' if !in_quotes => {
+                fields.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if in_quotes {
+        return Err("logic_csv_unterminated_quote".into());
+    }
+    fields.push(current.trim().to_string());
+    Ok(fields)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +289,18 @@ mod tests {
         assert_eq!(store.triples.len(), 2);
         assert_eq!(store.triples[0].subject, "s");
         assert_eq!(store.triples[1].object, "z");
+    }
+
+    #[test]
+    fn triple_store_import_csv_with_quotes() {
+        let mut store = TripleStore::default();
+        store
+            .import_csv("\"a,1\",b,\"c\" \n\"d\" , \"e,f\" , \"g\"")
+            .unwrap();
+        assert_eq!(store.triples.len(), 2);
+        assert_eq!(store.triples[0].subject, "a,1");
+        assert_eq!(store.triples[0].object, "c");
+        assert_eq!(store.triples[1].predicate, "e,f");
     }
 
     #[test]

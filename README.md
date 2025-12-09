@@ -23,15 +23,16 @@ Everything runs locally on your device using a high-performance Rust core.
 ### 🔐 File Security & Integrity
 - **Hash Calculator:** Compute MD5, SHA-1, SHA-256, SHA-512, BLAKE3, and CRC32.
 - **Integrity Check:** Paste a hash from your clipboard to verify a file's integrity instantly.
+- **The Vault:** Securely encrypt and decrypt files using the modern `age` encryption standard.
 
 ### 📄 PDF Tools
 - **PDF Splitter:** Extract specific pages to a new file.
-- **PDF Merge:** Concatenate multiple PDF files.
+- **PDF Merge:** Concatenate multiple PDF files (supports batch merging).
 - **PDF Signing:** Sign documents with a visual overlay for signature placement.
 - **Page Removal:** Delete unwanted pages.
 
 ### 🖼 Image & Media
-- **Converter:** Convert images between JPEG, PNG, and WebP.
+- **Converter:** Convert images between JPEG, PNG, and WebP (supports batch processing).
 - **Compression:** Resize and compress images for email/messaging (bypass attachment limits).
 - **QR Code Generator:** Create QR codes for text or URLs.
 
@@ -42,7 +43,8 @@ Everything runs locally on your device using a high-performance Rust core.
 ### 📝 Text & Dev Tools
 - **Text Viewer:** Syntax highlighting for JSON, Markdown, Rust, TOML, etc. (via PrismJS). Supports large logs via windowed loading.
 - **Regex Tester:** Test regular expressions against text input.
-- **Archive Viewer:** Peek inside ZIP files without extracting them.
+- **Archive Viewer:** Peek inside ZIP files without extracting them (with search filtering).
+- **Logical Engine:** Inspect and query structured data (RDF-like triples) offline.
 
 ---
 
