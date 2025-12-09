@@ -20,8 +20,7 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
                 .hint("e.g., sin(pi/2) + 3^2")
                 .text(&state.math_tool.expression)
                 .single_line(true)
-                .debounce_ms(150)
-                .action_on_submit("math_calculate"),
+                .debounce_ms(150),
         )
         .unwrap(),
         serde_json::to_value(UiButton::new("Calculate", "math_calculate")).unwrap(),
@@ -85,6 +84,7 @@ pub fn handle_math_action(
         }
         "math_clear_history" => {
             state.math_tool.clear_history();
+            state.math_tool.expression.clear();
             state.math_tool.error = None;
         }
         _ => {}
@@ -1038,5 +1038,21 @@ mod tests {
         let val = serde_json::to_value(list).unwrap();
         assert_eq!(val.get("type").and_then(Value::as_str), Some("VirtualList"));
         assert_eq!(val.get("estimated_item_height").and_then(Value::as_u64), Some(24));
+    }
+
+    #[test]
+    fn clear_history_resets_entries_and_expression() {
+        let mut state = AppState::new();
+        handle_math_action(
+            &mut state,
+            "math_calculate",
+            &HashMap::from([("math_expr".into(), "1+1".into())]),
+        );
+        assert_eq!(state.math_tool.history.len(), 1);
+        assert_eq!(state.math_tool.expression, "1+1");
+
+        handle_math_action(&mut state, "math_clear_history", &HashMap::new());
+        assert!(state.math_tool.history.is_empty());
+        assert!(state.math_tool.expression.is_empty());
     }
 }
