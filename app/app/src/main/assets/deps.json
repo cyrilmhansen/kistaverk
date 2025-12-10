@@ -43,6 +43,13 @@
       "homepage": null
     },
     {
+      "name": "ahash",
+      "version": "0.8.12",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/tkaitchuck/ahash",
+      "homepage": null
+    },
+    {
       "name": "aho-corasick",
       "version": "1.1.4",
       "license": "Unlicense OR MIT",
@@ -362,6 +369,20 @@
       "version": "4.6.7",
       "license": "MIT",
       "repository": "https://github.com/Marwes/combine",
+      "homepage": null
+    },
+    {
+      "name": "const-random",
+      "version": "0.1.18",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/tkaitchuck/constrandom",
+      "homepage": null
+    },
+    {
+      "name": "const-random-macro",
+      "version": "0.1.16",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/tkaitchuck/constrandom",
       "homepage": null
     },
     {
@@ -897,6 +918,13 @@
       "homepage": null
     },
     {
+      "name": "instant",
+      "version": "0.1.13",
+      "license": "BSD-3-Clause",
+      "repository": "https://github.com/sebcrozet/instant",
+      "homepage": null
+    },
+    {
       "name": "interpolate_name",
       "version": "0.2.4",
       "license": "MIT",
@@ -1163,6 +1191,13 @@
       "homepage": null
     },
     {
+      "name": "no-std-compat",
+      "version": "0.4.1",
+      "license": "MIT",
+      "repository": "https://gitlab.com/jD91mZM2/no-std-compat",
+      "homepage": null
+    },
+    {
       "name": "nom",
       "version": "7.1.3",
       "license": "MIT",
@@ -1380,6 +1415,13 @@
       "homepage": null
     },
     {
+      "name": "portable-atomic",
+      "version": "1.11.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/taiki-e/portable-atomic",
+      "homepage": null
+    },
+    {
       "name": "powerfmt",
       "version": "0.2.0",
       "license": "MIT OR Apache-2.0",
@@ -1588,6 +1630,20 @@
       "license": "MIT",
       "repository": "https://github.com/kornelski/rust-rgb",
       "homepage": "https://lib.rs/crates/rgb"
+    },
+    {
+      "name": "rhai",
+      "version": "1.23.6",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rhaiscript/rhai",
+      "homepage": "https://rhai.rs"
+    },
+    {
+      "name": "rhai_codegen",
+      "version": "3.1.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rhaiscript/rhai",
+      "homepage": "https://rhai.rs/book/plugins/index.html"
     },
     {
       "name": "rust-embed",
@@ -1821,6 +1877,20 @@
       "homepage": null
     },
     {
+      "name": "smartstring",
+      "version": "1.0.1",
+      "license": "MPL-2.0+",
+      "repository": "https://github.com/bodil/smartstring",
+      "homepage": null
+    },
+    {
+      "name": "spin",
+      "version": "0.5.2",
+      "license": "MIT",
+      "repository": "https://github.com/mvdnes/spin-rs.git",
+      "homepage": null
+    },
+    {
       "name": "sqlite",
       "version": "0.37.0",
       "license": "Apache-2.0 OR MIT",
@@ -1847,6 +1917,13 @@
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/storyyeller/stable_deref_trait",
       "homepage": null
+    },
+    {
+      "name": "static_assertions",
+      "version": "1.1.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/nvzqz/static-assertions-rs",
+      "homepage": "https://github.com/nvzqz/static-assertions-rs"
     },
     {
       "name": "strsim",
@@ -1889,6 +1966,13 @@
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/Stebalien/tempfile",
       "homepage": "https://stebalien.com/projects/tempfile-rs/"
+    },
+    {
+      "name": "thin-vec",
+      "version": "0.2.14",
+      "license": "MIT/Apache-2.0",
+      "repository": "https://github.com/gankra/thin-vec",
+      "homepage": "https://github.com/gankra/thin-vec"
     },
     {
       "name": "thiserror",
@@ -1945,6 +2029,13 @@
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/time-rs/time",
       "homepage": null
+    },
+    {
+      "name": "tiny-keccak",
+      "version": "2.0.2",
+      "license": "CC0-1.0",
+      "repository": null,
+      "homepage": "https://github.com/debris/tiny-keccak"
     },
     {
       "name": "tinystr",
