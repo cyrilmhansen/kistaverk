@@ -73,29 +73,26 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
         "margin_bottom": 12.0
     }));
     
-    // Action buttons
+    // Action buttons (stacked for compatibility)
     components.push(json!({
-        "type": "Row",
+        "type": "Column",
         "children": [
             {
                 "type": "Button",
                 "text": "Execute",
                 "action_id": "scripting.execute",
-                "flex": 1,
-                "margin_right": 8.0
+                "margin_bottom": 8.0
             },
             {
                 "type": "Button",
                 "text": "Clear Output",
                 "action_id": "scripting.clear_output",
-                "flex": 1,
-                "margin_right": 8.0
+                "margin_bottom": 8.0
             },
             {
                 "type": "Button",
                 "text": "Clear Script",
-                "action_id": "scripting.clear_script",
-                "flex": 1
+                "action_id": "scripting.clear_script"
             }
         ]
     }));
@@ -388,6 +385,13 @@ let sum = x + y;
                 .iter()
                 .all(|c| c.get("type").and_then(|t| t.as_str()) != Some("TextArea")),
             "unsupported TextArea widget should not be emitted"
+        );
+
+        assert!(
+            children
+                .iter()
+                .all(|c| c.get("type").and_then(|t| t.as_str()) != Some("Row")),
+            "unsupported Row widget should not be emitted"
         );
     }
 
