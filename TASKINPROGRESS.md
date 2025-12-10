@@ -1,41 +1,57 @@
 # Task In Progress
 
-## Feature 1: Embedded Scripting (Rhai)
-*   **Status:** 📅 PLANNED
-*   **Date:** 2025-12-10
-*   **Objective:** Integrate a lightweight scripting engine to allow users to write and execute custom automation scripts.
-*   **Rationale:** Aligns with the "Automation" and "Embedded Scripting" goals in `VISION.md`. Empower power users to chain tools and perform custom logic.
-*   **Implementation Plan:**
-    1.  **Dependency:** Add `rhai` to `rust/Cargo.toml`.
-    2.  **State:** Create `ScriptingState` in `state.rs` to hold script input, output log, and execution status.
-    3.  **Core Logic:** Create `features/scripting.rs`.
-        *   Initialize `rhai::Engine`.
-        *   Register custom functions (e.g., `print`, `math`, maybe access to other Kistaverk tools if feasible).
-        *   Implement `run_script` function to evaluate user input.
-    4.  **UI:**
-        *   Add a "Scripting Lab" screen.
-        *   `TextInput` (multiline) for code editing.
-        *   `Text` view for capturing stdout/result.
-        *   `Button` to "Run".
-    5.  **Integration:** Register in `router.rs`.
+## Status: Feature Implementation
+*   **Date:** 2025-12-11
+*   **Objective:** Finalize the Scheduler feature and ensure comprehensive testing.
+*   **Current State:** 🔄 Scheduler in progress, previous features validated.
 
-## Feature 2: Dependency List with Search
-*   **Status:** 📅 PLANNED
-*   **Date:** 2025-12-10
-*   **Objective:** Implement a searchable, Rust-rendered list of open-source dependencies.
-*   **Rationale:** Addresses "Search/Filtering: Extend filtering to other lists" in `WORKINPROGRESS.md`. Improves the "About" screen experience and demonstrates handling large static datasets in Rust.
-*   **Implementation Plan:**
-    1.  **Data Source:** Use `include_str!` to compile `app/app/src/main/assets/deps.json` directly into the Rust binary.
-    2.  **Data Structure:** Define `Dependency` struct (name, version, url, license).
-    3.  **State:** Create `DependencyState` in `state.rs` with `search_query` and a filtered list cache.
-    4.  **Core Logic:** Create `features/dependencies.rs`.
-        *   Parse JSON on startup (or lazy load).
-        *   Implement filtering logic based on `search_query`.
-    5.  **UI:**
-        *   Implement `render_dependency_screen`.
-        *   Use `VirtualList` for performance (the list can be long).
-        *   Add `TextInput` for searching.
-    6.  **Integration:** Add route in `router.rs` and link from the System Info or Settings screen.
+## Completed Features
+1.  **CSV/JSON SQL Engine** (`features/sql_engine.rs`)
+    *   ✅ Core Logic & SQLite Integration
+    *   ✅ UI Integration
+    *   ✅ Unit Tests (Implemented)
+2.  **Embedded Scripting (Rhai)** (`features/scripting.rs`)
+    *   ✅ Core Logic & Rhai Integration
+    *   ✅ UI Integration
+    *   ✅ Unit Tests (Implemented)
+3.  **Dependency List with Search** (`features/dependencies.rs`)
+    *   ✅ Rust-side rendering
+    *   ✅ Filtering logic
+    *   ✅ Unit Tests (Implemented)
+4.  **Preset Filtering** (`features/presets.rs`)
+    *   ✅ Filter UI & Logic
+    *   ✅ Unit Tests (Implemented)
 
-## Previous Tasks
-*   **CSV/JSON SQL Engine:** ✅ COMPLETED (2025-12-10)
+## Feature In Progress: Cron/Task Scheduler
+*   **Status:** 🚧 IN PROGRESS
+*   **Objective:** Allow users to schedule recurring tasks or chains of actions within the application.
+*   **Implementation Status:**
+    *   ✅ Dependency (`cron` crate)
+    *   ✅ State (`SchedulerState` in `state.rs`)
+    *   ✅ Core Logic (`features/scheduler.rs`: Task structure, Background runtime)
+    *   ✅ UI (`render_scheduler_screen`)
+    *   ✅ Integration (`handle_scheduler_action`)
+    *   ❌ Unit Tests (Missing `mod tests`)
+
+## Immediate To-Do List
+1.  **Add Tests for Scheduler:**
+    *   Test `ScheduledTask` struct (serialization/deserialization).
+    *   Test Cron parsing and validation.
+    *   Test `SchedulerRuntime` (task scheduling, execution triggering).
+    *   Test state management (adding/removing tasks).
+
+## Planned Features
+
+### Feature 1: Extend Symbolic Integration
+*   **Status:** 📅 PLANNED
+*   **Date:** 2025-12-11
+*   **Objective:** Enhance the existing symbolic integration capabilities in the Math Tool.
+*   **Rationale:** Directly addresses the roadmap item "Symbolic Integration: Extend math tool to support basic integration" and builds upon existing functionality in `features/math_tool.rs`.
+*   **Implementation Plan:**
+    1.  **Analyze current `integrate` function:** Identify patterns of currently `∫unsupported` expressions.
+    2.  **Implement new rules:** Add support for more integration techniques (e.g., product rule for integration by parts, basic trigonometric substitutions, or simple rational functions).
+    3.  **Add Tests:** Create a small set of unit tests in `math_tool.rs` for each newly implemented integration rule.
+
+## Roadmap
+*   **Optimization:** Review memory usage of in-memory SQLite and Rhai engine.
+*   **Integration Tests:** Verify router handling for new actions.
