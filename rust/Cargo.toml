@@ -27,7 +27,7 @@ memmap2 = "0.9"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 time = { version = "0.3", default-features = false, features = ["formatting", "macros", "std"] }
 tempfile = "3"
-regex = { version = "1", default-features = false, features = ["std", "unicode-perl"] }
+regex = { version = "1", default-features = false, features = ["std"] }
 uuid = { version = "1", features = ["v4", "fast-rng"], default-features = false }
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
@@ -41,7 +41,7 @@ android_log-sys = "0.3"
 
 [profile.release]
 opt-level = "z"
-lto = true
+lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"

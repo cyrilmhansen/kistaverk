@@ -282,7 +282,7 @@
     },
     {
       "name": "cc",
-      "version": "1.2.47",
+      "version": "1.2.49",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/rust-lang/cc-rs",
       "homepage": "https://github.com/rust-lang/cc-rs"
@@ -590,7 +590,7 @@
     },
     {
       "name": "fancy-regex",
-      "version": "0.14.0",
+      "version": "0.16.2",
       "license": "MIT",
       "repository": "https://github.com/fancy-regex/fancy-regex",
       "homepage": null
@@ -772,7 +772,7 @@
     },
     {
       "name": "gif",
-      "version": "0.14.0",
+      "version": "0.14.1",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/image-rs/image-gif",
       "homepage": "https://github.com/image-rs/image-gif"
@@ -975,7 +975,7 @@
     },
     {
       "name": "js-sys",
-      "version": "0.3.82",
+      "version": "0.3.83",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/js-sys",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/"
@@ -1003,7 +1003,7 @@
     },
     {
       "name": "libc",
-      "version": "0.2.177",
+      "version": "0.2.178",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/rust-lang/libc",
       "homepage": null
@@ -1052,7 +1052,7 @@
     },
     {
       "name": "log",
-      "version": "0.4.28",
+      "version": "0.4.29",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/rust-lang/log",
       "homepage": null
@@ -1136,7 +1136,7 @@
     },
     {
       "name": "moxcms",
-      "version": "0.7.9",
+      "version": "0.7.10",
       "license": "BSD-3-Clause OR Apache-2.0",
       "repository": "https://github.com/awxkee/moxcms.git",
       "homepage": "https://github.com/awxkee/moxcms"
@@ -1430,7 +1430,7 @@
     },
     {
       "name": "pxfm",
-      "version": "0.1.25",
+      "version": "0.1.27",
       "license": "BSD-3-Clause OR Apache-2.0",
       "repository": "https://github.com/awxkee/pxfm",
       "homepage": null
@@ -1647,7 +1647,7 @@
     },
     {
       "name": "rxing",
-      "version": "0.8.2",
+      "version": "0.8.3",
       "license": "Apache-2.0",
       "repository": "https://github.com/rxing-core/rxing",
       "homepage": null
@@ -1787,7 +1787,7 @@
     },
     {
       "name": "simd-adler32",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "license": "MIT",
       "repository": "https://github.com/mcountryman/simd-adler32",
       "homepage": null
@@ -2011,7 +2011,7 @@
     },
     {
       "name": "uuid",
-      "version": "1.18.1",
+      "version": "1.19.0",
       "license": "Apache-2.0 OR MIT",
       "repository": "https://github.com/uuid-rs/uuid",
       "homepage": "https://github.com/uuid-rs/uuid"
@@ -2060,28 +2060,28 @@
     },
     {
       "name": "wasm-bindgen",
-      "version": "0.2.105",
+      "version": "0.2.106",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen"
     },
     {
       "name": "wasm-bindgen-macro",
-      "version": "0.2.105",
+      "version": "0.2.106",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/"
     },
     {
       "name": "wasm-bindgen-macro-support",
-      "version": "0.2.105",
+      "version": "0.2.106",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/macro-support",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/"
     },
     {
       "name": "wasm-bindgen-shared",
-      "version": "0.2.105",
+      "version": "0.2.106",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/"
@@ -2319,7 +2319,7 @@
     },
     {
       "name": "zune-jpeg",
-      "version": "0.5.5",
+      "version": "0.5.6",
       "license": "MIT OR Apache-2.0 OR Zlib",
       "repository": "https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg",
       "homepage": null

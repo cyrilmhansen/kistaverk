@@ -6,7 +6,7 @@ Kistaverk aims to be the definitive utility for privacy-conscious power users on
 Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cloud dependencies, and tracking, Kistaverk is:
 
 1.  **Strictly Local:** Internet permission is explicitly denied in the manifest.
-2.  **High Performance:** Heavy logic (crypto, image processing) runs in compiled Rust.
+2.  **High Performance & Efficiency:** Heavy logic runs in compiled Rust. Binaries are optimized for minimal size (~5MB target) and maximum speed (`lto`, `panic=abort`).
 3.  **Cross-Platform Core:** The business logic is decoupled from Android, enabling future ports (iOS, Desktop, CLI).
 
 ---

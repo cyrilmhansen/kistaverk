@@ -94,6 +94,7 @@ android {
         environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
         environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
         environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
+        environment("CFLAGS", "-Os")
 
         args(
             "ndk",
