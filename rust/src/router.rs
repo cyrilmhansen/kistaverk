@@ -39,6 +39,10 @@ use crate::features::qr_transfer::{
 use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
 use crate::features::scripting::handle_scripting_actions;
+use crate::features::scheduler::{
+    apply_scheduler_result, drain_events as drain_scheduler_events, render_scheduler_screen,
+    runtime as scheduler_runtime,
+};
 use crate::features::sql_engine::{handle_sql_action, render_sql_screen};
 use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::sensor_utils::{low_pass_angle, low_pass_scalar};
@@ -67,6 +71,7 @@ use std::{
     ptr,
     sync::{mpsc, Mutex, MutexGuard, OnceLock},
     thread,
+    str::FromStr,
 };
 
 #[cfg(test)]
@@ -847,6 +852,21 @@ pub(crate) enum Action {
     },
     PdfSignatureClear,
     About,
+    SchedulerScreen,
+    SchedulerAdd {
+        name: Option<String>,
+        action_id: Option<String>,
+        cron: Option<String>,
+    },
+    SchedulerToggle {
+        id: u32,
+    },
+    SchedulerDelete {
+        id: u32,
+    },
+    SchedulerRunNow {
+        id: u32,
+    },
     DepsFilter {
         query: Option<String>,
     },
@@ -1290,6 +1310,24 @@ fn parse_action(command: Command) -> Result<Action, String> {
         },
         "sql_clear_all" => Ok(Action::SqlClearAll),
         "about" => Ok(Action::About),
+        "scheduler_screen" => Ok(Action::SchedulerScreen),
+        "scheduler_add" => Ok(Action::SchedulerAdd {
+            name: bindings.get("scheduler_name").cloned(),
+            action_id: bindings.get("scheduler_action").cloned(),
+            cron: bindings.get("scheduler_cron").cloned(),
+        }),
+        other if other.starts_with("scheduler_toggle:") => {
+            let id = other.trim_start_matches("scheduler_toggle:").parse::<u32>().unwrap_or(0);
+            Ok(Action::SchedulerToggle { id })
+        }
+        other if other.starts_with("scheduler_delete:") => {
+            let id = other.trim_start_matches("scheduler_delete:").parse::<u32>().unwrap_or(0);
+            Ok(Action::SchedulerDelete { id })
+        }
+        other if other.starts_with("scheduler_run:") => {
+            let id = other.trim_start_matches("scheduler_run:").parse::<u32>().unwrap_or(0);
+            Ok(Action::SchedulerRunNow { id })
+        }
         "deps_filter" => Ok(Action::DepsFilter {
             query: bindings.get("deps_filter").cloned(),
         }),
@@ -2181,6 +2219,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::QrReceiveSave
         | a @ Action::QrGenerate { .. } => {
             handle_qr_actions(&mut state, a);
+        }
+        Action::SchedulerScreen
+        | Action::SchedulerAdd { .. }
+        | Action::SchedulerToggle { .. }
+        | Action::SchedulerDelete { .. }
+        | Action::SchedulerRunNow { .. } => {
+            if let Some(ui) = handle_scheduler_actions(&mut state, &action) {
+                return Ok(ui);
+            }
         }
         a @ Action::PdfToolsScreen
         | a @ Action::PdfSelect { .. }
@@ -3184,6 +3231,87 @@ fn handle_multi_hash_job(
             state.loading_with_spinner = true;
             return Ok(render_ui(&state));
         }
+    }
+}
+
+fn handle_scheduler_actions(
+    state: &mut AppState,
+    action: &Action,
+) -> Option<Value> {
+    match action {
+        Action::SchedulerScreen => {
+            state.push_screen(Screen::Scheduler);
+            Some(render_scheduler_screen(state))
+        }
+        Action::SchedulerAdd {
+            name,
+            action_id,
+            cron,
+        } => {
+            if let Some(n) = name {
+                state.scheduler.form_name = n.clone();
+            }
+            if let Some(a) = action_id {
+                state.scheduler.form_action = a.clone();
+            }
+            if let Some(c) = cron {
+                state.scheduler.form_cron = c.clone();
+            }
+
+            if state.scheduler.form_name.trim().is_empty()
+                || state.scheduler.form_action.trim().is_empty()
+            {
+                state.scheduler.last_error = Some("name_and_action_required".into());
+                state.replace_current(Screen::Scheduler);
+                return Some(render_scheduler_screen(state));
+            }
+
+            match cron::Schedule::from_str(&state.scheduler.form_cron) {
+                Ok(_) => {
+                    let task = crate::state::ScheduledTask {
+                        id: state.scheduler.next_id,
+                        name: state.scheduler.form_name.trim().to_string(),
+                        action: state.scheduler.form_action.trim().to_string(),
+                        cron: state.scheduler.form_cron.trim().to_string(),
+                        enabled: true,
+                        last_run_epoch: None,
+                        last_status: None,
+                    };
+                    state.scheduler.next_id = state.scheduler.next_id.saturating_add(1);
+                    state.scheduler.tasks.push(task);
+                    state.scheduler.last_error = None;
+                    scheduler_runtime().sync_tasks(&state.scheduler.tasks);
+                    state.scheduler.form_name.clear();
+                    state.scheduler.form_action.clear();
+                }
+                Err(e) => {
+                    state.scheduler.last_error = Some(format!("invalid_cron:{e}"));
+                }
+            }
+
+            state.replace_current(Screen::Scheduler);
+            Some(render_scheduler_screen(state))
+        }
+        Action::SchedulerToggle { id } => {
+            if let Some(task) = state.scheduler.tasks.iter_mut().find(|t| t.id == *id) {
+                task.enabled = !task.enabled;
+            }
+            scheduler_runtime().sync_tasks(&state.scheduler.tasks);
+            state.replace_current(Screen::Scheduler);
+            Some(render_scheduler_screen(state))
+        }
+        Action::SchedulerDelete { id } => {
+            state.scheduler.tasks.retain(|t| t.id != *id);
+            scheduler_runtime().sync_tasks(&state.scheduler.tasks);
+            state.replace_current(Screen::Scheduler);
+            Some(render_scheduler_screen(state))
+        }
+        Action::SchedulerRunNow { id } => {
+            scheduler_runtime().trigger_now(*id);
+            state.replace_current(Screen::Scheduler);
+            Some(render_scheduler_screen(state))
+        }
+        _ => None,
     }
 }
 
@@ -4389,6 +4517,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Plotting => render_plotting_screen(state),
         Screen::SqlQuery => render_sql_screen(state),
         Screen::Scripting => features::scripting::render_scripting_screen(state),
+        Screen::Scheduler => render_scheduler_screen(state),
     }
 }
 
@@ -4931,6 +5060,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "scripting_screen",
             requires_file_picker: false,
             description: "Rhai scripting engine",
+        },
+        Feature {
+            id: "scheduler",
+            name: "⏰ Task Scheduler",
+            category: "🧰 Utilities",
+            action: "scheduler_screen",
+            requires_file_picker: false,
+            description: "cron-style recurring actions",
         },
     ]
 }
@@ -6137,6 +6274,9 @@ mod tests {
     }
 }
 fn apply_worker_results(state: &mut AppState) {
+    for (task_id, action, fired_at) in drain_scheduler_events() {
+        apply_scheduler_result(state, task_id, action, fired_at);
+    }
     let results = STATE.drain_worker_results();
     if results.is_empty() {
         return;

@@ -53,6 +53,7 @@ pub enum Screen {
     Plotting,
     SqlQuery,
     Scripting,
+    Scheduler,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -116,6 +117,59 @@ impl DependencyState {
 
     pub fn reset(&mut self) {
         self.query.clear();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledTask {
+    pub id: u32,
+    pub name: String,
+    pub action: String,
+    pub cron: String,
+    pub enabled: bool,
+    pub last_run_epoch: Option<i64>,
+    pub last_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerLog {
+    pub task_id: u32,
+    pub message: String,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerState {
+    pub tasks: Vec<ScheduledTask>,
+    pub form_name: String,
+    pub form_action: String,
+    pub form_cron: String,
+    pub last_error: Option<String>,
+    pub logs: Vec<SchedulerLog>,
+    pub next_id: u32,
+}
+
+impl SchedulerState {
+    pub const fn new() -> Self {
+        Self {
+            tasks: Vec::new(),
+            form_name: String::new(),
+            form_action: String::new(),
+            form_cron: String::new(),
+            last_error: None,
+            logs: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.tasks.clear();
+        self.form_name.clear();
+        self.form_action.clear();
+        self.form_cron.clear();
+        self.last_error = None;
+        self.logs.clear();
+        self.next_id = 1;
     }
 }
 
@@ -293,6 +347,7 @@ pub struct AppState {
     pub plotting: PlottingState,
     pub sql_query: SqlQueryState,
     pub scripting: ScriptingState,
+    pub scheduler: SchedulerState,
     #[serde(skip)]
     pub sql_engine: Option<SqlEngine>,
 }
@@ -390,6 +445,7 @@ impl AppState {
             plotting: PlottingState::new(),
             sql_query: SqlQueryState::new(),
             scripting: ScriptingState::new(),
+            scheduler: SchedulerState::new(),
             sql_engine: None,
         }
     }
@@ -520,6 +576,7 @@ impl AppState {
         self.jwt = JwtState::new();
         self.hex_editor = HexEditorState::new();
         self.plotting = PlottingState::new();
+        self.scheduler.reset();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }
