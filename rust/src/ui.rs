@@ -700,6 +700,7 @@ impl<'a> Magnetometer<'a> {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Serialize)]
 pub struct DepsList<'a> {
     #[serde(rename = "type")]
@@ -710,6 +711,7 @@ pub struct DepsList<'a> {
     pub content_description: Option<&'a str>,
 }
 
+#[allow(dead_code)]
 impl<'a> DepsList<'a> {
     pub fn new() -> Self {
         Self {

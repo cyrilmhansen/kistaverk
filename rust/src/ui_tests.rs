@@ -2,7 +2,7 @@
 mod tests {
     use crate::features::misc_screens::render_about_screen;
     use crate::state::AppState;
-    use crate::ui::{DepsList, HtmlView, TextInput, VirtualList};
+    use crate::ui::{HtmlView, TextInput, VirtualList};
     use serde_json::json;
 
     #[test]
@@ -44,16 +44,9 @@ mod tests {
     }
 
     #[test]
-    fn deps_list_serializes_query() {
-        let deps = DepsList::new().query("serde");
-        let val = serde_json::to_value(deps).unwrap();
-        assert_eq!(val.get("query").and_then(|v| v.as_str()), Some("serde"));
-    }
-
-    #[test]
     fn about_screen_forwards_filter_query() {
         let mut state = AppState::new();
-        state.deps_filter_query = Some("openssl".to_string());
+        state.dependencies.query = "openssl".to_string();
         let ui = render_about_screen(&state);
         let children = ui
             .get("children")
@@ -67,11 +60,14 @@ mod tests {
         );
         let deps = children
             .iter()
-            .find(|c| c.get("type").and_then(|t| t.as_str()) == Some("DepsList"))
+            .find(|c| c.get("type").and_then(|t| t.as_str()) == Some("VirtualList"))
             .expect("deps list present");
-        assert_eq!(
-            deps.get("query").and_then(|v| v.as_str()),
-            Some("openssl")
-        );
+        assert_eq!(deps.get("type").and_then(|v| v.as_str()), Some("VirtualList"));
+        assert!(deps.get("children").is_some(), "virtual list should contain children");
+        let input = children
+            .iter()
+            .find(|c| c.get("type").and_then(|t| t.as_str()) == Some("TextInput"))
+            .expect("text input present");
+        assert_eq!(input.get("text").and_then(|v| v.as_str()), Some("openssl"));
     }
 }

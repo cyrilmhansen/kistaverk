@@ -2215,11 +2215,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.push_screen(Screen::About);
         }
         Action::DepsFilter { query } => {
-            let trimmed = query.and_then(|q| {
-                let t = q.trim().to_string();
-                if t.is_empty() { None } else { Some(t) }
-            });
-            state.deps_filter_query = trimmed;
+            state.dependencies.query = query.unwrap_or_default().trim().to_string();
             state.replace_current(Screen::About);
         }
         a @ Action::TextViewerScreen

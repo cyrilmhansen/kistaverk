@@ -16,6 +16,7 @@ pub mod sensor_utils;
 pub mod sensor_logger;
 pub mod storage;
 pub mod system_info;
+pub mod dependencies;
 pub mod text_tools;
 pub mod text_viewer;
 pub mod uuid_gen;

@@ -40,7 +40,6 @@ import android.widget.ScrollView
 import android.widget.ImageView
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
-import java.util.Locale
 import org.json.JSONArray
 import android.text.Editable
 import android.text.TextWatcher
@@ -84,7 +83,6 @@ class UiRenderer(
         "PdfSignPreview" to { data, matched -> createPdfSignPreview(data, matched as? PdfSignPreview) },
         "PdfPreviewGrid" to { data, matched -> createPdfPreviewGrid(data, matched as? ScrollView) },
         "PdfSinglePage" to { data, matched -> createPdfSinglePage(data, matched as? ImageView) },
-        "DepsList" to { data, matched -> createDepsList(data, matched as? LinearLayout) },
         "CodeView" to { data, matched -> createCodeView(data, matched as? WebView) },
         "HtmlView" to { data, matched -> createHtmlView(data, matched as? WebView) },
         "Compass" to { data, matched -> createCompass(data, matched) },
@@ -123,8 +121,6 @@ class UiRenderer(
         "PdfSignPreview",
         "PdfPreviewGrid",
         "PdfSinglePage",
-        "DepsList"
-        ,
         "CodeView",
         "HtmlView",
         "Compass",
@@ -293,9 +289,6 @@ class UiRenderer(
         if (type == "PdfSinglePage") {
             if (!node.has("source_uri")) return "PdfSinglePage missing source_uri"
             if (!node.has("page")) return "PdfSinglePage missing page"
-        }
-        if (type == "DepsList") {
-            // no required fields
         }
         if (type == "CodeView" && !node.has("text")) {
             return "CodeView missing text"
@@ -1208,97 +1201,6 @@ class UiRenderer(
             } catch (_: Exception) {
                 null
             }
-        }
-    }
-
-    private fun createDepsList(data: JSONObject, existing: LinearLayout?): View {
-        val container = existing ?: LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        container.orientation = LinearLayout.VERTICAL
-        container.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f)
-        val scroll = (container.getChildAt(0) as? ScrollView) ?: ScrollView(context).apply {
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-        }
-        val inner = (scroll.getChildAt(0) as? LinearLayout) ?: LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
-        }
-        val pad = dpToPx(context, 8f)
-        inner.setPadding(pad, pad, pad, pad)
-        inner.removeAllViews()
-
-        val deps = readDepsGrouped()
-        val query = data.optString("query", "").trim()
-        val filteredDeps = if (query.isBlank()) {
-            deps
-        } else {
-            val needle = query.lowercase(Locale.ROOT)
-            deps.mapValues { (_, items) ->
-                items.filter { it.lowercase(Locale.ROOT).contains(needle) }
-            }.filterValues { it.isNotEmpty() }
-        }
-
-        if (deps.isEmpty()) {
-            inner.addView(TextView(context).apply {
-                text = "Dependencies unavailable"
-                textSize = 12f
-            })
-        } else if (filteredDeps.isEmpty()) {
-            inner.addView(TextView(context).apply {
-                text = "No dependencies match \"$query\""
-                textSize = 12f
-            })
-        } else {
-            filteredDeps.keys.sorted().forEach { lic ->
-                val items = filteredDeps[lic].orEmpty()
-                inner.addView(TextView(context).apply {
-                    text = "$lic (${items.size})"
-                    textSize = 13f
-                })
-                items.sorted().forEach { item ->
-                    inner.addView(TextView(context).apply {
-                        text = "• $item"
-                        textSize = 12f
-                    })
-                }
-                inner.addView(Space(context).apply {
-                    layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, dpToPx(context, 4f))
-                })
-            }
-        }
-
-        if (inner.parent != scroll) {
-            scroll.removeAllViews()
-            scroll.addView(inner)
-        }
-        container.removeAllViews()
-        container.addView(scroll)
-        setMeta(container, "DepsList", resolveNodeId(data))
-        return container
-    }
-
-    private fun readDepsGrouped(): Map<String, List<String>> {
-        return try {
-            val input = context.assets.open("deps.json")
-            val text = input.bufferedReader().use { it.readText() }
-            val root = JSONObject(text)
-            val arr: JSONArray = root.optJSONArray("packages") ?: return emptyMap()
-            val grouped = mutableMapOf<String, MutableList<String>>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val name = obj.optString("name", "")
-                if (name.isEmpty()) {
-                    continue
-                }
-                val ver = obj.optString("version", "")
-                val lic = obj.optString("license", "").ifEmpty { "unknown" }
-                val entry = if (ver.isNotEmpty()) "$name $ver" else name
-                grouped.getOrPut(lic) { mutableListOf() }.add(entry)
-            }
-            grouped
-        } catch (_: Exception) {
-            emptyMap()
         }
     }
 

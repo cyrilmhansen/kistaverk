@@ -102,6 +102,23 @@ pub struct RegexTesterState {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyState {
+    pub query: String,
+}
+
+impl DependencyState {
+    pub const fn new() -> Self {
+        Self {
+            query: String::new(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.query.clear();
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StringCharset {
     Alphanumeric,
@@ -219,7 +236,7 @@ pub struct AppState {
     pub loading_message: Option<String>,
     pub progress_status: Option<String>,
     pub loading_with_spinner: bool,
-    pub deps_filter_query: Option<String>,
+    pub dependencies: DependencyState,
     pub last_qr_base64: Option<String>,
     pub pdf: PdfState,
     pub last_sensor_log: Option<String>,
@@ -301,7 +318,7 @@ impl AppState {
             loading_message: None,
             progress_status: None,
             loading_with_spinner: true,
-            deps_filter_query: None,
+            dependencies: DependencyState::new(),
             last_qr_base64: None,
             pdf: PdfState::new(),
             last_sensor_log: None,
@@ -439,7 +456,7 @@ impl AppState {
         self.loading_message = None;
         self.progress_status = None;
         self.loading_with_spinner = true;
-        self.deps_filter_query = None;
+        self.dependencies.reset();
         self.last_qr_base64 = None;
         self.pdf.reset();
         self.last_sensor_log = None;
