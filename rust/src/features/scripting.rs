@@ -80,19 +80,19 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
             {
                 "type": "Button",
                 "text": "Execute",
-                "action_id": "scripting.execute",
+                "action": "scripting.execute",
                 "margin_bottom": 8.0
             },
             {
                 "type": "Button",
                 "text": "Clear Output",
-                "action_id": "scripting.clear_output",
+                "action": "scripting.clear_output",
                 "margin_bottom": 8.0
             },
             {
                 "type": "Button",
                 "text": "Clear Script",
-                "action_id": "scripting.clear_script"
+                "action": "scripting.clear_script"
             }
         ]
     }));
@@ -141,37 +141,37 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
             {
                 "type": "Button",
                 "text": "Load: Hello World",
-                "action_id": "scripting.load_example.hello",
+                "action": "scripting.load_example.hello",
                 "margin_bottom": 4.0
             },
             {
                 "type": "Button",
                 "text": "Load: Math Operations",
-                "action_id": "scripting.load_example.math",
+                "action": "scripting.load_example.math",
                 "margin_bottom": 4.0
             },
             {
                 "type": "Button",
                 "text": "Load: String Manipulation",
-                "action_id": "scripting.load_example.string",
+                "action": "scripting.load_example.string",
                 "margin_bottom": 4.0
             },
             {
                 "type": "Button",
                 "text": "Load: Random + Loop",
-                "action_id": "scripting.load_example.random_loop",
+                "action": "scripting.load_example.random_loop",
                 "margin_bottom": 4.0
             },
             {
                 "type": "Button",
                 "text": "Load: Map & Array",
-                "action_id": "scripting.load_example.collections",
+                "action": "scripting.load_example.collections",
                 "margin_bottom": 4.0
             },
             {
                 "type": "Button",
                 "text": "Load: Function",
-                "action_id": "scripting.load_example.function",
+                "action": "scripting.load_example.function",
                 "margin_bottom": 4.0
             }
         ]
@@ -393,6 +393,27 @@ let sum = x + y;
                 .all(|c| c.get("type").and_then(|t| t.as_str()) != Some("Row")),
             "unsupported Row widget should not be emitted"
         );
+
+        fn collect_buttons<'a>(node: &'a serde_json::Value, acc: &mut Vec<&'a serde_json::Value>) {
+            if node.get("type").and_then(|t| t.as_str()) == Some("Button") {
+                acc.push(node);
+            }
+            if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+                for child in children {
+                    collect_buttons(child, acc);
+                }
+            }
+        }
+
+        let mut buttons = Vec::new();
+        collect_buttons(&ui, &mut buttons);
+        assert!(!buttons.is_empty(), "expected action buttons");
+        for btn in buttons {
+            assert!(
+                btn.get("action").and_then(|a| a.as_str()).is_some(),
+                "buttons must carry an action"
+            );
+        }
     }
 
     #[test]
