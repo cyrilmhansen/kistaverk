@@ -64,11 +64,11 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
     
     // Script editor
     components.push(json!({
-        "type": "TextArea",
+        "type": "TextInput",
         "bind_key": "scripting.script",
         "text": scripting_state.script,
         "hint": "Enter your Rhai script here...",
-        "min_lines": 10,
+        "single_line": false,
         "max_lines": 20,
         "margin_bottom": 12.0
     }));
@@ -120,12 +120,11 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
     };
     
     components.push(json!({
-        "type": "TextArea",
+        "type": "CodeView",
         "text": output_text,
-        "read_only": true,
-        "min_lines": 5,
-        "max_lines": 10,
-        "background_color": "#f5f5f5",
+        "wrap": true,
+        "theme": "light",
+        "line_numbers": false,
         "margin_bottom": 16.0
     }));
     
@@ -352,6 +351,44 @@ let sum = x + y;
         assert_eq!(state.script, "");
         assert_eq!(state.output, "");
         assert_eq!(state.error, None);
+    }
+
+    #[test]
+    fn scripting_screen_uses_supported_widgets() {
+        let state = AppState::new();
+        let ui = render_scripting_screen(&state);
+        let children = ui
+            .get("children")
+            .and_then(|v| v.as_array())
+            .expect("column children");
+
+        let script_input = children
+            .iter()
+            .find(|c| c.get("bind_key").and_then(|b| b.as_str()) == Some("scripting.script"))
+            .or_else(|| {
+                children
+                    .iter()
+                    .find(|c| c.get("type").and_then(|t| t.as_str()) == Some("TextInput"))
+            })
+            .expect("script editor present");
+        assert_eq!(
+            script_input.get("type").and_then(|t| t.as_str()),
+            Some("TextInput")
+        );
+
+        assert!(
+            children
+                .iter()
+                .any(|c| c.get("type").and_then(|t| t.as_str()) == Some("CodeView")),
+            "output should be rendered with CodeView"
+        );
+
+        assert!(
+            children
+                .iter()
+                .all(|c| c.get("type").and_then(|t| t.as_str()) != Some("TextArea")),
+            "unsupported TextArea widget should not be emitted"
+        );
     }
 
     #[test]
