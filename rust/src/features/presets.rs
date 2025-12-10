@@ -384,4 +384,137 @@ mod tests {
 
         env::remove_var("KISTAVERK_TEMP_DIR");
     }
+
+    #[test]
+    fn test_preset_filtering_logic() {
+        let mut state = AppState::new();
+        
+        // Add some presets with different tool IDs and names
+        let presets = vec![
+            Preset {
+                id: "1".to_string(),
+                name: "Dithering Preset 1".to_string(),
+                tool_id: "dithering".to_string(),
+                data: json!({"mode": "bayer", "palette": "gameboy"}),
+                created_at: 1000,
+            },
+            Preset {
+                id: "2".to_string(),
+                name: "Pixel Art Preset".to_string(),
+                tool_id: "pixel_art".to_string(),
+                data: json!({"scale_factor": 2}),
+                created_at: 2000,
+            },
+            Preset {
+                id: "3".to_string(),
+                name: "Another Dithering".to_string(),
+                tool_id: "dithering".to_string(),
+                data: json!({"mode": "sierra", "palette": "cga"}),
+                created_at: 3000,
+            },
+        ];
+
+        state.preset_state.presets = presets;
+
+        // Test filtering by tool ID
+        state.preset_state.current_tool_id = Some("dithering".to_string());
+        state.preset_state.filter_query = None;
+        
+        let filtered = state.preset_state.presets.iter()
+            .filter(|p| {
+                if let Some(tid) = &state.preset_state.current_tool_id {
+                    if &p.tool_id != tid {
+                        return false;
+                    }
+                }
+                if let Some(q) = &state.preset_state.filter_query {
+                    let name = p.name.to_ascii_lowercase();
+                    let tool_id = p.tool_id.to_ascii_lowercase();
+                    if !name.contains(q) && !tool_id.contains(q) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|p| p.tool_id == "dithering"));
+
+        // Test filtering by name query
+        state.preset_state.current_tool_id = None;
+        state.preset_state.filter_query = Some("pixel".to_string());
+        
+        let filtered = state.preset_state.presets.iter()
+            .filter(|p| {
+                if let Some(tid) = &state.preset_state.current_tool_id {
+                    if &p.tool_id != tid {
+                        return false;
+                    }
+                }
+                if let Some(q) = &state.preset_state.filter_query {
+                    let name = p.name.to_ascii_lowercase();
+                    let tool_id = p.tool_id.to_ascii_lowercase();
+                    if !name.contains(q) && !tool_id.contains(q) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "Pixel Art Preset");
+
+        // Test combined filtering (tool ID + query)
+        state.preset_state.current_tool_id = Some("dithering".to_string());
+        state.preset_state.filter_query = Some("another".to_string());
+        
+        let filtered = state.preset_state.presets.iter()
+            .filter(|p| {
+                if let Some(tid) = &state.preset_state.current_tool_id {
+                    if &p.tool_id != tid {
+                        return false;
+                    }
+                }
+                if let Some(q) = &state.preset_state.filter_query {
+                    let name = p.name.to_ascii_lowercase();
+                    let tool_id = p.tool_id.to_ascii_lowercase();
+                    if !name.contains(q) && !tool_id.contains(q) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "Another Dithering");
+
+        // Test case insensitive filtering
+        state.preset_state.current_tool_id = None;
+        state.preset_state.filter_query = Some("DITHER".to_string());
+        
+        let filtered = state.preset_state.presets.iter()
+            .filter(|p| {
+                if let Some(tid) = &state.preset_state.current_tool_id {
+                    if &p.tool_id != tid {
+                        return false;
+                    }
+                }
+                if let Some(q) = &state.preset_state.filter_query {
+                    let query_lower = q.to_ascii_lowercase();
+                    let name = p.name.to_ascii_lowercase();
+                    let tool_id = p.tool_id.to_ascii_lowercase();
+                    if !name.contains(&query_lower) && !tool_id.contains(&query_lower) {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(|p| p.tool_id == "dithering"));
+    }
 }

@@ -11,6 +11,9 @@ use std::{
     os::unix::io::RawFd,
 };
 
+#[cfg(test)]
+use tempfile::NamedTempFile;
+
 /// Information about an imported table
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TableInfo {
@@ -608,4 +611,213 @@ fn render_tables_list(tables: &[TableInfo]) -> Value {
         "children": table_items,
         "estimated_item_height": 120
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_csv_import_and_query() {
+        // Create a temporary CSV file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "name,age,city").unwrap();
+        writeln!(temp_file, "Alice,30,NYC").unwrap();
+        writeln!(temp_file, "Bob,25,LA").unwrap();
+        writeln!(temp_file, "Charlie,35,Chicago").unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        // Create SQL engine and import CSV
+        let mut engine = SqlEngine::new().unwrap();
+        let table_info = engine.import_csv(&path, None, "users").unwrap();
+
+        // Verify table info
+        assert_eq!(table_info.name, "users");
+        assert_eq!(table_info.row_count, 3);
+        assert_eq!(table_info.column_count, 3);
+        assert_eq!(table_info.column_names, vec!["name", "age", "city"]);
+
+        // Test simple query
+        let result = engine.execute_query("SELECT * FROM users");
+        assert!(result.error.is_none());
+        assert_eq!(result.columns, vec!["name", "age", "city"]);
+        assert_eq!(result.row_count, 3);
+
+        // Test filtered query
+        let result = engine.execute_query("SELECT name, age FROM users WHERE age > 30");
+        assert!(result.error.is_none());
+        assert_eq!(result.columns, vec!["name", "age"]);
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.rows[0][0], "Charlie");
+        assert_eq!(result.rows[0][1], "35");
+    }
+
+    #[test]
+    fn test_json_array_import_and_query() {
+        // Create a temporary JSON file with array
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, r#"[
+            {{"name": "Alice", "age": "30", "city": "NYC"}},
+            {{"name": "Bob", "age": "25", "city": "LA"}},
+            {{"name": "Charlie", "age": "35", "city": "Chicago"}}
+        ]"#).unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        // Create SQL engine and import JSON
+        let mut engine = SqlEngine::new().unwrap();
+        let table_info = engine.import_json(&path, None, "people").unwrap();
+
+        // Verify table info
+        assert_eq!(table_info.name, "people");
+        assert_eq!(table_info.row_count, 3);
+        assert_eq!(table_info.column_count, 3);
+        // Column names should contain the expected fields (order may vary in JSON)
+        let mut expected_columns = vec!["name", "age", "city"];
+        let mut actual_columns = table_info.column_names.clone();
+        expected_columns.sort();
+        actual_columns.sort();
+        assert_eq!(actual_columns, expected_columns);
+
+        // Test query
+        let result = engine.execute_query("SELECT name FROM people WHERE city = 'LA'");
+        assert!(result.error.is_none());
+        assert_eq!(result.columns, vec!["name"]);
+        assert_eq!(result.row_count, 1);
+        assert_eq!(result.rows[0][0], "Bob");
+    }
+
+    #[test]
+    fn test_json_object_import() {
+        // Create a temporary JSON file with single object
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, r#"{{"name": "Alice", "age": "30", "city": "NYC"}}"#).unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        // Create SQL engine and import JSON
+        let mut engine = SqlEngine::new().unwrap();
+        let table_info = engine.import_json(&path, None, "single_person").unwrap();
+
+        // Verify table info
+        assert_eq!(table_info.name, "single_person");
+        assert_eq!(table_info.row_count, 1);
+        assert_eq!(table_info.column_count, 3);
+        // Column names should contain the expected fields (order may vary in JSON)
+        let mut expected_columns = vec!["name", "age", "city"];
+        let mut actual_columns = table_info.column_names.clone();
+        expected_columns.sort();
+        actual_columns.sort();
+        assert_eq!(actual_columns, expected_columns);
+
+        // Test query
+        let result = engine.execute_query("SELECT * FROM single_person");
+        assert!(result.error.is_none());
+        assert_eq!(result.row_count, 1);
+        // Check that Alice is in one of the columns (order may vary)
+        let alice_found = result.rows[0].iter().any(|col| col == "Alice");
+        assert!(alice_found);
+    }
+
+    #[test]
+    fn test_invalid_csv_handling() {
+        // Create a temporary CSV file with no headers
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "Alice,30,NYC").unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        // Create SQL engine and try to import invalid CSV
+        let mut engine = SqlEngine::new().unwrap();
+        let result = engine.import_csv(&path, None, "invalid");
+
+        // Should return an error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_json_handling() {
+        // Create a temporary JSON file with invalid content
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "not valid json").unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        // Create SQL engine and try to import invalid JSON
+        let mut engine = SqlEngine::new().unwrap();
+        let result = engine.import_json(&path, None, "invalid");
+
+        // Should return an error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sql_error_handling() {
+        let mut engine = SqlEngine::new().unwrap();
+        
+        // Test invalid SQL query
+        let result = engine.execute_query("SELECT FROM nonexistent");
+        assert!(result.error.is_some());
+        assert!(result.error.unwrap().contains("SQL"));
+        
+        // Test query on non-existent table
+        let result = engine.execute_query("SELECT * FROM does_not_exist");
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_column_name_sanitization() {
+        // Create a CSV with special characters in column names
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "first name,age,city-name").unwrap();
+        writeln!(temp_file, "Alice,30,NYC").unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+
+        let mut engine = SqlEngine::new().unwrap();
+        let table_info = engine.import_csv(&path, None, "test_table").unwrap();
+
+        // Column names should be sanitized
+        assert_eq!(table_info.column_names, vec!["first_name", "age", "city_name"]);
+
+        // Should be able to query with sanitized names
+        let result = engine.execute_query("SELECT first_name FROM test_table");
+        assert!(result.error.is_none());
+        assert_eq!(result.row_count, 1);
+    }
+
+    #[test]
+    fn test_get_tables_and_clear() {
+        let engine = SqlEngine::new().unwrap();
+        
+        // Should start with no tables
+        assert!(engine.get_tables().is_empty());
+        
+        // Create a temporary CSV file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "name,age").unwrap();
+        writeln!(temp_file, "Alice,30").unwrap();
+
+        let path = temp_file.path().to_str().unwrap().to_string();
+        
+        // Import CSV
+        let mut engine = engine.clone();
+        engine.import_csv(&path, None, "table1").unwrap();
+        assert_eq!(engine.get_tables().len(), 1);
+        
+        // Import another CSV
+        let mut temp_file2 = NamedTempFile::new().unwrap();
+        writeln!(temp_file2, "id,value").unwrap();
+        writeln!(temp_file2, "1,test").unwrap();
+
+        let path2 = temp_file2.path().to_str().unwrap().to_string();
+        engine.import_csv(&path2, None, "table2").unwrap();
+        assert_eq!(engine.get_tables().len(), 2);
+        
+        // Clear all tables
+        engine.clear_all().unwrap();
+        assert!(engine.get_tables().is_empty());
+    }
 }
