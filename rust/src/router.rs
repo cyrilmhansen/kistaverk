@@ -38,6 +38,7 @@ use crate::features::qr_transfer::{
 };
 use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
+use crate::features::scripting::handle_scripting_actions;
 use crate::features::sql_engine::{handle_sql_action, render_sql_screen};
 use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::sensor_utils::{low_pass_angle, low_pass_scalar};
@@ -655,7 +656,7 @@ struct Command {
 }
 
 #[derive(Debug)]
-enum Action {
+pub(crate) enum Action {
     Init,
     Reset,
     Back,
@@ -1070,6 +1071,13 @@ enum Action {
         query: String,
     },
     SqlClearAll,
+    ScriptingScreen,
+    ScriptingExecute,
+    ScriptingClearOutput,
+    ScriptingClearScript,
+    ScriptingLoadExample {
+        example_type: String,
+    },
 }
 
 struct FdHandle(Option<i32>);
@@ -1610,6 +1618,18 @@ fn parse_action(command: Command) -> Result<Action, String> {
                     path,
                     fd,
                     loading_only,
+                })
+            } else if other == "scripting_screen" {
+                Ok(Action::ScriptingScreen)
+            } else if other == "scripting_execute" {
+                Ok(Action::ScriptingExecute)
+            } else if other == "scripting_clear_output" {
+                Ok(Action::ScriptingClearOutput)
+            } else if other == "scripting_clear_script" {
+                Ok(Action::ScriptingClearScript)
+            } else if let Some(example_type) = other.strip_prefix("scripting_load_example.") {
+                Ok(Action::ScriptingLoadExample {
+                    example_type: example_type.to_string(),
                 })
             } else if let Some(text_action) = parse_text_action(other) {
                 Ok(Action::TextTools {
@@ -2229,6 +2249,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::SqlExecute { .. }
         | a @ Action::SqlClearAll => {
             if let Some(ui) = handle_sql_actions(&mut state, a) {
+                return Ok(ui);
+            }
+        }
+        a @ Action::ScriptingScreen
+        | a @ Action::ScriptingExecute
+        | a @ Action::ScriptingClearOutput
+        | a @ Action::ScriptingClearScript
+        | a @ Action::ScriptingLoadExample { .. } => {
+            if let Some(ui) = handle_scripting_actions(&mut state, a) {
                 return Ok(ui);
             }
         }
@@ -4363,6 +4392,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::HexEditor => features::hex_editor::render_hex_editor_screen(state),
         Screen::Plotting => render_plotting_screen(state),
         Screen::SqlQuery => render_sql_screen(state),
+        Screen::Scripting => features::scripting::render_scripting_screen(state),
     }
 }
 
@@ -4897,6 +4927,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "about",
             requires_file_picker: false,
             description: "version & license",
+        },
+        Feature {
+            id: "scripting",
+            name: "🤖 Scripting Lab",
+            category: "🧰 Utilities",
+            action: "scripting_screen",
+            requires_file_picker: false,
+            description: "Rhai scripting engine",
         },
     ]
 }

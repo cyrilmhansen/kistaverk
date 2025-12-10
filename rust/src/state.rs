@@ -6,6 +6,7 @@ use crate::features::pdf::PdfState;
 use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
+use crate::features::scripting::ScriptingState;
 use crate::features::sensor_logger::SensorSelection;
 use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
 use crate::features::system_info::SystemInfoState;
@@ -51,6 +52,7 @@ pub enum Screen {
     HexEditor,
     Plotting,
     SqlQuery,
+    Scripting,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -273,6 +275,7 @@ pub struct AppState {
     pub hex_editor: HexEditorState,
     pub plotting: PlottingState,
     pub sql_query: SqlQueryState,
+    pub scripting: ScriptingState,
     #[serde(skip)]
     pub sql_engine: Option<SqlEngine>,
 }
@@ -369,6 +372,7 @@ impl AppState {
             hex_editor: HexEditorState::new(),
             plotting: PlottingState::new(),
             sql_query: SqlQueryState::new(),
+            scripting: ScriptingState::new(),
             sql_engine: None,
         }
     }

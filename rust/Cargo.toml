@@ -36,6 +36,7 @@ age = "0.10"
 csv = "1"
 poloto = "19"
 sqlite = { version = "0.37.0", features = ["bundled"] }
+rhai = { version = "1.18", features = ["std", "sync", "serde"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
