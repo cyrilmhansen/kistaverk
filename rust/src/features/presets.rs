@@ -1,6 +1,6 @@
 use crate::features::storage::preferred_temp_dir;
 use crate::state::{AppState, Screen};
-use crate::ui::{maybe_push_back, Button, Column, Text};
+use crate::ui::{maybe_push_back, Button, Column, Text, TextInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -21,6 +21,7 @@ pub struct PresetState {
     pub presets: Vec<Preset>,
     pub current_tool_id: Option<String>,
     pub name_input: String,
+    pub filter_query: Option<String>,
     pub is_saving: bool,
     pub error: Option<String>,
     pub last_message: Option<String>,
@@ -32,6 +33,7 @@ impl PresetState {
             presets: Vec::new(),
             current_tool_id: None,
             name_input: String::new(),
+            filter_query: None,
             is_saving: false,
             error: None,
             last_message: None,
@@ -42,6 +44,7 @@ impl PresetState {
         self.presets.clear();
         self.current_tool_id = None;
         self.name_input.clear();
+        self.filter_query = None;
         self.is_saving = false;
         self.error = None;
         self.last_message = None;
@@ -144,16 +147,46 @@ pub fn render_preset_manager(state: &AppState) -> Value {
         ));
     }
 
-    let filtered: Vec<&Preset> = if let Some(tid) = &state.preset_state.current_tool_id {
-        state
-            .preset_state
-            .presets
-            .iter()
-            .filter(|p| &p.tool_id == tid)
-            .collect()
-    } else {
-        state.preset_state.presets.iter().collect()
-    };
+    let filter_text = state
+        .preset_state
+        .filter_query
+        .as_deref()
+        .unwrap_or("");
+    children.push(to_value_or_text(
+        TextInput::new("preset_filter")
+            .hint("Search presets")
+            .text(filter_text)
+            .debounce_ms(200)
+            .action_on_submit("preset_filter"),
+        "preset_filter_input",
+    ));
+
+    let filter_query = state
+        .preset_state
+        .filter_query
+        .as_ref()
+        .map(|q| q.to_ascii_lowercase());
+
+    let filtered: Vec<&Preset> = state
+        .preset_state
+        .presets
+        .iter()
+        .filter(|p| {
+            if let Some(tid) = &state.preset_state.current_tool_id {
+                if &p.tool_id != tid {
+                    return false;
+                }
+            }
+            if let Some(q) = &filter_query {
+                let name = p.name.to_ascii_lowercase();
+                let tool_id = p.tool_id.to_ascii_lowercase();
+                if !name.contains(q) && !tool_id.contains(q) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
 
     if filtered.is_empty() {
         children.push(to_value_or_text(

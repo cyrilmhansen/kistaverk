@@ -972,6 +972,9 @@ enum Action {
         magnitude_ut: f64,
         error: Option<String>,
     },
+    PresetFilter {
+        query: Option<String>,
+    },
     PresetsList {
         tool_id: Option<String>,
     },
@@ -1535,6 +1538,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
             magnitude_ut: angle_radians.unwrap_or(0.0),
             error,
         }),
+        "preset_filter" => Ok(Action::PresetFilter {
+            query: bindings.get("preset_filter").cloned(),
+        }),
         "presets_list" => Ok(Action::PresetsList {
             tool_id: bindings.get("tool_id").cloned(),
         }),
@@ -1875,6 +1881,20 @@ fn handle_command(command: Command) -> Result<Value, String> {
         } => {
             return handle_multi_hash_job(state, path, fd, loading_only);
         }
+        Action::PresetFilter { query } => {
+            let trimmed = query.and_then(|q| {
+                let t = q.trim().to_string();
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t)
+                }
+            });
+            state.preset_state.filter_query = trimmed;
+            if matches!(state.current_screen(), Screen::PresetManager) {
+                state.replace_current(Screen::PresetManager);
+            }
+        }
         Action::PresetsList { tool_id } => {
             if matches!(state.current_screen(), Screen::PresetManager) {
                 state.replace_current(Screen::PresetManager);
@@ -1884,6 +1904,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.preset_state.error = None;
             state.preset_state.last_message = None;
             state.preset_state.is_saving = false;
+            state.preset_state.filter_query = None;
             if let Some(tool) = tool_id
                 .or_else(|| tool_id_for_screen(state.current_screen()).map(|t| t.to_string()))
             {
