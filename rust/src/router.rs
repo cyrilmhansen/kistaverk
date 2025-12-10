@@ -38,6 +38,7 @@ use crate::features::qr_transfer::{
 };
 use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
+use crate::features::sql_engine::{handle_sql_action, render_sql_screen};
 use crate::features::regex_tester::{handle_regex_action, render_regex_tester_screen};
 use crate::features::sensor_utils::{low_pass_angle, low_pass_scalar};
 use crate::features::sensor_logger::{
@@ -1058,6 +1059,17 @@ enum Action {
     JwtPaste {
         token: Option<String>,
     },
+    SqlScreen,
+    SqlImport {
+        path: String,
+        fd: Option<i32>,
+        table_name: String,
+        is_json: bool,
+    },
+    SqlExecute {
+        query: String,
+    },
+    SqlClearAll,
 }
 
 struct FdHandle(Option<i32>);
@@ -1251,6 +1263,24 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "jwt_paste" => Ok(Action::JwtPaste {
             token: bindings.get("clipboard").cloned(),
         }),
+        "sql_screen" => Ok(Action::SqlScreen),
+        "sql_import" => {
+            let table_name = bindings.get("table_name").cloned().unwrap_or_else(|| "table1".to_owned());
+            let is_json = bindings.get("is_json").map(|v| v == "true").unwrap_or(false);
+            Ok(Action::SqlImport {
+                path: path.unwrap_or_default(),
+                fd,
+                table_name,
+                is_json,
+            })
+        },
+        "sql_execute" => {
+            let query = bindings.get("sql_query").cloned().unwrap_or_default();
+            Ok(Action::SqlExecute {
+                query,
+            })
+        },
+        "sql_clear_all" => Ok(Action::SqlClearAll),
         "about" => Ok(Action::About),
         "deps_filter" => Ok(Action::DepsFilter {
             query: bindings.get("deps_filter").cloned(),
@@ -2190,7 +2220,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::HexEditorSave
         | a @ Action::HexEditorSaveAs { .. }
         | a @ Action::HexEditorSaveAsPicker => {
-            handle_hex_editor_actions(&mut state, a);
+            if let Some(ui) = handle_hex_editor_actions(&mut state, a) {
+                return Ok(ui);
+            }
+        }
+        a @ Action::SqlScreen
+        | a @ Action::SqlImport { .. }
+        | a @ Action::SqlExecute { .. }
+        | a @ Action::SqlClearAll => {
+            if let Some(ui) = handle_sql_actions(&mut state, a) {
+                return Ok(ui);
+            }
         }
         a @ Action::PlottingScreen
         | a @ Action::PlottingPick { .. }
@@ -3777,12 +3817,45 @@ fn handle_plotting_actions(state: &mut AppState, action: Action) {
     }
 }
 
-fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
+fn handle_sql_actions(state: &mut AppState, action: Action) -> Option<Value> {
+    match action {
+        Action::SqlScreen => {
+            state.push_screen(Screen::SqlQuery);
+            Some(handle_sql_action(state, "sql_screen", &HashMap::new()))
+        }
+        Action::SqlImport { path, fd, table_name, is_json } => {
+            state.push_screen(Screen::SqlQuery);
+            let mut bindings = HashMap::new();
+            bindings.insert("path".to_string(), path.clone());
+            if let Some(fd_val) = fd {
+                bindings.insert("fd".to_string(), fd_val.to_string());
+            }
+            bindings.insert("table_name".to_string(), table_name.clone());
+            
+            let action = if is_json { "sql_import_json" } else { "sql_import_csv" };
+            Some(handle_sql_action(state, action, &bindings))
+        }
+        Action::SqlExecute { query } => {
+            state.push_screen(Screen::SqlQuery);
+            let mut bindings = HashMap::new();
+            bindings.insert("query".to_string(), query.clone());
+            Some(handle_sql_action(state, "sql_execute", &bindings))
+        }
+        Action::SqlClearAll => {
+            state.push_screen(Screen::SqlQuery);
+            Some(handle_sql_action(state, "sql_clear_all", &HashMap::new()))
+        }
+        _ => None,
+    }
+}
+
+fn handle_hex_editor_actions(state: &mut AppState, action: Action) -> Option<Value> {
     use crate::features::hex_editor;
     match action {
         Action::HexEditorScreen => {
             state.hex_editor.reset();
             state.push_screen(Screen::HexEditor);
+            None
         }
         Action::HexEditorOpen { fd, path, error } => {
             state.push_screen(Screen::HexEditor);
@@ -3790,7 +3863,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
             if let Some(err) = error {
                 state.hex_editor.error = Some(err);
                 state.hex_editor.current_dump = None;
-                return;
+                return None;
             }
             if let Some(raw) = fd {
                 match hex_editor::copy_fd_to_temp(raw as RawFd) {
@@ -3813,6 +3886,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
                 state.hex_editor.error = Some("missing_source".into());
                 state.hex_editor.current_dump = None;
             }
+            None
         }
         Action::HexEditorNav { direction, offset } => {
             state.replace_current(Screen::HexEditor);
@@ -3835,6 +3909,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
             if let Err(e) = hex_editor::refresh_view(&mut state.hex_editor) {
                 state.hex_editor.error = Some(e);
             }
+            None
         }
         Action::HexEditorPatch { offset, byte } => {
             state.replace_current(Screen::HexEditor);
@@ -3842,25 +3917,27 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
                 Some(v) => v,
                 None => {
                     state.hex_editor.error = Some("missing_offset".into());
-                    return;
+                    return None;
                 }
             };
             let value = match byte {
                 Some(v) => v,
                 None => {
                     state.hex_editor.error = Some("missing_byte".into());
-                    return;
+                    return None;
                 }
             };
             if let Err(e) = hex_editor::patch_byte(&mut state.hex_editor, off, value) {
                 state.hex_editor.error = Some(e);
             }
+            None
         }
         Action::HexEditorSave => {
             state.replace_current(Screen::HexEditor);
             if let Err(e) = hex_editor::save_changes(&mut state.hex_editor) {
                 state.hex_editor.error = Some(e);
             }
+            None
         }
         Action::HexEditorSaveAs { path } => {
             state.replace_current(Screen::HexEditor);
@@ -3881,14 +3958,16 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) {
                     state.hex_editor.error = Some("save_as_path_missing".into());
                 }
             }
+            None
         }
         Action::HexEditorSaveAsPicker => {
             state.replace_current(Screen::HexEditor);
             if let Err(e) = hex_editor::export_to_temp(&mut state.hex_editor) {
                 state.hex_editor.error = Some(e);
             }
+            None
         }
-        _ => {}
+        _ => None
     }
 }
 
@@ -4283,6 +4362,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Jwt => features::jwt::render_jwt_screen(state),
         Screen::HexEditor => features::hex_editor::render_hex_editor_screen(state),
         Screen::Plotting => render_plotting_screen(state),
+        Screen::SqlQuery => render_sql_screen(state),
     }
 }
 
@@ -4633,6 +4713,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "plotting_screen",
             requires_file_picker: false,
             description: "plot CSV columns",
+        },
+        Feature {
+            id: "sql_query",
+            name: "🗃️ SQL Query Lab",
+            category: "🧰 Utilities",
+            action: "sql_screen",
+            requires_file_picker: false,
+            description: "run SQL on CSV/JSON files",
         },
         Feature {
             id: "archive_tools",

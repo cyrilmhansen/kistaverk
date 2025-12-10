@@ -35,6 +35,7 @@ rxing = { version = "0.8.2", default-features = false, features = ["image", "cli
 age = "0.10"
 csv = "1"
 poloto = "19"
+sqlite = { version = "0.37.0", features = ["bundled"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"

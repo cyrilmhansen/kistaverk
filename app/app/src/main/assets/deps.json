@@ -1821,6 +1821,27 @@
       "homepage": null
     },
     {
+      "name": "sqlite",
+      "version": "0.37.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/stainless-steel/sqlite",
+      "homepage": "https://github.com/stainless-steel/sqlite"
+    },
+    {
+      "name": "sqlite3-src",
+      "version": "0.7.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/stainless-steel/sqlite3-src",
+      "homepage": "https://github.com/stainless-steel/sqlite3-src"
+    },
+    {
+      "name": "sqlite3-sys",
+      "version": "0.18.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/stainless-steel/sqlite3-sys",
+      "homepage": "https://github.com/stainless-steel/sqlite3-sys"
+    },
+    {
       "name": "stable_deref_trait",
       "version": "1.2.1",
       "license": "MIT OR Apache-2.0",

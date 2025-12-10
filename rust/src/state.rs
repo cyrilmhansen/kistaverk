@@ -7,6 +7,7 @@ use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::sensor_logger::SensorSelection;
+use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
 use crate::features::system_info::SystemInfoState;
 use crate::features::vault::VaultState;
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,7 @@ pub enum Screen {
     Jwt,
     HexEditor,
     Plotting,
+    SqlQuery,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,6 +139,27 @@ pub struct PlottingState {
     pub plot_type: PlotType,
     pub generated_svg: Option<String>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqlQueryState {
+    pub query: String,
+    pub result: Option<QueryResult>,
+    pub tables: Vec<TableInfo>,
+    pub query_history: Vec<String>,
+    pub error: Option<String>,
+}
+
+impl SqlQueryState {
+    pub const fn new() -> Self {
+        Self {
+            query: String::new(),
+            result: None,
+            tables: Vec::new(),
+            query_history: Vec::new(),
+            error: None,
+        }
+    }
 }
 
 impl PlottingState {
@@ -249,6 +272,9 @@ pub struct AppState {
     pub jwt: JwtState,
     pub hex_editor: HexEditorState,
     pub plotting: PlottingState,
+    pub sql_query: SqlQueryState,
+    #[serde(skip)]
+    pub sql_engine: Option<SqlEngine>,
 }
 
 impl AppState {
@@ -342,6 +368,8 @@ impl AppState {
             jwt: JwtState::new(),
             hex_editor: HexEditorState::new(),
             plotting: PlottingState::new(),
+            sql_query: SqlQueryState::new(),
+            sql_engine: None,
         }
     }
 
