@@ -159,6 +159,24 @@ pub fn render_scripting_screen(state: &AppState) -> serde_json::Value {
                 "text": "Load: String Manipulation",
                 "action_id": "scripting.load_example.string",
                 "margin_bottom": 4.0
+            },
+            {
+                "type": "Button",
+                "text": "Load: Random + Loop",
+                "action_id": "scripting.load_example.random_loop",
+                "margin_bottom": 4.0
+            },
+            {
+                "type": "Button",
+                "text": "Load: Map & Array",
+                "action_id": "scripting.load_example.collections",
+                "margin_bottom": 4.0
+            },
+            {
+                "type": "Button",
+                "text": "Load: Function",
+                "action_id": "scripting.load_example.function",
+                "margin_bottom": 4.0
             }
         ]
     }));
@@ -227,6 +245,47 @@ let lower = greeting.to_lowercase();
 let length = greeting.len();
 
 "Original: " + greeting + "\nUpper: " + upper + "\nLower: " + lower + "\nLength: " + length
+"#.to_string()
+        }
+        "random_loop" => {
+            r#""
+// Loop & aggregate example
+let mut squares = [];
+let mut total = 0;
+for n in 1..6 {
+    let s = n * n;
+    squares.push(s);
+    total += s;
+}
+"Squares: " + squares.join(", ") + "\nTotal: " + total + "\nAverage: " + (total / squares.len())
+"#.to_string()
+        }
+        "collections" => {
+            r#""
+// Map & Array Example
+let user = #{ name: "Ada", role: "engineer" };
+let tags = ["rust", "kotlin", "json"];
+let mut tags_up = [];
+for t in tags {
+    tags_up.push(t.to_uppercase());
+}
+"User " + user["name"] + " (" + user["role"] + ")\nTags: " + tags.join(", ") + "\nTags upper: " + tags_up.join(", ")
+"#.to_string()
+        }
+        "function" => {
+            r#""
+// Function Example
+fn greet(name) {
+    if name.len() == 0 { return "Hi, mystery user!"; }
+    "Hi, " + name + "! The time is " + now()
+}
+
+fn now() { 
+    // Rhai sandbox: provide a static timestamp string
+    "123456"
+}
+
+greet("Kistaverk user")
 "#.to_string()
         }
         _ => "// Unknown example type".to_string(),
@@ -320,5 +379,13 @@ let sum = x + y;
         // Test unknown example
         load_example_script(&mut app_state, "unknown");
         assert_eq!(app_state.scripting.script, "// Unknown example type");
+
+        // New examples
+        load_example_script(&mut app_state, "random_loop");
+        assert!(app_state.scripting.script.contains("Loop & aggregate"));
+        load_example_script(&mut app_state, "collections");
+        assert!(app_state.scripting.script.contains("Map & Array"));
+        load_example_script(&mut app_state, "function");
+        assert!(app_state.scripting.script.contains("Function Example"));
     }
 }
