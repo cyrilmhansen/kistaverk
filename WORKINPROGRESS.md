@@ -3,7 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-11)
-- **Cron/Task Scheduler**: Implemented core logic, UI, and state (`features/scheduler.rs`). Pending unit tests.
+- **Cron/Task Scheduler**: Implemented core logic, UI, state, and unit tests (`features/scheduler.rs`).
 - **Embedded Scripting (Rhai)**: Implemented "Scripting Lab" (`features/scripting.rs`). Users can write and execute Rhai scripts with a custom UI (editor + console).
 - **SQL Query Lab**: Implemented `features/sql_engine.rs` using SQLite. Supports importing CSV/JSON files as tables and running SQL queries.
 - **Dependency List**: Moved dependency list rendering to Rust (`features/dependencies.rs`), enabling instant search/filtering of open-source licenses.
@@ -18,20 +18,17 @@ Keep this file short and actionable. Update it at the end of each session.
 - **Archive Filtering**: Implemented search/filtering in Archive Viewer.
 
 ## Technical Debt & Issues (High Priority)
-1. **Missing Tests**: Scheduler feature (`features/scheduler.rs`) lacks unit tests.
-   - *Action*: Implement `mod tests` for scheduler logic and runtime.
-2. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
+1. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
    - *Action*: Implement partial updates/diffing or separate data channels.
-3. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
+2. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
-4. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
+3. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
 
 ## Roadmap (Future Features)
 - **Symbolic Integration**: Extend math tool to support basic integration.
 - **Search/Filtering**: Extend filtering to other lists (e.g., dependency list).
 
 ## Immediate Focus
-- **Testing**: Add unit tests for Scheduler.
 - Harden input UX: avoid spamming Rust on every character.
 - On-device QA for text viewer (large logs), TalkBack, theme toggles.
 - Ensure Back buttons stay wired for all nested flows.

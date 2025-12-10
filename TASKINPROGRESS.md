@@ -3,7 +3,7 @@
 ## Status: Feature Implementation
 *   **Date:** 2025-12-11
 *   **Objective:** Finalize the Scheduler feature and ensure comprehensive testing.
-*   **Current State:** 🔄 Scheduler in progress, previous features validated.
+*   **Current State:** ✅ Scheduler logic and tests landed; previous features validated.
 
 ## Completed Features
 1.  **CSV/JSON SQL Engine** (`features/sql_engine.rs`)
@@ -23,7 +23,7 @@
     *   ✅ Unit Tests (Implemented)
 
 ## Feature In Progress: Cron/Task Scheduler
-*   **Status:** 🚧 IN PROGRESS
+*   **Status:** ✅ IMPLEMENTED
 *   **Objective:** Allow users to schedule recurring tasks or chains of actions within the application.
 *   **Implementation Status:**
     *   ✅ Dependency (`cron` crate)
@@ -31,14 +31,10 @@
     *   ✅ Core Logic (`features/scheduler.rs`: Task structure, Background runtime)
     *   ✅ UI (`render_scheduler_screen`)
     *   ✅ Integration (`handle_scheduler_action`)
-    *   ❌ Unit Tests (Missing `mod tests`)
+    *   ✅ Unit Tests (`mod tests` for serialization, cron parsing, runtime events)
 
 ## Immediate To-Do List
-1.  **Add Tests for Scheduler:**
-    *   Test `ScheduledTask` struct (serialization/deserialization).
-    *   Test Cron parsing and validation.
-    *   Test `SchedulerRuntime` (task scheduling, execution triggering).
-    *   Test state management (adding/removing tasks).
+1.  Monitor scheduler stability and expand coverage if new actions are added.
 
 ## Planned Features
 
