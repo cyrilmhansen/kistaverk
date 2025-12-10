@@ -1,54 +1,77 @@
-# ARCHITECTURE (BRIEF)
+# Kistaverk Architecture
 
-This app follows a Rust-core / Kotlin-renderer split with backend-driven UI over JSON.
+## 🏛 System Overview
 
-## Stack & Responsibilities
-- **Rust core**: owns `AppState`, navigation stack, business logic (hashes, PDF ops, archives, text processing), and renders screens as JSON (typed builders). Typed DSL now includes grouping containers (Section/Card) for better readability. JNI entry catches panics. TigerStyle refactors split the router into domain handlers and a background worker queue so long-running work (e.g., hashes) no longer block UI locks.
-- **Kotlin renderer**: parses JSON and builds native Views (no Compose/fragments). Widgets: Column/Grid/Section/Card/Text/Button/TextInput/Checkbox/Progress/ShaderToy/ImageBase64/ColorSwatch/PdfPagePicker/SignaturePad/DepsList/CodeView/Compass/Barometer/Magnetometer (GLSurfaceView). Renderer validates required fields and falls back to an inline error screen on schema issues. Image conversions/resizing run on the Kotlin side while Rust still owns navigation/state/results. Camera/QR scanning now lives in a dedicated `CameraManager`; sensor logging plus compass/barometer/magnetometer live in `AppSensorManager`, keeping `MainActivity` dispatch lean (<70 lines focus).
-- **Async**: Kotlin calls Rust on background threads for blocking work; UI updates on main thread. Loading overlay used for “loading_only” calls. Heavy Rust commands can be enqueued; results are applied on the next dispatch to avoid the global UI mutex becoming a bottleneck.
+Kistaverk follows a **Unidirectional Data Flow** architecture, heavily inspired by The Elm Architecture (TEA) or Redux, but adapted for a cross-language context (Kotlin ↔ Rust).
 
-### Adding a new async worker job (Rust)
-1. Add a `WorkerJob` variant (inputs) and a `WorkerResult` variant (outputs) in `rust/src/router.rs`.
-2. Implement the work in `run_worker_job` and return the matching `WorkerResult`.
-3. Handle the result in `apply_worker_results` to update `AppState` and, if needed, `Screen`.
-4. In the action handler, set a loading UI state, enqueue via `STATE.worker().enqueue`, and return early. Tests can force sync via `TEST_FORCE_ASYNC_WORKER`.
+### The Core Loop
 
-## Navigation
-- `Vec<Screen>` stack in Rust; Home is root. Hardware Back calls `back` action; inline Back buttons shown when depth > 1 (QR, text tools, archive viewer, sensor logger, color tools, Kotlin image flows, text viewer).
-- `snapshot`/`restore_state` serialize/rehydrate `AppState` for Activity recreation.
+1.  **State (Rust):** The single source of truth. The application state lives entirely inside the Rust `Core`.
+2.  **View (Rust -> JSON):** The `view()` function transforms the State into a JSON Virtual DOM (The "UI Protocol").
+3.  **Render (Kotlin):** The Android layer observes the JSON, diffs it (naively or strictly), and updates the native Android Views (`RecyclerView`, `TextView`, etc.).
+4.  **Message (Kotlin -> Rust):** User interactions (clicks, text input) are sent as string-based "Commands" (e.g., `["text_update", "input_1", "Hello"]`) back to Rust.
+5.  **Update (Rust):** The `update(msg)` function mutates the State based on the message.
 
-## Files & FDs
-- Kotlin SAF picker opens `ParcelFileDescriptor` and passes detached FDs/paths to Rust. Rust avoids panics across JNI and reports errors as UI JSON.
+---
 
-## UI/UX Highlights
-- **Renderer diffing**: Kotlin assigns stable IDs (explicit `id`, `bind_key`, or action) and reuses Views instead of nuking the tree, reducing jank and keeping input focus/keyboard stable across updates.
-- **Text viewer**: WebView + bundled Prism (MIT) assets in `assets/prism/`; syntax highlighting for JSON/Markdown/TOML/YAML/Rust, theme toggle, wrap, line numbers, internal scroll. Archive text-like entries are tappable and open directly. Large logs stream in windowed 128 KB chunks with next/prev paging, byte-offset jump, and binary guardrails.
-- **PDF tools**: PdfRenderer thumbnails via `PdfPagePicker`; lopdf handles extract/delete/merge/title/signature with px→pt scaling from SignaturePad dimensions/DPI; Y flipped using MediaBox height. Signature placement now supports a visual tap overlay (`PdfSignPlacement`) that emits normalized coords and writes onto the selected page (no extra pages). Memory mapping (memmap2) prevents loading entire PDFs into heap. Outputs prefer the source directory (or Downloads/content cache) with `_modified_YYMMDDhhmm.pdf` suffix and logcat breadcrumbs for debugging.
-- **Text viewer binary guardrails**: Detects binary/unsupported files; shows a 4KB hex preview with “Load anyway” instead of forcing a full read. Windowed loads keep memory bounded; total file size is surfaced when available.
-- **Kotlin image flow**: Conversion on Kotlin side; Rust drives screens, output dir selection, results. Future: add resize/quality controls for mail-friendly outputs.
-- **Hashes**: SHA-256 and other hashes computed in Rust; a verify flow lets users paste a reference hash and check a picked file (clipboard-friendly UI).
-- **Archive viewer**: ZIP listing (capped, truncated flag); text entries are buttons that load into the text viewer.
-- **Color/Text tools/QR/Sensor logger**: Pure-Rust logic with native UI; QR encoded via `qrcode` and shown as base64 image.
-- **Accessibility**: `content_description` propagated on widgets; Back buttons consistent; renderer guardrails prevent crashes on malformed payloads.
-- **Sensor logger**: Foreground Service keeps logging alive with a persistent notification, and the UI surface warns/status indicator while logging so TalkBack users know it’s running. Kotlin routes permissions and lifecycles through `AppSensorManager`.
-- **Tests**: Rust unit tests cover business logic and JSON builders; Robolectric exercises renderer validation (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card/Compass/Barometer/Magnetometer) and navigation/back wiring. Snapshot/restore tested in Kotlin. Sensor widgets use GLSurfaceView GLSL; RuntimeShader avoided for broader device support.
+## 🧱 The Stack
 
-## Assets & Licensing
-- Prism assets (core + minimal languages + line numbers) are bundled into a single `prism-bundle.min.js`; MIT license lives in `app/src/main/assets/prism/PRISM_LICENSE.txt`. Keep asset set small to honor APK budget (<5 MB target).
+### 1. The Native UI (Android/Kotlin)
+*   **Role:** Dumb renderer. It knows *how* to draw a Button, but not *what* the button does.
+*   **Key Component:** `UIRenderer` (The "Browser"). It parses the custom JSON layout protocol and builds Android Views.
+*   **Dependency:** `WebView` is used *only* for specific rich-text content (PrismJS code highlighting) or special visualizations. The rest is native Widgets.
 
-## Build & Testing
-- Rust: `cargo test` (panic-catching JNI, typed UI builders). Android: Gradle builds arm64-only, shrink/obfuscate enabled; deps metadata generated to assets for About screen. Robolectric tests validate renderer JSON schema (TextInput/Checkbox/Progress/Grid/PdfPagePicker/DepsList/CodeView/Section/Card).
+### 2. The Bridge (JNI)
+*   **Role:** Message passing interface.
+*   **Serialization:** JSON is used for the UI description. Primitive types are used for commands.
+*   **Concurrency:** Rust manages its own Worker Thread for heavy tasks. The UI thread in Kotlin is never blocked.
 
-## Pending
-- Harden schema validation end-to-end; add renderer tests for `CodeView`/Prism payloads and the new Section/Card nodes.
-- On-device QA: text viewer (large files, binary/UTF-8 errors, TalkBack), sensor logger permissions/CSV, size audits via `scripts/size_report.sh`.
-- UX gaps to address: input diffing vs. binding churn (avoid keyboard loss), PDF signature positioning UX (grid/preview overlay), sensor logging survival via Foreground Service, text viewer pagination/search, output “Save As” flows, back-stack safety prompts, image resize/quality controls.
+### 3. The Core (Rust)
+*   **Role:** Business logic, State management, Cryptography, File I/O.
+*   **Crate:** `kistaverk_core` (`cdylib`).
+*   **Architecture:**
+    *   `State`: A giant enum or struct holding the data for the active screen.
+    *   `Features`: Modules (e.g., `features/vault.rs`) implementing specific tools.
 
-## Known Risks & Mitigations
-- **Global Rust `STATE` mutex**: Previously blocked long ops; mitigation: router now owns a worker queue for heavy commands and applies results on the control-plane lock. Continue to avoid long-held UI locks.
-- **JSON Overhead**: Serialization cost; mitigation: diffing, partial updates, or separate data channels for blobs.
-- **Blocking I/O**: JNI boundary blocking; mitigation: thread pool for I/O.
-- **UI Scalability**: `LinearLayout` OOM on lists; mitigation: `RecyclerView` adapter for lists.
-- **FD lifetime**: Detached FDs rely on manual close; mitigation: migrate to `OwnedFd`/RAII.
-- **PDF signing coords**: DPI mismatch; mitigation: normalized mapping tests.
-- **Schema drift**: No versioned schema; mitigation: expand renderer guards.
+---
+
+## 🛡️ Error Handling & Stability
+
+To ensure a compact binary size and deterministic behavior, the Rust core is compiled with `panic = "abort"`.
+
+### The "No-Panic" Policy
+Since panics result in an immediate application crash (SIGABRT) without stack unwinding:
+1.  **Expected Errors:** MUST be handled using `Result<T, E>`.
+2.  **Runtime Panics:** (e.g., `unwrap()`, `expect()`, array indexing) MUST be avoided on dynamic data.
+3.  **Boundary Protection:** The FFI layer should ideally catch any residual errors, though `abort` makes `catch_unwind` impossible. The strategy is **prevention**.
+
+### Safe Pattern Example
+**❌ BAD (Crashes the App):**
+```rust
+// If parsing fails, the entire Android app dies.
+let value = inputs.pop().unwrap(); 
+let num: i32 = value.parse().unwrap();
+```
+
+**✅ GOOD (Returns Error to UI):**
+```rust
+// Propagates error state, UI shows a snackbar or error text.
+let value = inputs.pop().ok_or("Stack underflow")?;
+let num: i32 = value.parse().map_err(|_| "Invalid number")?;
+```
+
+---
+
+## 📦 Data Protocol (DSL)
+
+See `DSL.md` for the complete widget specification.
+
+**Core Widgets:**
+*   `Column`, `Row`, `Grid`: Layout containers.
+*   `Text`, `Button`, `TextInput`: Basic interaction.
+*   `Card`, `Section`: Grouping.
+
+**Smart Widgets:**
+*   `CodeView`: Syntax highlighting.
+*   `PdfPagePicker`: Custom view for selecting pages.
+*   `SignaturePad`: Capture vectors/bitmap.

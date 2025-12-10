@@ -7,7 +7,8 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 
 1.  **Strictly Local:** Internet permission is explicitly denied in the manifest.
 2.  **High Performance & Efficiency:** Heavy logic runs in compiled Rust. Binaries are optimized for minimal size (~5MB target) and maximum speed (`lto`, `panic=abort`).
-3.  **Cross-Platform Core:** The business logic is decoupled from Android, enabling future ports (iOS, Desktop, CLI).
+3.  **Robustness:** The application prefers explicit error handling over crashing. The Rust core enforces strict boundaries to prevent state corruption.
+4.  **Cross-Platform Core:** The business logic is decoupled from Android, enabling future ports (iOS, Desktop, CLI).
 
 ---
 
