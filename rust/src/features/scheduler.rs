@@ -170,6 +170,9 @@ pub fn runtime() -> &'static SchedulerRuntime {
 static SCHEDULER_RUNTIME: OnceLock<SchedulerRuntime> = OnceLock::new();
 static SCHEDULER_EVENTS: OnceLock<Mutex<Vec<SchedulerEvent>>> = OnceLock::new();
 
+#[cfg(test)]
+pub(crate) static SCHEDULER_TEST_MUTEX: Mutex<()> = Mutex::new(());
+
 #[derive(Clone)]
 struct SchedulerEvent {
     task_id: u32,
@@ -290,4 +293,81 @@ pub fn drain_events() -> Vec<(u32, String, i64)> {
             .collect();
     }
     Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn make_task(cron: &str) -> ScheduledTask {
+        ScheduledTask {
+            id: 1,
+            name: "demo".into(),
+            action: "action_id".into(),
+            cron: cron.into(),
+            enabled: true,
+            last_run_epoch: None,
+            last_status: None,
+        }
+    }
+
+    #[test]
+    fn scheduled_task_roundtrips_through_json() {
+        let _guard = SCHEDULER_TEST_MUTEX.lock().unwrap();
+        let task = ScheduledTask {
+            id: 42,
+            name: "nightly backup".into(),
+            action: "backup".into(),
+            cron: "0 0 2 * * *".into(),
+            enabled: false,
+            last_run_epoch: Some(1_700_000_000),
+            last_status: Some("ok".into()),
+        };
+
+        let serialized = serde_json::to_string(&task).expect("task should serialize");
+        let roundtrip: ScheduledTask =
+            serde_json::from_str(&serialized).expect("task should deserialize");
+
+        assert_eq!(roundtrip.id, task.id);
+        assert_eq!(roundtrip.name, task.name);
+        assert_eq!(roundtrip.action, task.action);
+        assert_eq!(roundtrip.cron, task.cron);
+        assert_eq!(roundtrip.enabled, task.enabled);
+        assert_eq!(roundtrip.last_run_epoch, task.last_run_epoch);
+        assert_eq!(roundtrip.last_status, task.last_status);
+    }
+
+    #[test]
+    fn cron_parsing_rejects_invalid_expression() {
+        let _guard = SCHEDULER_TEST_MUTEX.lock().unwrap();
+        assert!(Schedule::from_str("* * * * * *").is_ok());
+        assert!(Schedule::from_str("*/5 * * * *").is_err());
+        assert!(Schedule::from_str("@yearly").is_ok());
+        assert!(Schedule::from_str("not-a-cron").is_err());
+    }
+
+    #[test]
+    fn runtime_emits_event_for_due_task() {
+        let _guard = SCHEDULER_TEST_MUTEX.lock().unwrap();
+        drain_events();
+        let runtime = runtime();
+        runtime.sync_tasks(&[make_task("*/1 * * * * *")]);
+
+        let deadline = Instant::now() + Duration::from_secs(4);
+        let mut received: Option<(u32, String, i64)> = None;
+
+        while Instant::now() < deadline {
+            if let Some(event) = drain_events().into_iter().next() {
+                received = Some(event);
+                break;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+
+        runtime.sync_tasks(&[]);
+        let event = received.expect("scheduler should emit an event");
+        assert_eq!(event.0, 1);
+        assert_eq!(event.1, "action_id");
+    }
 }

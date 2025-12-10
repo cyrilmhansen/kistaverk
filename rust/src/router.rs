@@ -6272,6 +6272,40 @@ mod tests {
         let state = STATE.ui_lock();
         assert_eq!(state.archive.filter_query, Some("log".into()));
     }
+
+    #[test]
+    fn scheduler_add_and_delete_manage_tasks() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+        let _sched_guard = crate::features::scheduler::SCHEDULER_TEST_MUTEX.lock().unwrap();
+        reset_state();
+        drain_scheduler_events();
+
+        let mut add_cmd = make_command("scheduler_add");
+        add_cmd.bindings = Some(HashMap::from([
+            ("scheduler_name".into(), "Morning Job".into()),
+            ("scheduler_action".into(), "about".into()),
+            ("scheduler_cron".into(), "0 0 6 * * *".into()),
+        ]));
+        handle_command(add_cmd).expect("scheduler add should succeed");
+        {
+            let state = STATE.ui_lock();
+            assert_eq!(state.scheduler.tasks.len(), 1);
+            let task = &state.scheduler.tasks[0];
+            assert_eq!(task.id, 1);
+            assert_eq!(task.name, "Morning Job");
+            assert_eq!(task.action, "about");
+            assert_eq!(task.cron, "0 0 6 * * *");
+            assert_eq!(state.scheduler.next_id, 2);
+            assert!(state.scheduler.form_name.is_empty());
+            assert!(state.scheduler.form_action.is_empty());
+            assert!(state.scheduler.last_error.is_none());
+        }
+
+        handle_command(make_command("scheduler_delete:1"))
+            .expect("scheduler delete should succeed");
+        let state = STATE.ui_lock();
+        assert!(state.scheduler.tasks.is_empty());
+    }
 }
 fn apply_worker_results(state: &mut AppState) {
     for (task_id, action, fired_at) in drain_scheduler_events() {
