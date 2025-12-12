@@ -36,6 +36,8 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 *   **QR Tools:** Generation, Scanning (Rust-driven), and "Air Gap" File Transfer protocol.
 *   **Sensor Logger:** CSV export of device sensors.
 *   **Math Tool:** Symbolic differentiation and expression evaluation.
+*   **Cron/Task Scheduler:** Recurring task scheduling and automation.
+*   **Unit Converter:** Conversion of Length, Mass, Temperature, and Digital Storage units.
 
 ### Developer Tools
 *   **Hex/Binary Editor:** View and patch files at the byte level.
@@ -59,7 +61,7 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 *   *Note: This conflicts with the strict "No Internet" philosophy, so it might remain a separate experimental branch or plugin.*
 
 ### 3. Automation
-*   **Cron/Task Scheduler:** Allow users to chain tools (e.g., "Every day at 9 AM, take sensor log, compress to ZIP, encrypt").
+*   *(Moved to Completed Features)*
 
 ---
 

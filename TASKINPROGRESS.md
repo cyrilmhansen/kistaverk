@@ -49,33 +49,22 @@
 
 ## Planned Features
 
-### Feature 1: Extend Symbolic Integration
+### Feature 1: Unit Converter
 *   **Status:** 📅 PLANNED
 *   **Date:** 2025-12-12
-*   **Objective:** Enhance the existing symbolic integration capabilities in the Math Tool.
-*   **Rationale:** Directly addresses the roadmap item "Symbolic Integration: Extend math tool to support basic integration" and builds upon existing functionality in `features/math_tool.rs`.
+*   **Objective:** Implement a dedicated tool for converting common units (Length, Mass, Temperature, Digital Storage).
+*   **Rationale:** A core utility expected in a "Swiss Army Knife" app.
 *   **Implementation Plan:**
-    1.  **Analyze current `integrate` function:** Identify patterns of currently `∫unsupported` expressions.
-    2.  **Implement new rules:** Add support for:
-        *   Exponential function `exp(x)`.
-        *   Inverse tangent `1/(1+x^2)`.
-        *   Tangent `tan(x)`.
-        *   Logarithmic integration `1/x`.
-    3.  **Add Tests:** Create unit tests in `math_tool.rs` for each newly implemented integration rule.
+    1.  **Create Module:** `features/unit_converter.rs`.
+    2.  **Define State:** `UnitConverterState` in `state.rs` (category, from_unit, to_unit, input_value, output_value).
+    3.  **Implement Logic:** Conversion factors for Metric/Imperial/Digital units.
+    4.  **Implement UI:** Dropdowns for category and units, numeric input.
+    5.  **Add Tests:** Verify conversions (e.g., Meters to Feet, Celsius to Fahrenheit).
 
-### Feature 2: Regex Tester Enhancements
-*   **Status:** 📅 PLANNED
-*   **Date:** 2025-12-12
-*   **Objective:** Add "Global Search" (find all matches) and "Common Patterns" to the Regex Tester.
-*   **Rationale:** Transforms the Regex Tester from a simple validator into a powerful extraction tool.
-*   **Implementation Plan:**
-    1.  **Update State:** Modify `RegexMatchResult` in `state.rs` to support multiple matches and add `global_mode` flag to `RegexTesterState`.
-    2.  **Update Logic:** rewrite `test_regex` in `features/regex_tester.rs` to use `captures_iter` when global mode is enabled.
-    3.  **Update UI:**
-        *   Add checkbox for "Global mode".
-        *   Add "Common Patterns" dropdown or buttons (Email, Date, URL, IP).
-        *   Render list of all matches found.
-    4.  **Add Tests:** Verify global search finds multiple occurrences.
+### Completed Features (Recent)
+*   **Regex Tester Enhancements:** (Merged 2025-12-12) Added Global Search and Common Patterns.
+*   **Extend Symbolic Integration:** (Merged 2025-12-12) Added `exp`, `tan`, `atan` support.
+
 
 ## Roadmap
 *   **Optimization:** Review memory usage of in-memory SQLite and Rhai engine.

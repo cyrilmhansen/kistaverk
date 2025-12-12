@@ -54,6 +54,36 @@ pub enum Screen {
     SqlQuery,
     Scripting,
     Scheduler,
+    UnitConverter,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum UnitCategory {
+    Length,
+    Mass,
+    Temperature,
+    DigitalStorage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnitConverterState {
+    pub category: UnitCategory,
+    pub from_unit: String,
+    pub to_unit: String,
+    pub input_value: String,
+    pub output_value: String,
+}
+
+impl UnitConverterState {
+    pub const fn new() -> Self {
+        Self {
+            category: UnitCategory::Length,
+            from_unit: String::new(),
+            to_unit: String::new(),
+            input_value: String::new(),
+            output_value: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -377,6 +407,7 @@ pub struct AppState {
     pub sql_query: SqlQueryState,
     pub scripting: ScriptingState,
     pub scheduler: SchedulerState,
+    pub unit_converter: UnitConverterState,
     #[serde(skip)]
     pub sql_engine: Option<SqlEngine>,
 }
@@ -470,6 +501,7 @@ impl AppState {
             sql_query: SqlQueryState::new(),
             scripting: ScriptingState::new(),
             scheduler: SchedulerState::new(),
+            unit_converter: UnitConverterState::new(),
             sql_engine: None,
         }
     }
@@ -608,6 +640,7 @@ impl AppState {
         self.hex_editor = HexEditorState::new();
         self.plotting = PlottingState::new();
         self.scheduler.reset();
+        self.unit_converter = UnitConverterState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }

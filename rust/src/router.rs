@@ -19,6 +19,7 @@ use crate::features::misc_screens::{
     render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
 };
 use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
+use crate::features::unit_converter::{handle_unit_converter_action, render_unit_converter_screen};
 use crate::features::pdf::{
     perform_pdf_operation, perform_pdf_set_title, perform_pdf_sign, render_pdf_preview_screen,
     render_pdf_screen, PdfOperation, PdfSetTitleResult, PdfSignResult,
@@ -1033,6 +1034,11 @@ pub(crate) enum Action {
         bindings: HashMap<String, String>,
     },
     MathClearHistory,
+    UnitConverterScreen,
+    UnitConverterAction {
+        action: String,
+        bindings: HashMap<String, String>,
+    },
     UuidScreen,
     UuidGenerate,
     RandomStringGenerate {
@@ -1254,6 +1260,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "math_tool_screen" => Ok(Action::MathToolScreen),
         "math_calculate" => Ok(Action::MathCalculate { bindings }),
         "math_clear_history" => Ok(Action::MathClearHistory),
+        "unit_converter_screen" => Ok(Action::UnitConverterScreen),
+        other if other.starts_with("unit_converter_") => Ok(Action::UnitConverterAction {
+            action: other.to_string(),
+            bindings,
+        }),
         "uuid_screen" => Ok(Action::UuidScreen),
         "uuid_generate" => Ok(Action::UuidGenerate),
         "random_string_generate" => Ok(Action::RandomStringGenerate { bindings }),
@@ -2188,6 +2199,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
             handle_math_action(&mut state, "math_clear_history", &HashMap::new());
             if matches!(state.current_screen(), Screen::MathTool) {
                 state.replace_current(Screen::MathTool);
+            }
+        }
+        Action::UnitConverterScreen => {
+            state.push_screen(Screen::UnitConverter);
+            // reset or keep state? Usually keep unless explicit reset needed.
+        }
+        Action::UnitConverterAction { action, bindings } => {
+            state.push_screen(Screen::UnitConverter);
+            handle_unit_converter_action(&mut state, &action, &bindings);
+            if matches!(state.current_screen(), Screen::UnitConverter) {
+                state.replace_current(Screen::UnitConverter);
             }
         }
         Action::UuidScreen => {
@@ -4505,6 +4527,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PixelArt => render_pixel_art_screen(state),
         Screen::RegexTester => render_regex_tester_screen(state),
         Screen::MathTool => render_math_tool_screen(state),
+        Screen::UnitConverter => render_unit_converter_screen(state),
         Screen::UuidGenerator => render_uuid_screen(state),
         Screen::PresetManager => render_preset_manager(state),
         Screen::PresetSave => render_save_preset_dialog(state),
@@ -4804,6 +4827,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "math_tool_screen",
             requires_file_picker: false,
             description: "evaluate expressions & functions",
+        },
+        Feature {
+            id: "unit_converter",
+            name: "📏 Unit Converter",
+            category: "🧰 Utilities",
+            action: "unit_converter_screen",
+            requires_file_picker: false,
+            description: "convert length, mass, temp",
         },
         Feature {
             id: "uuid_generator",

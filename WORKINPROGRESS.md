@@ -2,20 +2,17 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
-## Status (2025-12-11)
+## Status (2025-12-12)
+- **Regex Tester Enhancements**: Added Global Search and Common Patterns (`features/regex_tester.rs`).
+- **Unit Converter**: Implemented core logic, UI, state, and unit tests (`features/unit_converter.rs`).
+- **Symbolic Integration**: Merged extensions for `exp`, `tan`, `atan` in `math_tool.rs`.
 - **Cron/Task Scheduler**: Implemented core logic, UI, state, and unit tests (`features/scheduler.rs`).
-- **Embedded Scripting (Rhai)**: Implemented "Scripting Lab" (`features/scripting.rs`). Users can write and execute Rhai scripts with a custom UI (editor + console).
-- **SQL Query Lab**: Implemented `features/sql_engine.rs` using SQLite. Supports importing CSV/JSON files as tables and running SQL queries.
-- **Dependency List**: Moved dependency list rendering to Rust (`features/dependencies.rs`), enabling instant search/filtering of open-source licenses.
-- **Preset Filtering**: Added real-time filtering to the Preset Manager.
+- **Embedded Scripting (Rhai)**: Implemented "Scripting Lab" (`features/scripting.rs`).
+- **SQL Query Lab**: Implemented `features/sql_engine.rs`.
+- **Dependency List**: Implemented searching and filtering (`features/dependencies.rs`).
 
-## Status (2025-12-09)
-- **JWT Decoder**: Implemented JWT Decoder in `features/jwt.rs`.
-- **GZIP Save As**: Implemented "Save As" flow for GZIP compression.
-- **File Encryption (The Vault)**: Implemented secure file encryption/decryption using `age` crate.
-- **Batch Processing**: Implemented batch processing for Images (Resize/Convert) and PDFs (Merge).
-- **Logical Engine**: Implemented a lightweight RDF/logic module (`features/logic.rs`).
-- **Archive Filtering**: Implemented search/filtering in Archive Viewer.
+## Status (2025-12-11)
+- **Preset Filtering**: Added real-time filtering to the Preset Manager.
 
 ## Technical Debt & Issues (High Priority)
 1. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
@@ -25,14 +22,10 @@ Keep this file short and actionable. Update it at the end of each session.
 3. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
 
 ## Roadmap (Future Features)
-- **Symbolic Integration**: Extend math tool to support basic integration.
-- **Search/Filtering**: Extend filtering to other lists (e.g., dependency list).
+- **Search/Filtering**: Extend filtering to other lists.
 
 ## Immediate Focus
 - Harden input UX: avoid spamming Rust on every character.
-- On-device QA for text viewer (large logs), TalkBack, theme toggles.
-- Ensure Back buttons stay wired for all nested flows.
-- Robolectric coverage: add tests for `CodeView` and `PdfSignPlacement`.
 
 ## Near-Term
 - Schema hardening: typed builders, validation.
@@ -48,3 +41,4 @@ Keep this file short and actionable. Update it at the end of each session.
 ## Notes
 - Prism assets are MIT; license stored in `assets/prism/PRISM_LICENSE.txt`.
 - Keep APK slim (< 5 MB).
+
