@@ -33,8 +33,19 @@
     *   ✅ Integration (`handle_scheduler_action`)
     *   ✅ Unit Tests (`mod tests` for serialization, cron parsing, runtime events)
 
+## Feature Completed: Regex Tester Enhancements
+*   **Status:** ✅ IMPLEMENTED
+*   **Objective:** Transform the Regex Tester from a single-match validator into a multi-match extraction tool with quality-of-life improvements.
+*   **Implementation Status:**
+    *   ✅ State (`RegexTesterState` in `state.rs`: Added `global_mode`, `common_patterns`, and enhanced `RegexMatchResult`)
+    *   ✅ Core Logic (`features/regex_tester.rs`: Global search mode, common patterns, multiple match results)
+    *   ✅ UI (Global mode toggle, common pattern buttons, multiple match display)
+    *   ✅ Integration (`handle_regex_action` with pattern initialization and global mode handling)
+    *   ✅ Unit Tests (Updated tests for global mode and multiple matches)
+
 ## Immediate To-Do List
 1.  Monitor scheduler stability and expand coverage if new actions are added.
+2.  Test the new Regex Tester features in the Android app to ensure proper UI rendering.
 
 ## Planned Features
 

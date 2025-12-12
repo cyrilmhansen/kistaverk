@@ -93,14 +93,43 @@ pub struct PixelArtState {
 pub struct RegexMatchResult {
     pub matched: bool,
     pub groups: Vec<Option<String>>,
+    pub match_text: String,
+    pub start_index: usize,
+    pub end_index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegexTesterState {
     pub pattern: String,
     pub sample_text: String,
-    pub match_result: Option<RegexMatchResult>,
+    pub match_results: Vec<RegexMatchResult>,
     pub error: Option<String>,
+    pub global_mode: bool,
+    pub common_patterns: Vec<String>,
+}
+
+impl RegexTesterState {
+    pub const fn new() -> Self {
+        Self {
+            pattern: String::new(),
+            sample_text: String::new(),
+            match_results: Vec::new(),
+            error: None,
+            global_mode: false,
+            common_patterns: Vec::new(),
+        }
+    }
+
+    pub fn init_common_patterns(&mut self) {
+        self.common_patterns = vec![
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b".to_string(), // Email
+            r"\b(?:\d{1,3}\.){3}\d{1,3}\b".to_string(), // IPv4
+            r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b".to_string(), // IPv6
+            r"\b\d{4}-\d{2}-\d{2}\b".to_string(), // Date YYYY-MM-DD
+            r"\b\d{2}:\d{2}:\d{2}\b".to_string(), // Time HH:MM:SS
+            r"\b(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*\b".to_string(), // URL
+        ];
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -421,12 +450,7 @@ impl AppState {
                 scale_factor: 4,
                 error: None,
             },
-            regex_tester: RegexTesterState {
-                pattern: String::new(),
-                sample_text: String::new(),
-                match_result: None,
-                error: None,
-            },
+            regex_tester: RegexTesterState::new(),
             uuid_generator: UuidGeneratorState {
                 last_uuid: None,
                 last_string: None,
@@ -447,6 +471,12 @@ impl AppState {
             scripting: ScriptingState::new(),
             scheduler: SchedulerState::new(),
             sql_engine: None,
+        }
+    }
+
+    pub fn ensure_regex_patterns_initialized(&mut self) {
+        if self.regex_tester.common_patterns.is_empty() {
+            self.regex_tester.init_common_patterns();
         }
     }
 
@@ -560,8 +590,9 @@ impl AppState {
         self.pixel_art.error = None;
         self.regex_tester.pattern.clear();
         self.regex_tester.sample_text.clear();
-        self.regex_tester.match_result = None;
+        self.regex_tester.match_results.clear();
         self.regex_tester.error = None;
+        self.regex_tester.global_mode = false;
         self.uuid_generator.last_uuid = None;
         self.uuid_generator.last_string = None;
         self.uuid_generator.string_length = 16;

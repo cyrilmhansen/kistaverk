@@ -1,7 +1,7 @@
 use crate::state::{AppState, RegexMatchResult};
 use crate::ui::{
     maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
-    TextInput as UiTextInput,
+    TextInput as UiTextInput, Checkbox as UiCheckbox,
 };
 use regex::Regex;
 use serde_json::Value;
@@ -27,29 +27,68 @@ pub fn render_regex_tester_screen(state: &AppState) -> Value {
                 .text(&state.regex_tester.sample_text),
         )
         .unwrap(),
+        serde_json::to_value(
+            UiCheckbox::new("Global Mode", "global_mode")
+                .checked(state.regex_tester.global_mode)
+                .action("regex_test"),
+        )
+        .unwrap(),
         serde_json::to_value(UiButton::new("Test", "regex_test")).unwrap(),
     ];
+
+    // Add common patterns buttons
+    if !state.regex_tester.common_patterns.is_empty() {
+        children.push(
+            serde_json::to_value(UiText::new("Common Patterns:").size(14.0)).unwrap(),
+        );
+        
+        let pattern_labels = ["Email", "IPv4", "IPv6", "Date", "Time", "URL"];
+        for (idx, _) in state.regex_tester.common_patterns.iter().enumerate() {
+            children.push(
+                serde_json::to_value(
+                    UiButton::new(pattern_labels[idx], &format!("regex_pattern_{}", idx)),
+                )
+                .unwrap(),
+            );
+        }
+    }
 
     if let Some(err) = &state.regex_tester.error {
         children
             .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
-    } else if let Some(result) = &state.regex_tester.match_result {
-        let status = if result.matched { "Match" } else { "No match" };
+    } else if !state.regex_tester.match_results.is_empty() {
+        let match_count = state.regex_tester.match_results.len();
+        let status = if match_count > 0 {
+            format!("Found {} match(es)", match_count)
+        } else {
+            "No matches".to_string()
+        };
         children.push(
             serde_json::to_value(
-                UiText::new(status)
+                UiText::new(&status)
                     .size(14.0)
                     .content_description("regex_status"),
             )
             .unwrap(),
         );
-        if result.matched {
-            for (idx, grp) in result.groups.iter().enumerate() {
-                let text = grp
-                    .as_deref()
-                    .map(|g| format!("Group {idx}: {g}"))
-                    .unwrap_or_else(|| format!("Group {idx}: <none>"));
-                children.push(serde_json::to_value(UiText::new(&text).size(12.0)).unwrap());
+        
+        for (match_idx, result) in state.regex_tester.match_results.iter().enumerate() {
+            if result.matched {
+                children.push(
+                    serde_json::to_value(
+                        UiText::new(&format!("Match {}: {}", match_idx + 1, result.match_text))
+                            .size(12.0),
+                    )
+                    .unwrap(),
+                );
+                
+                for (idx, grp) in result.groups.iter().enumerate() {
+                    let text = grp
+                        .as_deref()
+                        .map(|g| format!("  Group {idx}: {g}"))
+                        .unwrap_or_else(|| format!("  Group {idx}: <none>"));
+                    children.push(serde_json::to_value(UiText::new(&text).size(12.0)).unwrap());
+                }
             }
         }
     }
@@ -62,6 +101,25 @@ pub fn handle_regex_action(
     state: &mut AppState,
     bindings: &std::collections::HashMap<String, String>,
 ) {
+    // Initialize common patterns if not already done
+    if state.regex_tester.common_patterns.is_empty() {
+        state.regex_tester.init_common_patterns();
+    }
+    
+    // Handle global mode toggle
+    if let Some(global_mode_str) = bindings.get("global_mode") {
+        state.regex_tester.global_mode = global_mode_str == "true";
+    }
+    
+    // Handle common pattern buttons
+    for (idx, pattern) in state.regex_tester.common_patterns.iter().enumerate() {
+        if bindings.contains_key(&format!("regex_pattern_{}", idx)) {
+            state.regex_tester.pattern = pattern.clone();
+            break;
+        }
+    }
+    
+    // Handle pattern and sample text inputs
     state.regex_tester.pattern = bindings
         .get("regex_pattern")
         .cloned()
@@ -71,37 +129,58 @@ pub fn handle_regex_action(
         .cloned()
         .unwrap_or_else(|| state.regex_tester.sample_text.clone());
 
-    if let Some(result) = test_regex(&state.regex_tester.pattern, &state.regex_tester.sample_text) {
+    // Test the regex
+    if let Some(result) = test_regex(&state.regex_tester.pattern, &state.regex_tester.sample_text, state.regex_tester.global_mode) {
         match result {
             Ok(res) => {
-                state.regex_tester.match_result = Some(res);
+                state.regex_tester.match_results = res;
                 state.regex_tester.error = None;
             }
             Err(e) => {
-                state.regex_tester.match_result = None;
+                state.regex_tester.match_results.clear();
                 state.regex_tester.error = Some(e);
             }
         }
     }
 }
 
-pub fn test_regex(pattern: &str, text: &str) -> Option<Result<RegexMatchResult, String>> {
+pub fn test_regex(pattern: &str, text: &str, global_mode: bool) -> Option<Result<Vec<RegexMatchResult>, String>> {
     if pattern.trim().is_empty() {
         return None;
     }
     match Regex::new(pattern) {
         Ok(re) => {
-            let capture = re.captures(text);
-            let matched = capture.is_some();
-            let groups = capture
-                .as_ref()
-                .map(|caps| {
-                    (0..caps.len())
-                        .map(|i| caps.get(i).map(|m| m.as_str().to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            Some(Ok(RegexMatchResult { matched, groups }))
+            if global_mode {
+                // Find all matches
+                let mut results = Vec::new();
+                for capture in re.captures_iter(text) {
+                    let matched = true;
+                    let match_text = capture.get(0).map(|m| m.as_str().to_string()).unwrap_or_default();
+                    let start_index = capture.get(0).map(|m| m.start()).unwrap_or(0);
+                    let end_index = capture.get(0).map(|m| m.end()).unwrap_or(0);
+                    let groups = (0..capture.len())
+                        .map(|i| capture.get(i).map(|m| m.as_str().to_string()))
+                        .collect();
+                    results.push(RegexMatchResult { matched, groups, match_text, start_index, end_index });
+                }
+                Some(Ok(results))
+            } else {
+                // Find first match only (original behavior)
+                let capture = re.captures(text);
+                let matched = capture.is_some();
+                let match_text = capture.as_ref().and_then(|caps| caps.get(0).map(|m| m.as_str().to_string())).unwrap_or_default();
+                let start_index = capture.as_ref().and_then(|caps| caps.get(0).map(|m| m.start())).unwrap_or(0);
+                let end_index = capture.as_ref().and_then(|caps| caps.get(0).map(|m| m.end())).unwrap_or(0);
+                let groups = capture
+                    .as_ref()
+                    .map(|caps| {
+                        (0..caps.len())
+                            .map(|i| caps.get(i).map(|m| m.as_str().to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(Ok(vec![RegexMatchResult { matched, groups, match_text, start_index, end_index }]))
+            }
         }
         Err(e) => Some(Err(e.to_string())),
     }
@@ -113,22 +192,46 @@ mod tests {
 
     #[test]
     fn regex_matches_and_groups() {
-        let res = test_regex("(foo)-(\\d+)", "foo-123").unwrap().unwrap();
-        assert!(res.matched);
-        assert_eq!(res.groups.len(), 3);
-        assert_eq!(res.groups[1].as_deref(), Some("foo"));
-        assert_eq!(res.groups[2].as_deref(), Some("123"));
+        let res = test_regex("(foo)-(\\d+)", "foo-123", false).unwrap().unwrap();
+        assert_eq!(res.len(), 1);
+        let result = &res[0];
+        assert!(result.matched);
+        assert_eq!(result.groups.len(), 3);
+        assert_eq!(result.groups[1].as_deref(), Some("foo"));
+        assert_eq!(result.groups[2].as_deref(), Some("123"));
+    }
+
+    #[test]
+    fn regex_global_mode_finds_multiple_matches() {
+        let res = test_regex("\\d+", "foo 123 bar 456 baz", true).unwrap().unwrap();
+        assert_eq!(res.len(), 2);
+        assert_eq!(res[0].match_text, "123");
+        assert_eq!(res[1].match_text, "456");
     }
 
     #[test]
     fn regex_invalid_pattern_returns_error() {
-        let res = test_regex("(", "x").unwrap();
+        let res = test_regex("(", "x", false).unwrap();
         assert!(res.is_err());
     }
 
     #[test]
     fn regex_empty_pattern_skips() {
-        let res = test_regex("", "foo");
+        let res = test_regex("", "foo", false);
         assert!(res.is_none());
+    }
+
+    #[test]
+    fn regex_global_mode_with_groups() {
+        let res = test_regex("(foo)-(\\d+)", "foo-123 bar foo-456", true).unwrap().unwrap();
+        assert_eq!(res.len(), 2);
+        
+        // First match
+        assert_eq!(res[0].groups[1].as_deref(), Some("foo"));
+        assert_eq!(res[0].groups[2].as_deref(), Some("123"));
+        
+        // Second match
+        assert_eq!(res[1].groups[1].as_deref(), Some("foo"));
+        assert_eq!(res[1].groups[2].as_deref(), Some("456"));
     }
 }

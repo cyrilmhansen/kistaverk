@@ -2163,7 +2163,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::RegexTesterScreen => {
             state.push_screen(Screen::RegexTester);
             state.regex_tester.error = None;
-            state.regex_tester.match_result = None;
+            state.regex_tester.match_results.clear();
         }
         Action::RegexTest { bindings } => {
             state.push_screen(Screen::RegexTester);
