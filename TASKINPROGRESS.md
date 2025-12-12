@@ -51,13 +51,31 @@
 
 ### Feature 1: Extend Symbolic Integration
 *   **Status:** 📅 PLANNED
-*   **Date:** 2025-12-11
+*   **Date:** 2025-12-12
 *   **Objective:** Enhance the existing symbolic integration capabilities in the Math Tool.
 *   **Rationale:** Directly addresses the roadmap item "Symbolic Integration: Extend math tool to support basic integration" and builds upon existing functionality in `features/math_tool.rs`.
 *   **Implementation Plan:**
     1.  **Analyze current `integrate` function:** Identify patterns of currently `∫unsupported` expressions.
-    2.  **Implement new rules:** Add support for more integration techniques (e.g., product rule for integration by parts, basic trigonometric substitutions, or simple rational functions).
-    3.  **Add Tests:** Create a small set of unit tests in `math_tool.rs` for each newly implemented integration rule.
+    2.  **Implement new rules:** Add support for:
+        *   Exponential function `exp(x)`.
+        *   Inverse tangent `1/(1+x^2)`.
+        *   Tangent `tan(x)`.
+        *   Logarithmic integration `1/x`.
+    3.  **Add Tests:** Create unit tests in `math_tool.rs` for each newly implemented integration rule.
+
+### Feature 2: Regex Tester Enhancements
+*   **Status:** 📅 PLANNED
+*   **Date:** 2025-12-12
+*   **Objective:** Add "Global Search" (find all matches) and "Common Patterns" to the Regex Tester.
+*   **Rationale:** Transforms the Regex Tester from a simple validator into a powerful extraction tool.
+*   **Implementation Plan:**
+    1.  **Update State:** Modify `RegexMatchResult` in `state.rs` to support multiple matches and add `global_mode` flag to `RegexTesterState`.
+    2.  **Update Logic:** rewrite `test_regex` in `features/regex_tester.rs` to use `captures_iter` when global mode is enabled.
+    3.  **Update UI:**
+        *   Add checkbox for "Global mode".
+        *   Add "Common Patterns" dropdown or buttons (Email, Date, URL, IP).
+        *   Render list of all matches found.
+    4.  **Add Tests:** Verify global search finds multiple occurrences.
 
 ## Roadmap
 *   **Optimization:** Review memory usage of in-memory SQLite and Rhai engine.

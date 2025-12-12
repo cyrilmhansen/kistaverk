@@ -428,6 +428,13 @@
       "homepage": null
     },
     {
+      "name": "cron",
+      "version": "0.12.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/zslayton/cron",
+      "homepage": null
+    },
+    {
       "name": "crossbeam-deque",
       "version": "0.8.6",
       "license": "MIT OR Apache-2.0",

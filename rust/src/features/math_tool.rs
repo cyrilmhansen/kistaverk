@@ -190,6 +190,9 @@ pub enum Symbol {
     Neg(Box<Symbol>),
     Sin(Box<Symbol>),
     Cos(Box<Symbol>),
+    Tan(Box<Symbol>),
+    Exp(Box<Symbol>),
+    Atan(Box<Symbol>),
     Sqrt(Box<Symbol>),
     Log(Box<Symbol>),
 }
@@ -240,6 +243,9 @@ fn rpn_to_symbol(tokens: &[RpnToken]) -> Result<Symbol, String> {
                 let sym = match name.as_str() {
                     "sin" => Symbol::Sin(Box::new(arg)),
                     "cos" => Symbol::Cos(Box::new(arg)),
+                    "tan" => Symbol::Tan(Box::new(arg)),
+                    "exp" => Symbol::Exp(Box::new(arg)),
+                    "atan" => Symbol::Atan(Box::new(arg)),
                     "sqrt" => Symbol::Sqrt(Box::new(arg)),
                     "log" => Symbol::Log(Box::new(arg)),
                     other => return Err(format!("unknown_function:{other}")),
@@ -317,6 +323,23 @@ fn differentiate(expr: &Symbol, var: &str) -> Symbol {
         Neg(a) => Neg(Box::new(differentiate(a, var))),
         Sin(a) => Mul(Box::new(Cos(a.clone())), Box::new(differentiate(a, var))),
         Cos(a) => Neg(Box::new(Mul(Box::new(Sin(a.clone())), Box::new(differentiate(a, var))))),
+        Tan(a) => Mul(
+            Box::new(
+                Div(
+                    Box::new(Number(1.0)),
+                    Box::new(Pow(Box::new(Cos(a.clone())), Box::new(Number(2.0)))),
+                ),
+            ),
+            Box::new(differentiate(a, var)),
+        ),
+        Exp(a) => Mul(Box::new(Exp(a.clone())), Box::new(differentiate(a, var))),
+        Atan(a) => Div(
+            Box::new(differentiate(a, var)),
+            Box::new(Add(
+                Box::new(Number(1.0)),
+                Box::new(Pow(a.clone(), Box::new(Number(2.0)))),
+            )),
+        ),
         Sqrt(a) => Div(
             Box::new(differentiate(a, var)),
             Box::new(Mul(Box::new(Number(2.0)), Box::new(Sqrt(a.clone())))),
@@ -401,6 +424,29 @@ fn integrate(expr: &Symbol, var: &str) -> Symbol {
                 Var("∫unsupported".into())
             }
         }
+        Tan(a) => {
+            if matches!(&**a, Var(name) if name == var) {
+                Neg(Box::new(Log(Box::new(Cos(a.clone())))))
+            } else {
+                Var("∫unsupported".into())
+            }
+        }
+        Exp(a) => match &**a {
+            Var(name) if name == var => Exp(a.clone()),
+            Mul(left, right) => {
+                // ∫ exp(c*x) dx = exp(c*x)/c for constant c
+                match (&**left, &**right) {
+                    (Number(c), Var(name)) if name == var && c.abs() > f64::EPSILON => {
+                        Div(Box::new(Exp(a.clone())), Box::new(Number(*c)))
+                    }
+                    (Var(name), Number(c)) if name == var && c.abs() > f64::EPSILON => {
+                        Div(Box::new(Exp(a.clone())), Box::new(Number(*c)))
+                    }
+                    _ => Var("∫unsupported".into()),
+                }
+            }
+            _ => Var("∫unsupported".into()),
+        },
         Sqrt(a) => {
             // ∫ sqrt(x) dx = 2/3 x^(3/2)
             if matches!(&**a, Var(name) if name == var) {
@@ -431,8 +477,54 @@ fn integrate(expr: &Symbol, var: &str) -> Symbol {
                 Var("∫unsupported".into())
             }
         }
-        Div(_, _) | Neg(_) => Var("∫unsupported".into()),
+        Atan(_) => Var("∫unsupported".into()),
+        Div(num, den) => {
+            // ∫ c/x dx = c*log(x)
+            if let (Number(c), Var(name)) = (&**num, &**den) {
+                if name == var {
+                    return Mul(Box::new(Number(*c)), Box::new(Log(Box::new(Var(var.to_string())))));
+                }
+            }
+            // ∫ c/(1+x^2) dx = c*atan(x)
+            let c = if let Number(k) = &**num { *k } else { 1.0 };
+            if matches!(&**num, Number(_)) {
+                if let Some(inner_var) = match_arctan_denominator(den, var) {
+                    return Mul(Box::new(Number(c)), Box::new(Atan(Box::new(inner_var))));
+                }
+            }
+            Var("∫unsupported".into())
+        }
+        Neg(_) => Var("∫unsupported".into()),
     }
+}
+
+fn match_arctan_denominator(den: &Symbol, var: &str) -> Option<Symbol> {
+    use Symbol::*;
+    let (left, right) = match den {
+        Add(a, b) => (a.as_ref(), b.as_ref()),
+        _ => return None,
+    };
+    let (one, other) = if is_number(left, 1.0) {
+        (left, right)
+    } else if is_number(right, 1.0) {
+        (right, left)
+    } else {
+        return None;
+    };
+    let _ = one;
+    match other {
+        Pow(base, exp) => match (&**base, &**exp) {
+            (Var(name), Number(_)) if name == var && is_number(exp, 2.0) => {
+                Some(Var(var.to_string()))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn is_number(sym: &Symbol, target: f64) -> bool {
+    matches!(sym, Symbol::Number(n) if (n - target).abs() < 1e-12)
 }
 
 fn simplify(expr: &Symbol) -> Symbol {
@@ -496,6 +588,9 @@ fn simplify(expr: &Symbol) -> Symbol {
         }
         Sin(a) => Sin(Box::new(simplify(a))),
         Cos(a) => Cos(Box::new(simplify(a))),
+        Tan(a) => Tan(Box::new(simplify(a))),
+        Exp(a) => Exp(Box::new(simplify(a))),
+        Atan(a) => Atan(Box::new(simplify(a))),
         Sqrt(a) => Sqrt(Box::new(simplify(a))),
         Log(a) => Log(Box::new(simplify(a))),
         Number(n) => Number(*n),
@@ -525,6 +620,9 @@ fn render_symbol(expr: &Symbol) -> String {
         Neg(a) => format!("-{}", wrap(a, 4)),
         Sin(a) => format!("sin({})", render_symbol(a)),
         Cos(a) => format!("cos({})", render_symbol(a)),
+        Tan(a) => format!("tan({})", render_symbol(a)),
+        Exp(a) => format!("exp({})", render_symbol(a)),
+        Atan(a) => format!("atan({})", render_symbol(a)),
         Sqrt(a) => format!("sqrt({})", render_symbol(a)),
         Log(a) => format!("log({})", render_symbol(a)),
     }
@@ -635,7 +733,7 @@ fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
                 } else if lowered == "e" {
                     tokens.push(Token::Number(E));
                     prev_is_value = true;
-                } else if matches!(lowered.as_str(), "sin" | "cos" | "sqrt" | "log" | "deriv") {
+                } else if matches!(lowered.as_str(), "sin" | "cos" | "tan" | "exp" | "atan" | "sqrt" | "log" | "deriv") {
                     tokens.push(Token::Function(lowered));
                     prev_is_value = false;
                 } else {
@@ -854,6 +952,9 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
                 let res = match name.as_str() {
                     "sin" => arg.sin(),
                     "cos" => arg.cos(),
+                    "tan" => arg.tan(),
+                    "exp" => arg.exp(),
+                    "atan" => arg.atan(),
                     "sqrt" => {
                         if arg < 0.0 {
                             return Err("sqrt_of_negative".into());
@@ -998,6 +1099,34 @@ mod tests {
         let ast = parse_symbolic("x^-1").unwrap();
         let integ = simplify(&integrate(&ast, "x"));
         assert_eq!(render_symbol(&integ), "log(x)");
+    }
+
+    #[test]
+    fn integrate_exp_of_x() {
+        let ast = parse_symbolic("exp(x)").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "exp(x)");
+    }
+
+    #[test]
+    fn integrate_tan_of_x() {
+        let ast = parse_symbolic("tan(x)").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "-log(cos(x))");
+    }
+
+    #[test]
+    fn integrate_one_over_one_plus_x_squared_to_atan() {
+        let ast = parse_symbolic("1/(1+x^2)").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "atan(x)");
+    }
+
+    #[test]
+    fn integrate_constant_over_x_to_log() {
+        let ast = parse_symbolic("2/x").unwrap();
+        let integ = simplify(&integrate(&ast, "x"));
+        assert_eq!(render_symbol(&integ), "2*log(x)");
     }
 
     #[test]
