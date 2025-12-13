@@ -478,13 +478,13 @@ class MainActivity : ComponentActivity() {
         }
 
         val restoredSnapshot = savedInstanceState?.getString(snapshotKey)
-        val handledViewIntent = handleViewIntent(intent)
-        if (restoredSnapshot != null && !handledViewIntent) {
+        val handledIncomingIntent = handleIncomingIntent(intent)
+        if (restoredSnapshot != null && !handledIncomingIntent) {
             lifecycleScope.launch {
                 restoreSnapshotAndRender(restoredSnapshot)
                 refreshUi("init", bindings = mapOf("system_locale" to getSystemLocale()))
             }
-        } else if (!handledViewIntent) {
+        } else if (!handledIncomingIntent) {
             val initialAction = if (entry == "pdf_signature") "pdf_tools_screen" else "init"
             if (initialAction == "init") {
                 val initialBindings = mapOf(
@@ -565,7 +565,7 @@ class MainActivity : ComponentActivity() {
             refreshUi("pdf_tools_screen")
             return
         }
-        val handled = handleViewIntent(intent)
+        val handled = handleIncomingIntent(intent)
         if (!handled) {
             // fallback: no special handling
         }
@@ -968,6 +968,41 @@ class MainActivity : ComponentActivity() {
             extras = extras
         )
         return true
+    }
+
+    private fun handleIncomingIntent(intent: Intent?): Boolean {
+        return handleSendIntent(intent) || handleViewIntent(intent)
+    }
+
+    private fun handleSendIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val action = intent.action ?: return false
+        if (action != Intent.ACTION_SEND) return false
+
+        val mime = intent.type.orEmpty()
+        val streamUri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+
+        return when {
+            mime.startsWith("image/") && streamUri != null -> {
+                refreshUi("kotlin_image_screen_webp")
+                handlePickerResult("kotlin_image_pick", streamUri, emptyMap())
+            }
+            mime == "application/pdf" && streamUri != null -> {
+                handlePickerResult("pdf_select", streamUri, emptyMap())
+            }
+            mime == "text/plain" -> {
+                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?: streamUri?.let { uri ->
+                        readBytes(uri)?.let { bytes ->
+                            runCatching { bytes.toString(Charsets.UTF_8) }.getOrNull()
+                        }
+                    }
+                if (sharedText == null) return false
+                refreshUi("text_tools_screen", bindings = mapOf("text_input" to sharedText))
+                true
+            }
+            else -> false
+        }
     }
 
     private fun handleViewIntent(intent: Intent?): Boolean {
