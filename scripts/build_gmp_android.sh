@@ -131,7 +131,8 @@ for TARGET in "${TARGETS[@]}"; do
     export RANLIB="llvm-ranlib"
     export STRIP="llvm-strip"
     # Add optimization flags and section splitting for linker GC
-    export CFLAGS="-fPIC -O3 -ffunction-sections -fdata-sections"
+    # Using -Os to optimize for size as requested
+    export CFLAGS="-fPIC -Os -ffunction-sections -fdata-sections"
     export CXXFLAGS="$CFLAGS"
     export LDFLAGS=""
     
