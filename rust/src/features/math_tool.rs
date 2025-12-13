@@ -9,10 +9,13 @@ use std::f64::consts::{E, PI};
 use crate::features::cas_types::Number;
 
 pub fn render_math_tool_screen(state: &AppState) -> Value {
+    let math_tool_title = t!("screen_math_tool_title");
+    let math_tool_description = t!("screen_math_tool_description");
+    
     let mut children = vec![
-        serde_json::to_value(UiText::new("Math Expression Evaluator").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&math_tool_title).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Evaluate expressions with +, -, *, /, ^, parentheses, and functions: sin, cos, sqrt, log (base e).")
+            UiText::new(&math_tool_description)
                 .size(14.0),
         )
         .unwrap(),

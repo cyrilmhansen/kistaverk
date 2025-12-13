@@ -11,3 +11,13 @@ theme_system: "System"
 theme_light: "Light"
 theme_dark: "Dark"
 
+# Screen titles and descriptions
+screen_ruler_title: "Ruler"
+screen_ruler_description: "Hold your device steady for a physical ruler."
+screen_math_tool_title: "Math Expression Evaluator"
+screen_math_tool_description: "Evaluate expressions with +, -, *, /, ^, parentheses, and functions: sin, cos, sqrt, log (base e)."
+screen_unit_converter_title: "Unit Converter"
+screen_unit_converter_description: "Convert between different units of measurement."
+screen_regex_tester_title: "Regex Tester"
+screen_regex_tester_description: "Enter a pattern and sample text to test matches and capture groups."
+

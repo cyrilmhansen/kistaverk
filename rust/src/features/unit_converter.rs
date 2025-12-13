@@ -7,10 +7,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 pub fn render_unit_converter_screen(state: &AppState) -> Value {
+    let unit_converter_title = t!("screen_unit_converter_title");
+    let unit_converter_description = t!("screen_unit_converter_description");
+    
     let mut children = vec![
-        serde_json::to_value(UiText::new("Unit Converter").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&unit_converter_title).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Convert between different units of measurement.").size(14.0),
+            UiText::new(&unit_converter_description).size(14.0),
         )
         .unwrap(),
     ];

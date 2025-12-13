@@ -4638,10 +4638,13 @@ fn render_ui(state: &AppState) -> Value {
 fn render_ruler_screen(state: &AppState) -> Value {
     use crate::ui::{maybe_push_back, Column as UiColumn, Ruler as UiRuler, Text as UiText};
 
+    let ruler_title = t!("screen_ruler_title");
+    let ruler_description = t!("screen_ruler_description");
+    
     let mut children = vec![
-        serde_json::to_value(UiText::new("Ruler").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&ruler_title).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Hold your device steady for a physical ruler.").size(14.0),
+            UiText::new(&ruler_description).size(14.0),
         )
         .unwrap(),
         serde_json::to_value(UiRuler::new().fill_height(true)).unwrap(),

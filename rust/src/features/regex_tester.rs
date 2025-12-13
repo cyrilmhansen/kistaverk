@@ -7,10 +7,13 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 pub fn render_regex_tester_screen(state: &AppState) -> Value {
+    let regex_tester_title = t!("screen_regex_tester_title");
+    let regex_tester_description = t!("screen_regex_tester_description");
+    
     let mut children = vec![
-        serde_json::to_value(UiText::new("Regex Tester").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&regex_tester_title).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Enter a pattern and sample text to test matches and capture groups.")
+            UiText::new(&regex_tester_description)
                 .size(14.0),
         )
         .unwrap(),

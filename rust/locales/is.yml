@@ -11,6 +11,16 @@ theme_system: "Kerfi"
 theme_light: "Ljós"
 theme_dark: "Dökkt"
 
+# Screen titles and descriptions
+screen_ruler_title: "Regla"
+screen_ruler_description: "Haldið tækinu stöðugt fyrir raunverulega reglu."
+screen_math_tool_title: "Stærðfræðiformúlutúlkur"
+screen_math_tool_description: "Reiknið formúlur með +, -, *, /, ^, svigum og föllum: sin, cos, sqrt, log (grunnur e)."
+screen_unit_converter_title: "Einingabreytingar"
+screen_unit_converter_description: "Breyttið milli mismunandi mælieininga."
+screen_regex_tester_title: "Regluleg málsgreining"
+screen_regex_tester_description: "Settið inn mynstur og sýnitexta til að prófa samsvörun og hópa."
+
 # Common UI elements
 common_back: "Til baka"
 common_cancel: "Hætta við"

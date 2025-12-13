@@ -15,6 +15,16 @@ theme_system: "Système"
 theme_light: "Clair"
 theme_dark: "Sombre"
 
+# Screen titles and descriptions
+screen_ruler_title: "Règle"
+screen_ruler_description: "Tenez votre appareil stable pour une règle physique."
+screen_math_tool_title: "Évaluateur d'expressions mathématiques"
+screen_math_tool_description: "Évaluez des expressions avec +, -, *, /, ^, parenthèses et fonctions : sin, cos, sqrt, log (base e)."
+screen_unit_converter_title: "Convertisseur d'unités"
+screen_unit_converter_description: "Convertissez entre différentes unités de mesure."
+screen_regex_tester_title: "Testeur d'expressions régulières"
+screen_regex_tester_description: "Entrez un motif et un texte exemple pour tester les correspondances et les groupes de capture."
+
 # Common UI elements
 common_back: "Retour"
 common_cancel: "Annuler"
