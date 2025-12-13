@@ -61,8 +61,8 @@ MPFR_VERSION="4.2.1"
 MPC_VERSION="1.3.1"
 
 # Output directory
-OUTPUT_DIR="rust/libs/android"
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "rust/libs/android"
+OUTPUT_DIR="$(cd "rust/libs/android" && pwd)"
 
 echo "Building GMP, MPFR, and MPC for Android..."
 echo "NDK Path: $NDK_PATH"
