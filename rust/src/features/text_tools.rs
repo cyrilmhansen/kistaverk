@@ -1,9 +1,9 @@
 use crate::state::{AppState, Screen};
 use crate::ui::{
-    Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Text as UiText,
+    Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Grid as UiGrid, Text as UiText,
     TextInput as UiTextInput,
 };
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -356,10 +356,15 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
-            UiTextInput::new("text_input")
-                .text(&input)
-                .hint("Paste or type text")
-                .content_description("Input text for text tools"),
+            UiGrid::new(vec![
+                json!(UiTextInput::new("text_input")
+                    .text(&input)
+                    .hint("Paste or type text")
+                    .content_description("Input text for text tools")),
+                json!(UiButton::new("Clear", "text_tools_clear").id("text_tools_clear_inline")),
+            ])
+            .columns(2)
+            .padding(4),
         )
         .unwrap(),
         serde_json::to_value(

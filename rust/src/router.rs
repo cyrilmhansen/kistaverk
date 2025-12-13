@@ -1030,6 +1030,7 @@ pub(crate) enum Action {
     RegexTest {
         bindings: HashMap<String, String>,
     },
+    RegexClear,
     MathToolScreen,
     MathCalculate {
         bindings: HashMap<String, String>,
@@ -1261,6 +1262,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "pixel_art_apply" => Ok(Action::PixelArtApply { loading_only }),
         "regex_tester_screen" => Ok(Action::RegexTesterScreen),
         "regex_test" => Ok(Action::RegexTest { bindings }),
+        "regex_clear" => Ok(Action::RegexClear),
         "math_tool_screen" => Ok(Action::MathToolScreen),
         "math_calculate" => Ok(Action::MathCalculate { bindings }),
         "math_clear_history" => Ok(Action::MathClearHistory),
@@ -2203,6 +2205,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::RegexTest { bindings } => {
             state.push_screen(Screen::RegexTester);
             handle_regex_action(&mut state, &bindings);
+            if matches!(state.current_screen(), Screen::RegexTester) {
+                state.replace_current(Screen::RegexTester);
+            }
+        }
+        Action::RegexClear => {
+            state.push_screen(Screen::RegexTester);
+            state.regex_tester.sample_text.clear();
+            state.regex_tester.match_results.clear();
+            state.regex_tester.error = None;
             if matches!(state.current_screen(), Screen::RegexTester) {
                 state.replace_current(Screen::RegexTester);
             }

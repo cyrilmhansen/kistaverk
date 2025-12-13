@@ -1,10 +1,10 @@
 use crate::state::{AppState, RegexMatchResult};
 use crate::ui::{
-    maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
-    TextInput as UiTextInput, Checkbox as UiCheckbox,
+    maybe_push_back, Button as UiButton, Checkbox as UiCheckbox, Column as UiColumn, Grid as UiGrid,
+    Text as UiText, TextInput as UiTextInput,
 };
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 pub fn render_regex_tester_screen(state: &AppState) -> Value {
     let mut children = vec![
@@ -22,9 +22,14 @@ pub fn render_regex_tester_screen(state: &AppState) -> Value {
         )
         .unwrap(),
         serde_json::to_value(
-            UiTextInput::new("regex_sample")
-                .hint("Sample text")
-                .text(&state.regex_tester.sample_text),
+            UiGrid::new(vec![
+                json!(UiTextInput::new("regex_sample")
+                    .hint("Sample text")
+                    .text(&state.regex_tester.sample_text)),
+                json!(UiButton::new("Clear", "regex_clear").id("regex_clear_inline")),
+            ])
+            .columns(2)
+            .padding(4),
         )
         .unwrap(),
         serde_json::to_value(
