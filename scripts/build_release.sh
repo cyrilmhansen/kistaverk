@@ -12,6 +12,8 @@ GMP_LIBS_DIR="$PROJECT_ROOT/rust/libs/android"
 CHECK_FILE="$GMP_LIBS_DIR/aarch64-linux-android/lib/libgmp.a"
 # Enable UPX compression by default (set USE_UPX=false to skip)
 USE_UPX="${USE_UPX:-true}"
+# Allow ABI selection (arm64, armv7, both)
+ABI_PROP="${abi:-}"
 
 # --- Setup Environment from local.properties ---
 LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
@@ -67,6 +69,20 @@ else
     fi
 fi
 
+# --- Step 1b: Run Rust tests ---
+echo ""
+echo "🧪 Running Rust tests..."
+pushd "$PROJECT_ROOT/rust" >/dev/null
+cargo test --locked
+popd >/dev/null
+
+# --- Step 1c: Run Kotlin/JVM unit tests ---
+echo ""
+echo "🧪 Running Kotlin unit tests..."
+pushd "$PROJECT_ROOT/app" >/dev/null
+./gradlew test
+popd >/dev/null
+
 # --- Step 2: Run Gradle Build ---
 echo ""
 echo "🚀 Starting Android Gradle Build..."
@@ -75,7 +91,11 @@ echo "🚀 Starting Android Gradle Build..."
 TASK="${1:-assembleDebug}"
 
 cd "$PROJECT_ROOT/app"
-./gradlew -PuseUpx="$USE_UPX" "app:$TASK"
+if [ -n "$ABI_PROP" ]; then
+    ./gradlew -PuseUpx="$USE_UPX" -Pabi="$ABI_PROP" "app:$TASK"
+else
+    ./gradlew -PuseUpx="$USE_UPX" "app:$TASK"
+fi
 
 echo ""
 echo "🎉 Build Complete!"

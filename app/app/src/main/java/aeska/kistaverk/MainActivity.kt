@@ -534,18 +534,18 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
+        permissions: Array<String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_LOCATION) {
-            sensors.onPermissionResult(requestCode, grantResults, emptyMap())
+            sensors.onPermissionResult(requestCode, grantResults, emptyMap<String, String>())
         } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             cameraManager.onPermissionResult(grantResults)
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val entry = resolveEntry(intent)
         if (entry == "pdf_signature") {
