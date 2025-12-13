@@ -330,6 +330,7 @@ tasks.register("compressJniWithUpx") {
 
         libs.forEach { lib ->
             logger.lifecycle("UPX compressing ${lib.absolutePath}")
+            val before = lib.length()
             val output = ByteArrayOutputStream()
             val result = execOps.exec {
                 // Ensure executable bit for UPX
@@ -351,6 +352,12 @@ tasks.register("compressJniWithUpx") {
             }
             if (result.exitValue != 0) {
                 throw GradleException("UPX failed for ${lib.name}: ${output.toString().trim()}")
+            }
+            val after = lib.length()
+            if (before > 0 && after > 0) {
+                val saved = before - after
+                val pct = (saved.toDouble() * 100.0 / before.toDouble()).let { String.format("%.2f", it) }
+                logger.lifecycle("UPX saved ${saved} bytes (${pct}%) on ${lib.name} (from $before to $after)")
             }
         }
     }
