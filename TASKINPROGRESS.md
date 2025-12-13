@@ -14,7 +14,9 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ Analyzed `rug` vs `numerica` vs `symbolica`
     *   ✅ Documented refactoring roadmap and Android build risks
     *   ✅ Created report file
-2.  **Unit Converter** (`features/unit_converter.rs`)
+2.  **Advanced CAS Plan** (`ADVANCED_CAS_PLAN.md`)
+    *   ✅ Detailed actionable tasks for implementation
+3.  **Unit Converter** (`features/unit_converter.rs`)
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
