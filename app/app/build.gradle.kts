@@ -164,7 +164,8 @@ android {
                 execOps.exec {
                     workingDir = rustDir
                     executable = cargoPath
-                    environment("ANDROID_NDK_HOME", ndkDirPath.absolutePath)
+                    val ndkDir = android.ndkDirectory
+                    environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
                     environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
                     environment(
                         "RUSTFLAGS",
