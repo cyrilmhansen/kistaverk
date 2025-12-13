@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::ffi::{CStr, CString};
 use std::ptr;
+use std::sync::{Mutex, OnceLock};
+
+static MIR_GLOBAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[cfg(target_os = "android")]
 fn logcat(msg: &str) {
@@ -42,6 +45,11 @@ impl MirScriptingState {
     pub fn execute(&mut self) {
         self.output.clear();
         self.error = None;
+
+        let _mir_guard = MIR_GLOBAL_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .ok();
 
         let entry = self.entry.trim();
         let entry = if entry.is_empty() { "main" } else { entry };
