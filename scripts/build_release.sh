@@ -40,7 +40,7 @@ echo "🚀 Starting Android Gradle Build..."
 TASK="${1:-assembleDebug}"
 
 cd "$PROJECT_ROOT"
-./gradlew "app:$TASK"
+"$PROJECT_ROOT/app/gradlew" "app:$TASK"
 
 echo ""
 echo "🎉 Build Complete!"
