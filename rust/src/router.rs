@@ -666,6 +666,7 @@ pub(crate) enum Action {
     Init { bindings: HashMap<String, String> },
     Reset,
     Back,
+    HomeFilter { query: String },
     ShaderDemo,
     LoadShader {
         path: Option<String>,
@@ -1174,6 +1175,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "init" => Ok(Action::Init { bindings }),
         "reset" => Ok(Action::Reset),
         "back" => Ok(Action::Back),
+        "home_filter" => Ok(Action::HomeFilter {
+            query: bindings.get("home_filter").cloned().unwrap_or_default(),
+        }),
         "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
         "pdf_select" => Ok(Action::PdfSelect {
             fd,
@@ -1900,6 +1904,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.ensure_navigation();
             if let Some(locale) = bindings.get("system_locale") {
                 crate::update_locale(&mut state, locale);
+            }
+        }
+        Action::HomeFilter { query } => {
+            state.home_filter = query;
+            if matches!(state.current_screen(), Screen::Home) {
+                state.replace_current(Screen::Home);
             }
         }
         Action::Snapshot => {
@@ -4572,7 +4582,7 @@ pub struct Feature {
 pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     use crate::ui::{
         Button as UiButton, Card as UiCard, Column as UiColumn, Section as UiSection,
-        Text as UiText,
+        Text as UiText, TextInput as UiTextInput,
     };
 
     let home_title = t!("home_title");
@@ -4580,9 +4590,20 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     let home_quick_access = t!("home_quick_access");
     let home_tools_suffix = t!("home_tools_suffix");
 
+    let filter_hint = "Search tools…";
+
     let mut children = vec![
         serde_json::to_value(UiText::new(&home_title).size(22.0)).unwrap(),
         serde_json::to_value(UiText::new(&home_subtitle).size(14.0)).unwrap(),
+        serde_json::to_value(
+            UiTextInput::new("home_filter")
+                .text(&state.home_filter)
+                .hint(filter_hint)
+                .action_on_submit("home_filter")
+                .debounce_ms(120)
+                .single_line(true),
+        )
+        .unwrap(),
         serde_json::to_value(
             UiText::new("Legacy notice: MD5 and SHA-1 are not suitable for security; prefer SHA-256 or BLAKE3.")
                 .size(12.0),
@@ -4590,9 +4611,22 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         .unwrap(),
     ];
 
+    let filter = state.home_filter.trim().to_ascii_lowercase();
+    let filtered: Vec<&Feature> = if filter.is_empty() {
+        catalog.iter().collect()
+    } else {
+        catalog
+            .iter()
+            .filter(|f| {
+                f.name.to_ascii_lowercase().contains(&filter)
+                    || f.description.to_ascii_lowercase().contains(&filter)
+            })
+            .collect()
+    };
+
     // Quick access row (static for now; prefer high-traffic tools).
     let quick_ids = ["pdf_tools", "text_tools", "text_viewer", "hash_sha256"];
-    let quick_buttons: Vec<Value> = catalog
+    let quick_buttons: Vec<Value> = filtered
         .iter()
         .filter(|f| quick_ids.contains(&f.id))
         .map(|f| {
@@ -4614,8 +4648,14 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     }
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
-    for feature in catalog.iter() {
+    for feature in filtered.iter().copied() {
         grouped.entry(feature.category).or_default().push(feature);
+    }
+
+    if !filter.is_empty() && grouped.is_empty() {
+        children.push(
+            serde_json::to_value(UiText::new("No matching tools.").size(14.0)).unwrap(),
+        );
     }
 
     for (category, feats) in grouped {
