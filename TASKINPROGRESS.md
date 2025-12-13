@@ -82,3 +82,4 @@ All AI agents contributing to this repository must specify their name and versio
 ## Roadmap
 *   **Optimization:** Review memory usage of in-memory SQLite and Rhai engine.
 *   **Integration Tests:** Verify router handling for new actions.
+*   **Test Coverage:** Add unit tests for cumulative FP error calculation and accumulation logic in math_tool.rs
