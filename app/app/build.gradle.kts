@@ -127,31 +127,28 @@ android {
             "build", "--release"
         )
 
-        // Pass GMP/MPFR/MPC environment variables via --config to ensure they reach the build script
-        // regardless of cargo-ndk environment handling.
-        argsList.add("--config")
-        argsList.add("env.GMP_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.GMP_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.GMP_STATIC=\"1\"")
+        // Create a temporary Cargo config file with the environment variables
+        // This is more reliable than passing them via CLI args which can have quoting issues
+        val envConfigContent = """
+            [env]
+            GMP_LIB_DIR = "${gmpLibsDir.absolutePath}"
+            GMP_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
+            GMP_STATIC = "1"
+            MPFR_LIB_DIR = "${gmpLibsDir.absolutePath}"
+            MPFR_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
+            MPFR_STATIC = "1"
+            MPC_LIB_DIR = "${gmpLibsDir.absolutePath}"
+            MPC_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
+            MPC_STATIC = "1"
+            GMP_MPFR_SYS_USE_PKG_CONFIG = "0"
+        """.trimIndent()
         
-        argsList.add("--config")
-        argsList.add("env.MPFR_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.MPFR_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.MPFR_STATIC=\"1\"")
+        val envConfigFile = File(rustDir, "cargo_env_config.toml")
+        envConfigFile.writeText(envConfigContent)
         
+        // Pass the config file to cargo
         argsList.add("--config")
-        argsList.add("env.MPC_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.MPC_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
-        argsList.add("--config")
-        argsList.add("env.MPC_STATIC=\"1\"")
-        
-        argsList.add("--config")
-        argsList.add("env.GMP_MPFR_SYS_USE_PKG_CONFIG=\"0\"")
+        argsList.add("cargo_env_config.toml")
 
         // Add precision feature flag if enabled (default is true)
         if (enablePrecision) {
