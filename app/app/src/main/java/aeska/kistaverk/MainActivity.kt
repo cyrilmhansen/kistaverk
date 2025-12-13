@@ -305,9 +305,12 @@ class MainActivity : ComponentActivity() {
 
         if (!skipNativeLoad) {
             val mathBackend = getMathBackendInfo()
+            val versionName = BuildConfig.VERSION_NAME
+            val gitCommit = BuildConfig.GIT_COMMIT
+            val versionLabel = if (gitCommit != "unknown") "$versionName ($gitCommit)" else versionName
             Toast.makeText(
                 this,
-                "Kistaverk v1.0 (AGPL-3.0)\nBackend: $mathBackend",
+                "Kistaverk $versionLabel (AGPL-3.0)\nBackend: $mathBackend",
                 Toast.LENGTH_LONG
             ).show()
         }

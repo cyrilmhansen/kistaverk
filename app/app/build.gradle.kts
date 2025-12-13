@@ -35,6 +35,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Expose git commit for runtime display (set GIT_COMMIT env to override)
+        val gitCommit = providers.environmentVariable("GIT_COMMIT").orElse("unknown").get()
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+
 
     }
 
