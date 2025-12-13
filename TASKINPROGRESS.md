@@ -66,9 +66,8 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ **Documentation**: Created `ARM64_OPTIMIZATIONS.md`.
 
 ## Immediate To-Do List
-1.  **Fix Test Integration:** `rust/src/features/math_tool_test.rs` is orphaned and not running.
-2.  Monitor scheduler stability.
-3.  Test Android precision build on device.
+1.  Monitor scheduler stability.
+2.  Test Android precision build on device.
 
 ## Planned Features
 
