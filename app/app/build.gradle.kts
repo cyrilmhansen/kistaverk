@@ -144,20 +144,6 @@ android {
         """.trimIndent()
         
         val envConfigFile = File(rustDir, "cargo_env_config.toml")
-        envConfigFile.writeText(envConfigContent)
-        
-        // Pass the config file to cargo
-        argsList.add("--config")
-        argsList.add("cargo_env_config.toml")
-
-        // Add precision feature flag if enabled (default is true)
-        if (enablePrecision) {
-            argsList.add("--features")
-            argsList.add("precision")
-            println("🔧 Precision feature enabled for Rust build (DEFAULT)")
-        } else {
-            println("📊 Building without precision feature (standard f64)")
-        }
         
         args(argsList)
 
@@ -165,9 +151,19 @@ android {
             println("✅ Rust source : ${rustDir.absolutePath}")
             println("✅ Destination libs : ${jniLibsDir.absolutePath}")
 
-        // Create the directory if it doesn't exist (to prevent cargo from complaining)
+            // Create the directory if it doesn't exist (to prevent cargo from complaining)
             if (!jniLibsDir.exists()) {
                 jniLibsDir.mkdirs()
+            }
+            // Create the temporary config file
+            envConfigFile.writeText(envConfigContent)
+        }
+
+        doLast {
+            // Clean up the temporary config file
+            if (envConfigFile.exists()) {
+                envConfigFile.delete()
+                println("🗑️ Cleaned up temporary Cargo config file: ${envConfigFile.absolutePath}")
             }
         }
     }
