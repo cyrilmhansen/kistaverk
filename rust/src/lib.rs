@@ -1,9 +1,16 @@
 mod features;
+mod i18n;
 mod router;
 mod state;
 mod ui;
 
+pub use i18n::*;
 pub use router::*;
+
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("locales");
 
 // Dummy init function to satisfy UPX compression requirements
 #[cfg(target_os = "android")]

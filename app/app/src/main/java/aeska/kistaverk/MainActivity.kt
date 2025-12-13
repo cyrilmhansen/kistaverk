@@ -480,10 +480,20 @@ class MainActivity : ComponentActivity() {
         val restoredSnapshot = savedInstanceState?.getString(snapshotKey)
         val handledViewIntent = handleViewIntent(intent)
         if (restoredSnapshot != null && !handledViewIntent) {
-            lifecycleScope.launch { restoreSnapshotAndRender(restoredSnapshot) }
+            lifecycleScope.launch {
+                restoreSnapshotAndRender(restoredSnapshot)
+                refreshUi("init", bindings = mapOf("system_locale" to getSystemLocale()))
+            }
         } else if (!handledViewIntent) {
             val initialAction = if (entry == "pdf_signature") "pdf_tools_screen" else "init"
-            refreshUi(initialAction)
+            if (initialAction == "init") {
+                val initialBindings = mapOf(
+                    "system_locale" to getSystemLocale(),
+                )
+                refreshUi(initialAction, bindings = initialBindings)
+            } else {
+                refreshUi(initialAction)
+            }
         }
 
         onBackPressedDispatcher.addCallback(
@@ -672,6 +682,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun getSystemLocale(): String {
+        val locale = resources.configuration.locales.get(0)
+        return locale.toLanguageTag() // e.g. "en-US", "fr-FR"
+    }
+
     internal fun refreshUi(
         action: String,
         extras: Map<String, Any?> = emptyMap(),
@@ -695,10 +710,10 @@ class MainActivity : ComponentActivity() {
                     put("loading_only", true)
                 }
             }
-            val newUiJson = dispatch(command.toString())
-            if (loadingOnly) {
-                showOverlay(command.optString("action", "Working..."))
-            } else {
+                val newUiJson = dispatch(command.toString())
+                if (loadingOnly) {
+                    showOverlay(command.optString("action", "Working..."))
+                } else {
                 val rootView = runCatching { renderer.render(newUiJson) }
                     .getOrElse { throwable ->
                         renderer.renderFallback(

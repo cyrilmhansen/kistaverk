@@ -341,6 +341,7 @@ impl MathToolState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub counter: i32,
+    pub locale: String,
     pub nav_stack: Vec<Screen>,
     pub last_hash: Option<String>,
     pub last_error: Option<String>,
@@ -425,6 +426,7 @@ impl AppState {
     pub const fn new() -> Self {
         Self {
             counter: 0,
+            locale: String::new(),
             nav_stack: Vec::new(),
             last_hash: None,
             last_error: None,

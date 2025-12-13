@@ -663,7 +663,7 @@ struct Command {
 
 #[derive(Debug)]
 pub(crate) enum Action {
-    Init,
+    Init { bindings: HashMap<String, String> },
     Reset,
     Back,
     ShaderDemo,
@@ -1171,7 +1171,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
     let loading_only = loading_only.unwrap_or(false);
 
     match action.as_str() {
-        "init" => Ok(Action::Init),
+        "init" => Ok(Action::Init { bindings }),
         "reset" => Ok(Action::Reset),
         "back" => Ok(Action::Back),
         "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
@@ -1895,9 +1895,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
     };
 
     match action {
-        Action::Init => {
+        Action::Init { bindings } => {
             // Keep current state; ensure navigation is initialized.
             state.ensure_navigation();
+            if let Some(locale) = bindings.get("system_locale") {
+                crate::update_locale(&mut state, locale);
+            }
         }
         Action::Snapshot => {
             state.ensure_navigation();
@@ -4572,12 +4575,14 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         Text as UiText,
     };
 
+    let home_title = t!("home_title");
+    let home_subtitle = t!("home_subtitle");
+    let home_quick_access = t!("home_quick_access");
+    let home_tools_suffix = t!("home_tools_suffix");
+
     let mut children = vec![
-        serde_json::to_value(UiText::new("🧰 Tool menu").size(22.0)).unwrap(),
-        serde_json::to_value(
-            UiText::new("✨ Select a tool. Hash tools prompt for a file.").size(14.0),
-        )
-        .unwrap(),
+        serde_json::to_value(UiText::new(&home_title).size(22.0)).unwrap(),
+        serde_json::to_value(UiText::new(&home_subtitle).size(14.0)).unwrap(),
         serde_json::to_value(
             UiText::new("Legacy notice: MD5 and SHA-1 are not suitable for security; prefer SHA-256 or BLAKE3.")
                 .size(12.0),
@@ -4603,7 +4608,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         let quick = UiCard::new(vec![
             serde_json::to_value(UiColumn::new(quick_buttons)).unwrap()
         ])
-        .title("⚡ Quick access")
+        .title(&home_quick_access)
         .padding(12);
         children.push(serde_json::to_value(quick).unwrap());
     }
@@ -4639,7 +4644,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
                 .unwrap(),
         );
 
-        let subtitle = format!("{} tools", feats.len());
+        let subtitle = format!("{} {}", feats.len(), home_tools_suffix);
         let mut title = category;
         let mut icon: Option<&str> = None;
         if let Some(first) = category.split_whitespace().next() {
