@@ -88,6 +88,7 @@ android {
     }
 
     tasks.register("cargoBuild") {
+        val currentProject = project
         // 1. Find Rust (Keeping your search logic, which is good)
          val possibleLocations = listOf(
             file("../rust"),        // If rust is a sibling of 'app' (standard case)
@@ -100,6 +101,11 @@ android {
             throw GradleException("❌ DOSSIER RUST INTROUVABLE.")
         }
         val rustDir = foundRustDir.canonicalFile
+        val jniLibsDir = File(projectDir, "src/main/jniLibs")
+        val ndkDirPath = android.ndkDirectory
+        val enablePrecisionProvider = providers.provider {
+            currentProject.extensions.extraProperties.get("enablePrecision")?.toString()?.toBoolean() ?: false
+        }
 
         // 2. Define the destination as ABSOLUTE (No more ../..)
         // "this.projectDir" always points to the module directory (the 2nd 'app')
@@ -129,8 +135,7 @@ android {
             )
 
             // Check if we should enable precision feature
-            val enablePrecision = project.ext.has("enablePrecision") && 
-                                  project.ext.get("enablePrecision").toString().toBoolean()
+            val enablePrecision = enablePrecisionProvider.get()
             val precisionFeatureArg = if (enablePrecision) "precision" else ""
 
             architectures.forEach { (androidAbi, rustTarget, libArchFolder) ->
@@ -165,7 +170,7 @@ android {
                 execOps.exec {
                     workingDir = rustDir
                     executable = cargoPath
-                    environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
+                    environment("ANDROID_NDK_HOME", ndkDirPath.absolutePath)
                     environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
                     environment(
                         "RUSTFLAGS",
