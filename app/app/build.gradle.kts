@@ -96,8 +96,8 @@ android {
         environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
         environment("CFLAGS", "-Os")
 
-        // Check if we should enable precision feature
-        val enablePrecision = project.hasProperty("enablePrecision") && 
+        // Check if we should enable precision feature (default to true)
+        val enablePrecision = !project.hasProperty("enablePrecision") || 
                              project.property("enablePrecision").toString().toBoolean()
         
         val mut argsList = mutableListOf(
@@ -107,11 +107,11 @@ android {
             "build", "--release"
         )
         
-        // Add precision feature flag if enabled
-        if (enablePrecision) {
+        // Add precision feature flag if enabled (default is true)
+        if enablePrecision {
             argsList.add("--features")
             argsList.add("precision")
-            println("🔧 Precision feature enabled for Rust build")
+            println("🔧 Precision feature enabled for Rust build (DEFAULT)")
         } else {
             println("📊 Building without precision feature (standard f64)")
         }

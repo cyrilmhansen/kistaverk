@@ -11,11 +11,11 @@ The precision feature enables arbitrary precision arithmetic in the Math Tool, a
 ### Option 1: Using Gradle Tasks (Recommended)
 
 ```bash
-# Build WITH precision feature (arbitrary precision)
+# Build WITH precision feature (arbitrary precision - DEFAULT)
 cd app
-./gradlew buildWithPrecision
+./gradlew assembleDebug
 
-# Build WITHOUT precision feature (standard f64 - default)
+# Build WITHOUT precision feature (standard f64)
 cd app
 ./gradlew buildWithoutPrecision
 ```
@@ -58,18 +58,30 @@ cd app
 - ✅ Uses standard f64 arithmetic
 - ✅ No external dependencies needed
 
+### 1. Standard Build (Default)
+
+```bash
+./gradlew assembleDebug
+```
+
+**Characteristics**:
+- ✅ Fastest build time
+- ✅ Smallest APK size
+- ✅ Uses standard f64 arithmetic
+- ✅ No external dependencies needed
+
 ### 2. Precision Build
 
 ```bash
-./gradlew buildWithPrecision
-# or
+./gradlew assembleDebug
+# or explicitly
 ./gradlew assembleDebug -PenablePrecision=true
 ```
 
 **Characteristics**:
 - ⚠️ Longer build time
 - ⚠️ Larger APK size (~5-10MB increase)
-- ✅ Arbitrary precision arithmetic
+- ✅ Arbitrary precision arithmetic (DEFAULT)
 - ❌ Requires prebuilt Android libraries
 
 ## Prerequisites
