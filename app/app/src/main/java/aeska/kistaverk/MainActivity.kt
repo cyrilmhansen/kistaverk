@@ -313,10 +313,11 @@ class MainActivity : ComponentActivity() {
             val mathBackend = getMathBackendInfo()
             val versionName = BuildConfig.VERSION_NAME
             val gitCommit = BuildConfig.GIT_COMMIT
+            val mirVersion = mirVersion()
             val versionLabel = if (gitCommit != "unknown") "$versionName ($gitCommit)" else versionName
             Toast.makeText(
                 this,
-                "Kistaverk $versionLabel (AGPL-3.0)\nBackend: $mathBackend",
+                "Kistaverk $versionLabel (AGPL-3.0)\nBackend: $mathBackend Mir: $mirVersion",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -1341,6 +1342,8 @@ class MainActivity : ComponentActivity() {
         rotationDeg: Int
     ): String?
     external fun getMathBackendInfo(): String
+
+    external fun mirVersion(): String
 
     companion object {
         init {

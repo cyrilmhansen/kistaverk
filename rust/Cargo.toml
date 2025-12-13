@@ -41,6 +41,9 @@ cron = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rhai = { version = "1.18", features = ["std", "sync", "serde"] }
 
+mir-sys = { path = "../../mir-sys" } # Local dependency
+
+
 [features]
 precision = ["dep:rug", "dep:gmp-mpfr-sys"]
 
@@ -67,6 +70,7 @@ strip = "symbols"
 
 [dev-dependencies]
 criterion = "0.5"
+libc = "0.2"
 
 [[bench]]
 name = "number_performance"
