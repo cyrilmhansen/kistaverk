@@ -4644,11 +4644,11 @@ fn render_ruler_screen(state: &AppState) -> Value {
             UiText::new("Hold your device steady for a physical ruler.").size(14.0),
         )
         .unwrap(),
-        serde_json::to_value(UiRuler::new().height_dp(140)).unwrap(),
+        serde_json::to_value(UiRuler::new().fill_height(true)).unwrap(),
     ];
 
     maybe_push_back(&mut children, state);
-    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
+    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
 }
 
 /// A feature entry for the home menu.

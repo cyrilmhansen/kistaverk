@@ -758,12 +758,21 @@ class UiRenderer(
     private fun createRuler(data: JSONObject, existing: RulerView?): View {
         val view = existing ?: RulerView(context)
         val heightDp = data.optInt("height_dp", 140).coerceAtLeast(48)
+        val fillHeight = data.optBoolean("fill_height", false)
         val contentDescription = data.optString("content_description", "")
         view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
-        val lp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dpToPx(context, heightDp.toFloat())
-        )
+        val lp = if (fillHeight) {
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        } else {
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(context, heightDp.toFloat())
+            )
+        }
         view.layoutParams = lp
         setMeta(view, "Ruler", resolveNodeId(data))
         return view
@@ -895,9 +904,9 @@ class UiRenderer(
             if (width <= 0 || height <= 0) return
 
             // Always draw "landscape style": use the longer dimension as the ruler length.
-            // If the view is taller than it is wide (portrait), rotate the canvas so we
-            // still get a long horizontal ruler instead of a cramped one.
-            val rotated = height > width
+            // If the device is in portrait, rotate the canvas so we use the long physical axis.
+            val metrics = resources.displayMetrics
+            val rotated = metrics.heightPixels > metrics.widthPixels
             val drawWidth: Int
             val drawHeight: Int
             if (rotated) {
@@ -913,7 +922,6 @@ class UiRenderer(
 
             canvas.drawRect(0f, 0f, drawWidth.toFloat(), drawHeight.toFloat(), bgPaint)
 
-            val metrics = resources.displayMetrics
             // Use xdpi consistently for a horizontal (landscape) ruler.
             val ppi = metrics.xdpi
             if (ppi <= 0f) {

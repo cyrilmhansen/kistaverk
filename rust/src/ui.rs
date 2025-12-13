@@ -829,6 +829,8 @@ pub struct Ruler {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height_dp: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub fill_height: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'static str>,
 }
 
@@ -838,6 +840,7 @@ impl Ruler {
             kind: "Ruler",
             orientation: None,
             height_dp: None,
+            fill_height: None,
             content_description: None,
         }
     }
@@ -848,8 +851,14 @@ impl Ruler {
         self
     }
 
+    #[allow(dead_code)]
     pub fn height_dp(mut self, value: u32) -> Self {
         self.height_dp = Some(value);
+        self
+    }
+
+    pub fn fill_height(mut self, value: bool) -> Self {
+        self.fill_height = Some(value);
         self
     }
 
