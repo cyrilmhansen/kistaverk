@@ -11,6 +11,39 @@ GMP_LIBS_DIR="$PROJECT_ROOT/rust/libs/android"
 # Check just one architecture to verify presence (assuming all built together)
 CHECK_FILE="$GMP_LIBS_DIR/aarch64-linux-android/lib/libgmp.a"
 
+# --- Setup Environment from local.properties ---
+LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
+if [ -f "$LOCAL_PROPS" ]; then
+    echo "📄 Reading configuration from $LOCAL_PROPS"
+    
+    # Extract sdk.dir
+    SDK_DIR=$(grep "^sdk.dir" "$LOCAL_PROPS" | cut -d'=' -f2)
+    if [ -n "$SDK_DIR" ]; then
+        export ANDROID_HOME="$SDK_DIR"
+        export ANDROID_SDK_ROOT="$SDK_DIR"
+        echo "   ANDROID_HOME set to $ANDROID_HOME"
+    fi
+    
+    # Extract ndk.dir
+    NDK_DIR=$(grep "^ndk.dir" "$LOCAL_PROPS" | cut -d'=' -f2)
+    if [ -n "$NDK_DIR" ]; then
+        export ANDROID_NDK_HOME="$NDK_DIR"
+        echo "   ANDROID_NDK_HOME set to $ANDROID_NDK_HOME"
+    fi
+fi
+
+# Fallback: Try to find NDK in standard locations if not set
+if [ -z "$ANDROID_NDK_HOME" ] && [ -n "$ANDROID_HOME" ]; then
+    if [ -d "$ANDROID_HOME/ndk" ]; then
+        # Use the latest NDK version found
+        LATEST_NDK=$(ls -1 "$ANDROID_HOME/ndk" | sort -V | tail -n1)
+        if [ -n "$LATEST_NDK" ]; then
+            export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$LATEST_NDK"
+            echo "   Found NDK in standard location: $ANDROID_NDK_HOME"
+        fi
+    fi
+fi
+
 # --- Step 1: Check/Build Native Libraries ---
 echo "🔍 Checking for pre-built math libraries..."
 

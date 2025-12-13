@@ -7,9 +7,20 @@
 set -e  # Exit on error
 
 # Configuration
-NDK_PATH="${ANDROID_NDK_HOME:-${ANDROID_HOME}/ndk/$(ls ${ANDROID_HOME}/ndk | head -1)}"
+if [ -n "$ANDROID_NDK_HOME" ]; then
+    NDK_PATH="$ANDROID_NDK_HOME"
+elif [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME/ndk" ]; then
+    # Find latest NDK
+    LATEST_NDK=$(ls -1 "$ANDROID_HOME/ndk" | sort -V | tail -n1)
+    if [ -n "$LATEST_NDK" ]; then
+        NDK_PATH="$ANDROID_HOME/ndk/$LATEST_NDK"
+    fi
+fi
+
 if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
-    echo "Error: Android NDK not found. Please set ANDROID_NDK_HOME or ANDROID_HOME."
+    echo "Error: Android NDK not found."
+    echo "Please set ANDROID_NDK_HOME environment variable,"
+    echo "or ensure ANDROID_HOME is set and contains an 'ndk' directory."
     exit 1
 fi
 
