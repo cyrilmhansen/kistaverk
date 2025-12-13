@@ -43,7 +43,8 @@ android {
     }
 
     buildFeatures {
-        buildConfig = false
+        // Needed for custom BuildConfig fields (GIT_COMMIT, version info)
+        buildConfig = true
     }
 
     packaging {
