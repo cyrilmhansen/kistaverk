@@ -66,7 +66,7 @@ android {
         jniLibs.srcDir("src/main/jniLibs")
     }
 
-    tasks.register<Exec>("cargoBuild") {
+    tasks.register("cargoBuild") {
         // 1. Find Rust (Keeping your search logic, which is good)
          val possibleLocations = listOf(
             file("../rust"),        // If rust is a sibling of 'app' (standard case)
@@ -86,85 +86,84 @@ android {
 
         // Resolve cargo from PATH (portable)
         val cargoPath = System.getenv("CARGO") ?: "cargo"
-
-        // Configuration
-        workingDir = rustDir
-        executable = cargoPath
         val ndkDir = android.ndkDirectory
-        environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
-        environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
-        environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
-        environment("CFLAGS", "-Os")
 
-        // Setup GMP/MPFR/MPC environment variables for Android cross-compilation
-        // We need to point to the architecture-specific pre-built libraries
-        val targetArch = "aarch64-linux-android" // Matches the -t arm64-v8a below
-        val gmpLibsDir = File(rustDir, "libs/android/$targetArch/lib")
-        val gmpIncludeDir = File(rustDir, "libs/android/$targetArch/include")
-        
-        environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
-        environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
-        environment("GMP_STATIC", "1")
-        
-        environment("MPFR_LIB_DIR", gmpLibsDir.absolutePath)
-        environment("MPFR_INCLUDE_DIR", gmpIncludeDir.absolutePath)
-        environment("MPFR_STATIC", "1")
-
-        environment("MPC_LIB_DIR", gmpLibsDir.absolutePath)
-        environment("MPC_INCLUDE_DIR", gmpIncludeDir.absolutePath)
-        environment("MPC_STATIC", "1")
-
-        environment("GMP_MPFR_SYS_USE_PKG_CONFIG", "0")
-
-        // Check if we should enable precision feature (default to true)
-        val enablePrecision = !project.hasProperty("enablePrecision") || 
-                             project.property("enablePrecision").toString().toBoolean()
-        
-        val argsList = mutableListOf(
-            "ndk",
-            "-t", "arm64-v8a",
-            "-o", jniLibsDir.absolutePath, // <--- HERE: Absolute path guaranteed!
-            "build", "--release"
-        )
-
-        // Create a temporary Cargo config file with the environment variables
-        // This is more reliable than passing them via CLI args which can have quoting issues
-        val envConfigContent = """
-            [env]
-            GMP_LIB_DIR = "${gmpLibsDir.absolutePath}"
-            GMP_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
-            GMP_STATIC = "1"
-            MPFR_LIB_DIR = "${gmpLibsDir.absolutePath}"
-            MPFR_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
-            MPFR_STATIC = "1"
-            MPC_LIB_DIR = "${gmpLibsDir.absolutePath}"
-            MPC_INCLUDE_DIR = "${gmpIncludeDir.absolutePath}"
-            MPC_STATIC = "1"
-            GMP_MPFR_SYS_USE_PKG_CONFIG = "0"
-        """.trimIndent()
-        
-        val envConfigFile = File(rustDir, "cargo_env_config.toml")
-        
-        args(argsList)
-
-        doFirst {
-            println("✅ Rust source : ${rustDir.absolutePath}")
-            println("✅ Destination libs : ${jniLibsDir.absolutePath}")
-
-            // Create the directory if it doesn't exist (to prevent cargo from complaining)
+        doLast {
+            // Create the directory if it doesn't exist
             if (!jniLibsDir.exists()) {
                 jniLibsDir.mkdirs()
             }
-            // Create the temporary config file
-            envConfigFile.writeText(envConfigContent)
-        }
+            
+            // Define the architectures to build for, mapping Android ABI to Rust target and lib folder name
+            val architectures = listOf(
+                Triple("arm64-v8a", "aarch64-linux-android", "aarch64-linux-android"),
+                Triple("armeabi-v7a", "armv7-linux-androideabi", "armv7a-linux-androideabi")
+            )
 
-        doLast {
-            // Clean up the temporary config file
-            if (envConfigFile.exists()) {
-                envConfigFile.delete()
-                println("🗑️ Cleaned up temporary Cargo config file: ${envConfigFile.absolutePath}")
+            // Check if we should enable precision feature
+            val enablePrecision = project.ext.has("enablePrecision") && 
+                                  project.ext.get("enablePrecision").toString().toBoolean()
+            val precisionFeatureArg = if (enablePrecision) "precision" else ""
+
+            architectures.forEach { (androidAbi, rustTarget, libArchFolder) ->
+                println("🔨 Building Rust library for Android ABI: $androidAbi (Rust target: $rustTarget)...")
+                
+                val gmpLibsDir = File(rustDir, "libs/android/$libArchFolder/lib")
+                val gmpIncludeDir = File(rustDir, "libs/android/$libArchFolder/include")
+
+                // Ensure the architecture-specific jniLibs directory exists
+                val currentAbiJniLibsDir = File(jniLibsDir, androidAbi)
+                if (!currentAbiJniLibsDir.exists()) {
+                    currentAbiJniLibsDir.mkdirs()
+                }
+
+                exec {
+                    workingDir = rustDir
+                    executable = cargoPath
+                    // Common environment variables
+                    environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
+                    environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
+                    environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
+                    environment("CFLAGS", "-Os")
+                    
+                    // GMP/MPFR/MPC environment variables, dynamically set per architecture
+                    environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
+                    environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+                    environment("GMP_STATIC", "1")
+                    
+                    environment("MPFR_LIB_DIR", gmpLibsDir.absolutePath)
+                    environment("MPFR_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+                    environment("MPFR_STATIC", "1")
+
+                    environment("MPC_LIB_DIR", gmpLibsDir.absolutePath)
+                    environment("MPC_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+                    environment("MPC_STATIC", "1")
+
+                    environment("GMP_MPFR_SYS_USE_PKG_CONFIG", "0")
+                    
+                    // Base command line arguments for cargo ndk build
+                    val baseArgs = mutableListOf(
+                        "ndk",
+                        "-t", androidAbi, // Use Android ABI here
+                        "-o", currentAbiJniLibsDir.absolutePath, // Output to ABI-specific folder
+                        "build", 
+                        "--release",
+                        "--target", rustTarget // Explicitly pass the Rust target
+                    )
+
+                    // Add precision feature if enabled
+                    if (precisionFeatureArg.isNotBlank()) {
+                        baseArgs.add("--features")
+                        baseArgs.add(precisionFeatureArg)
+                    }
+                    
+                    commandLine = baseArgs
+                }
+                println("✅ Built for $androidAbi (Rust target: $rustTarget). Output in ${currentAbiJniLibsDir.absolutePath}")
             }
+            // Clean up the temporary config file if it was created.
+            // The temporary config file logic has been replaced by direct environment variables.
+            // So no cleanup needed here.
         }
     }
 
