@@ -105,6 +105,15 @@ android {
         environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
         environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
         environment("GMP_STATIC", "1")
+        
+        environment("MPFR_LIB_DIR", gmpLibsDir.absolutePath)
+        environment("MPFR_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+        environment("MPFR_STATIC", "1")
+
+        environment("MPC_LIB_DIR", gmpLibsDir.absolutePath)
+        environment("MPC_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+        environment("MPC_STATIC", "1")
+
         environment("GMP_MPFR_SYS_USE_PKG_CONFIG", "0")
 
         // Check if we should enable precision feature (default to true)
