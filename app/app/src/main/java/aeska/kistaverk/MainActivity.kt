@@ -539,7 +539,7 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == PERMISSION_LOCATION) {
-            sensors.onPermissionResult(requestCode, grantResults, xemptyMap<String, String>())
+            sensors.onPermissionResult(requestCode, grantResults, emptyMap<String, String>())
         } else if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
             cameraManager.onPermissionResult(grantResults)
         }
