@@ -39,8 +39,8 @@ echo "🚀 Starting Android Gradle Build..."
 # Determine task (default to assembleDebug)
 TASK="${1:-assembleDebug}"
 
-cd "$PROJECT_ROOT"
-"$PROJECT_ROOT/app/gradlew" "app:$TASK"
+cd "$PROJECT_ROOT/app"
+./gradlew "app:$TASK"
 
 echo ""
 echo "🎉 Build Complete!"
