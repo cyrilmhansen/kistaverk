@@ -14,6 +14,8 @@ CHECK_FILE="$GMP_LIBS_DIR/aarch64-linux-android/lib/libgmp.a"
 USE_UPX="${USE_UPX:-true}"
 # Allow ABI selection (arm64, armv7, both)
 ABI_PROP="${abi:-}"
+# Precision feature (default: false)
+ENABLE_PRECISION="${enablePrecision:-false}"
 
 # --- Setup Environment from local.properties ---
 LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
@@ -50,6 +52,7 @@ fi
 
 # --- Step 1: Check/Build Native Libraries ---
 echo "🔍 Checking for pre-built math libraries..."
+echo "   Config: ABI=${ABI_PROP:-arm64} USE_UPX=${USE_UPX} enablePrecision=${ENABLE_PRECISION} SKIP_TESTS=${SKIP_TESTS:-false}"
 
 if [ -f "$CHECK_FILE" ]; then
     echo "✅ Pre-built libraries found at:"
@@ -96,9 +99,9 @@ TASK="${1:-assembleDebug}"
 
 cd "$PROJECT_ROOT/app"
 if [ -n "$ABI_PROP" ]; then
-    ./gradlew -PuseUpx="$USE_UPX" -Pabi="$ABI_PROP" "app:$TASK"
+    ./gradlew -PuseUpx="$USE_UPX" -Pabi="$ABI_PROP" -PenablePrecision="$ENABLE_PRECISION" "app:$TASK"
 else
-    ./gradlew -PuseUpx="$USE_UPX" "app:$TASK"
+    ./gradlew -PuseUpx="$USE_UPX" -PenablePrecision="$ENABLE_PRECISION" "app:$TASK"
 fi
 
 echo ""

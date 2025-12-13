@@ -755,6 +755,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_mut)]
     fn test_sql_error_handling() {
         let mut engine = SqlEngine::new().unwrap();
         

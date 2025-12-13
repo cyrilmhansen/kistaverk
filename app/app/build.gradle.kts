@@ -103,7 +103,7 @@ android {
         val rustDir = foundRustDir.canonicalFile
         val jniLibsDir = File(projectDir, "src/main/jniLibs")
         val enablePrecisionProvider = providers.provider {
-            currentProject.extensions.extraProperties.get("enablePrecision")?.toString()?.toBoolean() ?: false
+            (currentProject.findProperty("enablePrecision") as String?)?.toBoolean() ?: false
         }
 
         // Resolve cargo from PATH (portable)
