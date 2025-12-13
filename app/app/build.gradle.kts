@@ -102,18 +102,12 @@ android {
         }
         val rustDir = foundRustDir.canonicalFile
         val jniLibsDir = File(projectDir, "src/main/jniLibs")
-        val ndkDirPath = android.ndkDirectory
         val enablePrecisionProvider = providers.provider {
             currentProject.extensions.extraProperties.get("enablePrecision")?.toString()?.toBoolean() ?: false
         }
 
-        // 2. Define the destination as ABSOLUTE (No more ../..)
-        // "this.projectDir" always points to the module directory (the 2nd 'app')
-        val jniLibsDir = File(projectDir, "src/main/jniLibs")
-
         // Resolve cargo from PATH (portable)
         val cargoPath = System.getenv("CARGO") ?: "cargo"
-        val ndkDir = android.ndkDirectory
 
         doLast {
             // Create the directory if it doesn't exist
