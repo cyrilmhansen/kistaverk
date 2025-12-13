@@ -41,6 +41,10 @@ Kistaverk follows a **Unidirectional Data Flow** architecture, heavily inspired 
           - **Targets**: Multiple ARM64 instruction set versions (ARMv8.0-ARMv8.5) for device-specific optimization
           - **Documentation**: See `rust/ARM64_OPTIMIZATIONS.md` for build instructions
 
+### 4. Testing Strategy
+* **Host unit tests:** `cargo test` for fast, platform-agnostic logic coverage.
+* **Android instrumented tests:** Espresso/UI flows that load the UPX-packed `libkistaverk_core.so` on device/emulator to validate JNI load/init hooks and critical screens. Add these to ensure 16 KB alignment and UPX packaging work end-to-end on real Android runtimes.
+
 ---
 
 ## 🛡️ Error Handling & Stability

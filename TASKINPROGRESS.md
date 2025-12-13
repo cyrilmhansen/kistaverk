@@ -71,6 +71,7 @@ All AI agents contributing to this repository must specify their name and versio
 1.  Monitor scheduler stability.
 2.  Test Android precision build on device.
 3.  Fix disabled PDF preview tests (Robolectric issue).
+4.  Add Android instrumented tests that load the UPX-packed `libkistaverk_core.so` on device/emulator (verify JNI load/init and critical screens with 16 KB page alignment).
 
 ## Planned Features
 
