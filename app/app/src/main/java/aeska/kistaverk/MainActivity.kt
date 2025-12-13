@@ -29,6 +29,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatDelegate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -66,6 +67,9 @@ class MainActivity : ComponentActivity() {
     private var lastFileOutputMime: String? = null
     private var autoRefreshJob: Job? = null
     private val snapshotKey = "rust_snapshot"
+    private val prefsName = "kistaverk_prefs"
+    private val themeModeKey = "theme_mode"
+    private val themeModeDefault = "system"
 
     private val pickFileLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -301,6 +305,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        applyThemeMode(loadThemeMode())
         super.onCreate(savedInstanceState)
 
         if (!skipNativeLoad) {
@@ -482,13 +487,20 @@ class MainActivity : ComponentActivity() {
         if (restoredSnapshot != null && !handledIncomingIntent) {
             lifecycleScope.launch {
                 restoreSnapshotAndRender(restoredSnapshot)
-                refreshUi("init", bindings = mapOf("system_locale" to getSystemLocale()))
+                refreshUi(
+                    "init",
+                    bindings = mapOf(
+                        "system_locale" to getSystemLocale(),
+                        "theme_mode" to loadThemeMode(),
+                    ),
+                )
             }
         } else if (!handledIncomingIntent) {
             val initialAction = if (entry == "pdf_signature") "pdf_tools_screen" else "init"
             if (initialAction == "init") {
                 val initialBindings = mapOf(
                     "system_locale" to getSystemLocale(),
+                    "theme_mode" to loadThemeMode(),
                 )
                 refreshUi(initialAction, bindings = initialBindings)
             } else {
@@ -687,6 +699,26 @@ class MainActivity : ComponentActivity() {
         return locale.toLanguageTag() // e.g. "en-US", "fr-FR"
     }
 
+    private fun loadThemeMode(): String {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        return prefs.getString(themeModeKey, themeModeDefault) ?: themeModeDefault
+    }
+
+    private fun persistThemeMode(mode: String) {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        prefs.edit().putString(themeModeKey, mode).apply()
+    }
+
+    private fun applyThemeMode(mode: String) {
+        val normalized = mode.trim().lowercase(Locale.US)
+        val nightMode = when (normalized) {
+            "dark" -> AppCompatDelegate.MODE_NIGHT_YES
+            "light" -> AppCompatDelegate.MODE_NIGHT_NO
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
+    }
+
     internal fun refreshUi(
         action: String,
         extras: Map<String, Any?> = emptyMap(),
@@ -697,6 +729,19 @@ class MainActivity : ComponentActivity() {
             val mergedBindings = bindings.toMutableMap()
             readClipboardText()?.let { clip ->
                 mergedBindings.putIfAbsent("clipboard", clip)
+            }
+            if (action == "set_theme") {
+                val mode = mergedBindings["theme_mode"] ?: themeModeDefault
+                persistThemeMode(mode)
+                applyThemeMode(mode)
+                refreshUi(
+                    "init",
+                    bindings = mapOf(
+                        "system_locale" to getSystemLocale(),
+                        "theme_mode" to loadThemeMode(),
+                    ),
+                )
+                return
             }
             val command = JSONObject().apply {
                 put("action", action)
@@ -744,6 +789,21 @@ class MainActivity : ComponentActivity() {
                 val mergedBindings = bindings.toMutableMap()
                 readClipboardText()?.let { clip ->
                     mergedBindings.putIfAbsent("clipboard", clip)
+                }
+                if (action == "set_theme") {
+                    val mode = mergedBindings["theme_mode"] ?: themeModeDefault
+                    persistThemeMode(mode)
+                    applyThemeMode(mode)
+                    withContext(Dispatchers.Main) {
+                        refreshUi(
+                            "init",
+                            bindings = mapOf(
+                                "system_locale" to getSystemLocale(),
+                                "theme_mode" to loadThemeMode(),
+                            ),
+                        )
+                    }
+                    return@launch
                 }
                 val command = JSONObject().apply {
                     put("action", action)

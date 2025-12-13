@@ -343,6 +343,7 @@ pub struct AppState {
     pub counter: i32,
     pub locale: String,
     pub home_filter: String,
+    pub theme_mode: Option<String>,
     pub nav_stack: Vec<Screen>,
     pub last_hash: Option<String>,
     pub last_error: Option<String>,
@@ -431,6 +432,7 @@ impl AppState {
             counter: 0,
             locale: String::new(),
             home_filter: String::new(),
+            theme_mode: None,
             nav_stack: Vec::new(),
             last_hash: None,
             last_error: None,
@@ -579,6 +581,7 @@ impl AppState {
         self.last_shader = None;
         self.last_hash_algo = None;
         self.home_filter.clear();
+        self.theme_mode = None;
         self.toast = None;
         self.hash_reference = None;
         self.hash_match = None;

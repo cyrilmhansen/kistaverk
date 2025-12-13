@@ -1907,6 +1907,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
             if let Some(locale) = bindings.get("system_locale") {
                 crate::update_locale(&mut state, locale);
             }
+            if let Some(mode) = bindings.get("theme_mode") {
+                state.theme_mode = Some(mode.clone());
+            }
         }
         Action::HomeFilter { query } => {
             state.home_filter = query;
@@ -4697,6 +4700,32 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         .padding(12);
         children.push(serde_json::to_value(quick).unwrap());
     }
+
+    let theme_mode = state
+        .theme_mode
+        .as_deref()
+        .unwrap_or("system")
+        .to_ascii_lowercase();
+    let mut theme_buttons: Vec<Value> = Vec::new();
+    for (label, value) in [("System", "system"), ("Light", "light"), ("Dark", "dark")] {
+        let mut button = json!({
+            "type": "Button",
+            "text": label,
+            "action": "set_theme",
+            "id": format!("theme_{value}"),
+            "payload": { "theme_mode": value }
+        });
+        if theme_mode == value {
+            if let Some(obj) = button.as_object_mut() {
+                obj.insert("content_description".into(), Value::String("selected_theme".into()));
+            }
+        }
+        theme_buttons.push(button);
+    }
+    let theme_card = UiCard::new(vec![serde_json::to_value(UiColumn::new(theme_buttons)).unwrap()])
+        .title("🌓 Theme")
+        .padding(12);
+    children.push(serde_json::to_value(theme_card).unwrap());
 
     let mut grouped: BTreeMap<&str, Vec<&Feature>> = BTreeMap::new();
     for feature in filtered.iter().copied() {
