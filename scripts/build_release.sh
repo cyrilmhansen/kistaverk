@@ -69,19 +69,23 @@ else
     fi
 fi
 
-# --- Step 1b: Run Rust tests ---
-echo ""
-echo "🧪 Running Rust tests..."
-pushd "$PROJECT_ROOT/rust" >/dev/null
-cargo test --locked
-popd >/dev/null
+# --- Step 1b: Run Rust tests (unless skipped) ---
+if [ "${SKIP_TESTS:-false}" != "true" ]; then
+    echo ""
+    echo "🧪 Running Rust tests..."
+    pushd "$PROJECT_ROOT/rust" >/dev/null
+    cargo test --locked
+    popd >/dev/null
 
-# --- Step 1c: Run Kotlin/JVM unit tests ---
-echo ""
-echo "🧪 Running Kotlin unit tests..."
-pushd "$PROJECT_ROOT/app" >/dev/null
-./gradlew test
-popd >/dev/null
+    # --- Step 1c: Run Kotlin/JVM unit tests ---
+    echo ""
+    echo "🧪 Running Kotlin unit tests..."
+    pushd "$PROJECT_ROOT/app" >/dev/null
+    ./gradlew test
+    popd >/dev/null
+else
+    echo "⏭️  SKIP_TESTS=true, skipping Rust and Kotlin tests."
+fi
 
 # --- Step 2: Run Gradle Build ---
 echo ""
