@@ -39,6 +39,10 @@ sqlite = { version = "0.37.0", features = ["bundled"] }
 cron = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rhai = { version = "1.18", features = ["std", "sync", "serde"] }
+rug = { version = "1.24", optional = true }
+
+[features]
+precision = ["rug"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
@@ -52,3 +56,10 @@ strip = "symbols"
 
 [profile.dev]
 panic = "unwind"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "number_performance"
+harness = false
