@@ -74,23 +74,27 @@ echo ""
 for TARGET in "${TARGETS[@]}"; do
     echo "=== Building for $TARGET ==="
     
-    # Determine toolchain prefix
+    # Determine toolchain prefix and GMP ABI
     case "$TARGET" in
         aarch64-linux-android)
             TOOLCHAIN="aarch64-linux-android"
             HOST="aarch64-linux-android"
+            GMP_ABI="64"
             ;;
         armv7a-linux-androideabi)
             TOOLCHAIN="arm-linux-androideabi"
             HOST="arm-linux-androideabi"
+            GMP_ABI="32"
             ;;
         i686-linux-android)
             TOOLCHAIN="i686-linux-android"
             HOST="i686-linux-android"
+            GMP_ABI="32"
             ;;
         x86_64-linux-android)
             TOOLCHAIN="x86_64-linux-android"
             HOST="x86_64-linux-android"
+            GMP_ABI="64"
             ;;
         *)
             echo "Unknown target: $TARGET"
@@ -117,9 +121,9 @@ for TARGET in "${TARGETS[@]}"; do
     export AR="llvm-ar"
     export RANLIB="llvm-ranlib"
     export STRIP="llvm-strip"
-    export CFLAGS="--target=$TARGET --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/sysroot -fPIC"
+    export CFLAGS="--target=${TARGET}${API_LEVEL} --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/sysroot -fPIC"
     export CXXFLAGS="$CFLAGS"
-    export LDFLAGS="--target=$TARGET --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/sysroot"
+    export LDFLAGS="--target=${TARGET}${API_LEVEL} --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
     
     # Build GMP
     echo "Building GMP..."
@@ -134,7 +138,7 @@ for TARGET in "${TARGETS[@]}"; do
         --enable-static \
         --disable-shared \
         --with-pic \
-        ABI=$API_LEVEL
+        ABI=$GMP_ABI
     make -j$(nproc)
     make install
     cd ..
@@ -152,8 +156,7 @@ for TARGET in "${TARGETS[@]}"; do
         --enable-static \
         --disable-shared \
         --with-pic \
-        --with-gmp="$OUTPUT_DIR/$TARGET" \
-        ABI=$API_LEVEL
+        --with-gmp="$OUTPUT_DIR/$TARGET"
     make -j$(nproc)
     make install
     cd ..
@@ -172,11 +175,9 @@ for TARGET in "${TARGETS[@]}"; do
         --disable-shared \
         --with-pic \
         --with-gmp="$OUTPUT_DIR/$TARGET" \
-        --with-mpfr="$OUTPUT_DIR/$TARGET" \
-        ABI=$API_LEVEL
+        --with-mpfr="$OUTPUT_DIR/$TARGET"
     make -j$(nproc)
     make install
-    cd ..
     
     # Clean up
     cd ..
