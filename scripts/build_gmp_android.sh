@@ -15,6 +15,26 @@ elif [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME/ndk" ]; then
     if [ -n "$LATEST_NDK" ]; then
         NDK_PATH="$ANDROID_HOME/ndk/$LATEST_NDK"
     fi
+else
+    # Try to read local.properties
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
+    
+    if [ -f "$LOCAL_PROPS" ]; then
+        NDK_DIR=$(grep "^ndk.dir" "$LOCAL_PROPS" | cut -d'=' -f2)
+        if [ -n "$NDK_DIR" ]; then
+            NDK_PATH="$NDK_DIR"
+        else
+            SDK_DIR=$(grep "^sdk.dir" "$LOCAL_PROPS" | cut -d'=' -f2)
+            if [ -n "$SDK_DIR" ] && [ -d "$SDK_DIR/ndk" ]; then
+                LATEST_NDK=$(ls -1 "$SDK_DIR/ndk" | sort -V | tail -n1)
+                if [ -n "$LATEST_NDK" ]; then
+                    NDK_PATH="$SDK_DIR/ndk/$LATEST_NDK"
+                fi
+            fi
+        fi
+    fi
 fi
 
 if [ -z "$NDK_PATH" ] || [ ! -d "$NDK_PATH" ]; then
