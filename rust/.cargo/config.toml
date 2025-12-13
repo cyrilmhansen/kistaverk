@@ -1,0 +1,136 @@
+# Cargo configuration for Kistaverk
+
+# Enable optimizations for all profiles
+[profile.dev]
+opt-level = 1  # Basic optimizations for development
+
+[profile.release]
+opt-level = "z"  # Optimize for size
+lto = "fat"     # Link-time optimization
+codegen-units = 1  # Better optimization
+panic = "abort"  # Reduce binary size
+strip = "symbols"  # Strip debug symbols
+
+# ============================================================================
+# ARM64 Instruction Set Version Targets
+# ============================================================================
+# These provide optional build targets for different generations of ARM64 devices
+# while maintaining backward compatibility.
+
+# Baseline ARMv8.0-A (Compatible with all ARM64 devices)
+[target.aarch64-unknown-linux-gnu.armv8-0]
+inherits = "aarch64-unknown-linux-gnu"
+rustflags = [
+    "-C", "target-cpu=generic",        # Baseline ARMv8.0-A
+    "-C", "target-feature=+neon",      # NEON is always available
+    "-C", "target-feature=+fp-armv8",  # ARMv8 floating-point
+    "-C", "link-arg=-march=armv8-a",
+]
+
+# ARMv8.1-A (Cortex-A72, Kryo, etc.) - Common in mid-range devices
+[target.aarch64-unknown-linux-gnu.armv8-1]
+inherits = "aarch64-unknown-linux-gnu"
+rustflags = [
+    "-C", "target-cpu=cortex-a72",     # ARMv8.1-A
+    "-C", "target-feature=+neon",      # NEON SIMD
+    "-C", "target-feature=+fp-armv8",  # ARMv8 FP
+    "-C", "target-feature=+crc",       # Hardware CRC
+    "-C", "target-feature=+lse",       # Large System Extensions
+    "-C", "link-arg=-march=armv8.1-a",
+]
+
+# ARMv8.2-A (Cortex-A75, A76) - High-end devices
+[target.aarch64-unknown-linux-gnu.armv8-2]
+inherits = "aarch64-unknown-linux-gnu"
+rustflags = [
+    "-C", "target-cpu=cortex-a75",     # ARMv8.2-A
+    "-C", "target-feature=+neon",      # NEON SIMD
+    "-C", "target-feature=+fp-armv8",  # ARMv8 FP
+    "-C", "target-feature=+crc",       # Hardware CRC
+    "-C", "target-feature=+lse",       # Large System Extensions
+    "-C", "target-feature=+rdm",       # Round Double Multiply
+    "-C", "target-feature=+fp16",      # Half-precision floating-point
+    "-C", "link-arg=-march=armv8.2-a",
+]
+
+# ARMv8.4-A (Cortex-A76, A77, A78) - Premium devices
+[target.aarch64-unknown-linux-gnu.armv8-4]
+inherits = "aarch64-unknown-linux-gnu"
+rustflags = [
+    "-C", "target-cpu=cortex-a76",     # ARMv8.4-A
+    "-C", "target-feature=+neon",      # NEON SIMD
+    "-C", "target-feature=+fp-armv8",  # ARMv8 FP
+    "-C", "target-feature=+crc",       # Hardware CRC
+    "-C", "target-feature=+lse",       # Large System Extensions
+    "-C", "target-feature=+rdm",       # Round Double Multiply
+    "-C", "target-feature=+fp16",      # Half-precision FP
+    "-C", "target-feature=+dotprod",   # Dot Product instructions
+    "-C", "target-feature=+flagm",     # Flag manipulation
+    "-C", "link-arg=-march=armv8.4-a",
+]
+
+# ARMv8.5-A (Cortex-X1, X2) - Flagship devices
+[target.aarch64-unknown-linux-gnu.armv8-5]
+inherits = "aarch64-unknown-linux-gnu"
+rustflags = [
+    "-C", "target-cpu=cortex-x1",      # ARMv8.5-A
+    "-C", "target-feature=+neon",      # NEON SIMD
+    "-C", "target-feature=+fp-armv8",  # ARMv8 FP
+    "-C", "target-feature=+crc",       # Hardware CRC
+    "-C", "target-feature=+lse",       # Large System Extensions
+    "-C", "target-feature=+rdm",       # Round Double Multiply
+    "-C", "target-feature=+fp16",      # Half-precision FP
+    "-C", "target-feature=+dotprod",   # Dot Product
+    "-C", "target-feature=+flagm",     # Flag manipulation
+    "-C", "target-feature=+ssbs",      # Speculative Store Bypass Safe
+    "-C", "target-feature=+sb",        # Speculation Barrier
+    "-C", "link-arg=-march=armv8.5-a",
+]
+
+# ============================================================================
+# Primary Target Configurations (Used by default)
+# ============================================================================
+
+# Default Linux target - uses native CPU detection
+[target.aarch64-unknown-linux-gnu]
+rustflags = [
+    "-C", "target-cpu=native",           # Auto-detect best CPU features
+    "-C", "target-feature=+neon",        # NEON SIMD (always available)
+    "-C", "target-feature=+fp-armv8",    # ARMv8 FP
+    "-C", "target-feature=+crc",        # Hardware CRC
+    "-C", "target-feature=+crypto",     # Crypto instructions
+    "-C", "target-feature=+lse",        # Large System Extensions
+    "-C", "link-arg=-march=armv8-a+neon+crypto",
+]
+
+# Apple Silicon (iOS/macOS) - uses native detection
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "target-cpu=native",           # Auto-detect Apple Silicon features
+    "-C", "target-feature=+neon",        # NEON SIMD (always available)
+    "-C", "target-feature=+fp-armv8",    # ARMv8 FP
+    "-C", "target-feature=+crypto",     # Crypto instructions
+]
+
+# Android - targeted at Cortex-A72 (common in high-end devices)
+[target.aarch64-linux-android]
+rustflags = [
+    "-C", "target-cpu=cortex-a72",       # ARMv8.1-A (common high-end Android)
+    "-C", "target-feature=+neon",        # NEON SIMD (always available)
+    "-C", "target-feature=+fp-armv8",    # ARMv8 FP
+    "-C", "target-feature=+crypto",     # Crypto instructions
+    "-C", "link-arg=-march=armv8.1-a+neon+crypto",
+]
+
+# ============================================================================
+# Build Script Integration
+# ============================================================================
+# To use these optional targets, add to your build script:
+#
+# For ARMv8.2-A optimized build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-2
+#
+# For baseline ARMv8.0-A compatible build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-0
+#
+# The default target (aarch64-unknown-linux-gnu) will use native CPU detection

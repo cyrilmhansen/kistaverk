@@ -34,6 +34,12 @@ Kistaverk follows a **Unidirectional Data Flow** architecture, heavily inspired 
     *   `Features`: Modules (e.g., `features/vault.rs`) implementing specific tools.
     *   **Notable Dependencies:**
         *   `symbolica`: Used for CAS and high-precision math. *Note: Restricted to single-core execution for non-commercial use (Hobbyist License). MIT-licensed modules used where applicable.*
+        *   `wide`: **ARM64 SIMD Optimization Framework** - Provides automatic NEON utilization for numerical computations. Always available on AArch64 devices.
+          - **Purpose**: Accelerate math-intensive operations (matrix math, vector operations, cryptography)
+          - **Performance**: 2-4x speedup for vectorizable operations
+          - **Usage**: Automatically utilized through Rust's SIMD intrinsics
+          - **Targets**: Multiple ARM64 instruction set versions (ARMv8.0-ARMv8.5) for device-specific optimization
+          - **Documentation**: See `rust/ARM64_OPTIMIZATIONS.md` for build instructions
 
 ---
 

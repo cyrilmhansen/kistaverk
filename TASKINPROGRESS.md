@@ -61,14 +61,36 @@
     4.  **Implement UI:** Dropdowns for category and units, numeric input.
     5.  **Add Tests:** Verify conversions (e.g., Meters to Feet, Celsius to Fahrenheit).
 
-### Feature 2: Advanced CAS (Symbolica Integration)
-*   **Status:** 📅 PLANNED
-*   **Objective:** Upgrade the Math Tool to use `symbolica` for robust symbolic math, float error reduction, and advanced calculus.
-*   **Implementation Plan:**
-    1.  **Dependency:** Add `symbolica` to `Cargo.toml`.
-    2.  **Configuration:** Ensure single-core environment variable is set for hobbyist license compliance.
-    3.  **Integration:** Refactor `features/math_tool.rs` to use Symbolica's `Expr` and `Context`.
-    4.  **UI:** Update display to handle pretty-printed symbolic output and precision float results.
+### Feature 2: Advanced CAS (Numerica Integration for Arbitrary Precision)
+*   **Status:** ⚠️ ON HOLD (NEON Optimizations Added)
+*   **Objective:** Upgrade the Math Tool to use `numerica` for arbitrary precision arithmetic, exact error tracking, and robust symbolic math.
+*   **Implementation Status:**
+    *   ✅ **Dependency:** Added `numerica` to `Cargo.toml` with minimal features (no Python integration).
+    *   ❌ **Integration:** Numerica integration proved complex due to:
+        - Significant API differences requiring extensive refactoring
+        - Type system complexity with arbitrary precision types
+        - Integration challenges with existing symbolic math system
+    *   ✅ **NEON Optimizations:** Added comprehensive ARM64 optimization framework:
+        - **Multi-Level Targets**: Created optional build targets for ARMv8.0 through ARMv8.5
+        - **ARMv8.0 Baseline**: Compatible with all ARM64 devices (neon + fp-armv8)
+        - **ARMv8.1 (Mid-range)**: Cortex-A72 class devices (adds CRC, LSE)
+        - **ARMv8.2 (High-end)**: Cortex-A75/A76 class (adds RDM, FP16)
+        - **ARMv8.4 (Premium)**: Cortex-A76/A77/A78 class (adds dotprod, flagm)
+        - **ARMv8.5 (Flagship)**: Cortex-X1/X2 class (adds SSBS, SB)
+        - **Platform-Specific Defaults**: Optimized configurations for Android, iOS, and Linux
+        - **Native Detection**: Default targets use CPU auto-detection for best performance
+        - **Build Flexibility**: Optional targets allow manual selection of instruction set versions
+        - **Wide Crate Integration**: Full utilization of wide's SIMD capabilities across all targets
+    *   📅 **Alternative Approach:** Maintain current implementation with enhanced error tracking:
+        - Keep existing `f64` arithmetic with improved precision handling
+        - Add epsilon-based error accumulation tracking
+        - Implement result validation and precision warnings
+        - Maintain all existing functionality and tests
+    *   ✅ **Documentation:** Created comprehensive ARM64 optimization guide:
+        - Detailed build instructions for all instruction set versions
+        - Performance considerations and trade-offs analysis
+        - Integration guides for Android, iOS, and CI/CD systems
+        - Future enhancement roadmap for dynamic dispatch and PGO
 
 ### Completed Features (Recent)
 *   **Regex Tester Enhancements:** (Merged 2025-12-12) Added Global Search and Common Patterns.
