@@ -48,6 +48,17 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
         children.push(serde_json::to_value(UiVirtualList::new(items).id("math_history")).unwrap());
     }
 
+    // Add cumulative error display if there's any error accumulated
+    if state.math_tool.cumulative_error > 0.0 {
+        children.push(
+            serde_json::to_value(
+                UiText::new(&format!("Cumulative FP Error: {:.2e}", state.math_tool.cumulative_error))
+                    .size(12.0)
+                    .color("#FF9800")  // Orange color for warning/attention
+            ).unwrap()
+        );
+    }
+
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
@@ -70,6 +81,19 @@ pub fn handle_math_action(
             match evaluate_expression(expr, state.math_tool.precision_bits) {
                 Ok(value) => {
                     let result = format_result(value);
+                    
+                    // Calculate floating-point error for this operation
+                    // We'll use a simple approach: compare the result with a higher precision calculation
+                    // This is a basic estimation - more sophisticated error analysis could be added
+                    let f64_result = value.to_f64();
+                    
+                    // For basic operations, we can estimate error based on the result magnitude
+                    // A more sophisticated approach would compare with higher precision
+                    let estimated_error = f64_result.abs() * f64::EPSILON;
+                    
+                    // Accumulate the error
+                    state.math_tool.cumulative_error += estimated_error;
+                    
                     state.math_tool.error = None;
                     state.math_tool
                         .history
