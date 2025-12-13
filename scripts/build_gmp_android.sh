@@ -132,7 +132,7 @@ for TARGET in "${TARGETS[@]}"; do
     # Build GMP
     echo "Building GMP..."
     if [ ! -f "gmp-${GMP_VERSION}.tar.xz" ]; then
-        curl -L -O "https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
+        curl -f -L -O "https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
     fi
     tar -xf "gmp-${GMP_VERSION}.tar.xz"
     cd "gmp-${GMP_VERSION}"
@@ -150,7 +150,7 @@ for TARGET in "${TARGETS[@]}"; do
     # Build MPFR (depends on GMP)
     echo "Building MPFR..."
     if [ ! -f "mpfr-${MPFR_VERSION}.tar.xz" ]; then
-        curl -L -O "https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.xz"
+        curl -f -L -O "https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.xz"
     fi
     tar -xf "mpfr-${MPFR_VERSION}.tar.xz"
     cd "mpfr-${MPFR_VERSION}"
@@ -168,7 +168,8 @@ for TARGET in "${TARGETS[@]}"; do
     # Build MPC (depends on GMP and MPFR)
     echo "Building MPC..."
     if [ ! -f "mpc-${MPC_VERSION}.tar.gz" ]; then
-        curl -L -O "https://www.multiprecision.org/mpc/download/mpc-${MPC_VERSION}.tar.gz"
+        # Use GNU mirror for better reliability
+        curl -f -L -O "https://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz"
     fi
     tar -xf "mpc-${MPC_VERSION}.tar.gz"
     cd "mpc-${MPC_VERSION}"
