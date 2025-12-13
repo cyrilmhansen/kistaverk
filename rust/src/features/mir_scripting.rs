@@ -51,18 +51,19 @@ impl MirScriptingState {
             .lock()
             .ok();
 
-        let entry = self.entry.trim();
-        let entry = if entry.is_empty() { "main" } else { entry };
+        let entry = self.entry.trim().to_string();
+        let entry = if entry.is_empty() { "main".to_string() } else { entry };
 
         logcat("MIR execute: start");
         logcat(&format!("MIR execute: entry={}", entry));
 
         #[cfg(target_os = "android")]
         {
-            self.execute_android_programmatic(entry);
+            self.execute_android_programmatic(&entry);
             return;
         }
 
+        #[cfg(not(target_os = "android"))]
         let source = match CString::new(self.source.clone()) {
             Ok(v) => v,
             Err(_) => {
@@ -71,7 +72,8 @@ impl MirScriptingState {
             }
         };
 
-        let entry_c = match CString::new(entry) {
+        #[cfg(not(target_os = "android"))]
+        let entry_c = match CString::new(entry.as_str()) {
             Ok(v) => v,
             Err(_) => {
                 self.error = Some("Entry function name contains a NUL byte".to_string());
@@ -79,6 +81,7 @@ impl MirScriptingState {
             }
         };
 
+        #[cfg(not(target_os = "android"))]
         unsafe {
             #[cfg(unix)]
             let mut code_alloc = mir_sys::code_alloc::unix_mmap();
