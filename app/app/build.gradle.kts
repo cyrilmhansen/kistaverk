@@ -96,12 +96,27 @@ android {
         environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
         environment("CFLAGS", "-Os")
 
-        args(
+        // Check if we should enable precision feature
+        val enablePrecision = project.hasProperty("enablePrecision") && 
+                             project.property("enablePrecision").toString().toBoolean()
+        
+        val mut argsList = mutableListOf(
             "ndk",
             "-t", "arm64-v8a",
             "-o", jniLibsDir.absolutePath, // <--- HERE: Absolute path guaranteed!
             "build", "--release"
         )
+        
+        // Add precision feature flag if enabled
+        if (enablePrecision) {
+            argsList.add("--features")
+            argsList.add("precision")
+            println("🔧 Precision feature enabled for Rust build")
+        } else {
+            println("📊 Building without precision feature (standard f64)")
+        }
+        
+        args(argsList)
 
         doFirst {
             println("✅ Rust source : ${rustDir.absolutePath}")
@@ -174,4 +189,33 @@ tasks.register<Exec>("generateDepsMetadata") {
 
 tasks.named("preBuild") {
     dependsOn("generateDepsMetadata")
+}
+
+// Task to build with precision feature enabled
+tasks.register("buildWithPrecision") {
+    group = "build"
+    description = "Build Rust library with precision feature (arbitrary precision arithmetic)"
+    
+    dependsOn("cargoBuild")
+    
+    doFirst {
+        project.ext.set("enablePrecision", true)
+        println("🚀 Building with precision feature enabled")
+        println("   This will enable arbitrary precision arithmetic using GMP/MPFR/MPC")
+        println("   Note: Requires prebuilt Android libraries from scripts/build_gmp_android.sh")
+    }
+}
+
+// Task to build without precision feature (default)
+tasks.register("buildWithoutPrecision") {
+    group = "build"
+    description = "Build Rust library without precision feature (standard f64 arithmetic)"
+    
+    dependsOn("cargoBuild")
+    
+    doFirst {
+        project.ext.set("enablePrecision", false)
+        println("⚡ Building without precision feature (default)")
+        println("   This uses standard f64 arithmetic - faster build, smaller APK")
+    }
 }
