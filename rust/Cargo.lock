@@ -1721,7 +1721,6 @@ dependencies = [
  "image 0.24.9",
  "infer",
  "jni",
- "libc",
  "lopdf",
  "md-5",
  "md4",
@@ -1950,6 +1949,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen",
  "cc",
+ "libc",
 ]
 
 [[package]]

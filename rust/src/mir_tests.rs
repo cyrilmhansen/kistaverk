@@ -4,62 +4,11 @@ use mir_sys::*;
 use std::ffi::{CStr, CString};
 use std::ptr;
 
-#[cfg(unix)]
-mod allocator {
-    use super::*;
-    use libc::{
-        c_int, c_void, mmap, mprotect, munmap, size_t, MAP_ANONYMOUS, MAP_FAILED, MAP_PRIVATE,
-        PROT_EXEC, PROT_READ, PROT_WRITE,
-    };
-    use std::ptr;
-
-    unsafe extern "C" fn test_mem_map(len: size_t, _user_data: *mut c_void) -> *mut c_void {
-        let ptr = mmap(
-            ptr::null_mut(),
-            len,
-            PROT_READ | PROT_WRITE,
-            MAP_PRIVATE | MAP_ANONYMOUS,
-            -1,
-            0,
-        );
-        if ptr == MAP_FAILED { ptr::null_mut() } else { ptr }
-    }
-
-    unsafe extern "C" fn test_mem_unmap(ptr: *mut c_void, len: size_t, _user_data: *mut c_void) -> c_int {
-        munmap(ptr, len)
-    }
-
-    unsafe extern "C" fn test_mem_protect(
-        ptr: *mut c_void,
-        len: size_t,
-        prot: MIR_mem_protect_t,
-        _user_data: *mut c_void,
-    ) -> c_int {
-        let native_prot = if prot == MIR_mem_protect_PROT_WRITE_EXEC {
-            PROT_READ | PROT_WRITE
-        } else if prot == MIR_mem_protect_PROT_READ_EXEC {
-            PROT_READ | PROT_EXEC
-        } else {
-            return -1;
-        };
-        if mprotect(ptr, len, native_prot) != 0 { -1 } else { 0 }
-    }
-
-    pub(super) fn get_test_allocator() -> MIR_code_alloc {
-        MIR_code_alloc {
-            mem_map: Some(test_mem_map),
-            mem_unmap: Some(test_mem_unmap),
-            mem_protect: Some(test_mem_protect),
-            user_data: ptr::null_mut(),
-        }
-    }
-}
-
 #[test]
 fn test_mir_load_from_string_and_exec() {
     unsafe {
         #[cfg(unix)]
-        let mut code_alloc = allocator::get_test_allocator();
+        let mut code_alloc = mir_sys::code_alloc::unix_mmap();
         #[cfg(unix)]
         let ctx = _MIR_init(ptr::null_mut(), &mut code_alloc);
         #[cfg(not(unix))]
