@@ -67,7 +67,7 @@ pub fn handle_math_action(
                 state.math_tool.error = Some("expression_empty".into());
                 return;
             }
-            match evaluate_expression(expr) {
+            match evaluate_expression(expr, state.math_tool.precision_bits) {
                 Ok(value) => {
                     let result = format_result(value);
                     state.math_tool.error = None;
@@ -92,7 +92,7 @@ pub fn handle_math_action(
     }
 }
 
-pub fn evaluate_expression(expr: &str) -> Result<Number, String> {
+pub fn evaluate_expression(expr: &str, precision_bits: u32) -> Result<Number, String> {
     if let Some((inner, var)) = extract_integ_call(expr) {
         let ast = parse_symbolic(&inner)?;
         let integral = integrate(&ast, &var);
@@ -111,7 +111,7 @@ pub fn evaluate_expression(expr: &str) -> Result<Number, String> {
 
     let tokens = tokenize(expr)?;
     let rpn = shunting_yard(&tokens)?;
-    eval_rpn(&rpn)
+    eval_rpn(&rpn, precision_bits)
 }
 
 fn extract_deriv_call(expr: &str) -> Option<String> {
@@ -911,18 +911,39 @@ fn shunting_yard(tokens: &[Token]) -> Result<Vec<RpnToken>, String> {
     Ok(output)
 }
 
-fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
+fn eval_rpn(tokens: &[RpnToken], precision_bits: u32) -> Result<Number, String> {
     let mut stack: Vec<Number> = Vec::new();
     for token in tokens {
         match token {
             RpnToken::NumberStr(n) => {
                 // Convert string to Number at evaluation time
-                let value = match n.as_str() {
-                    "pi" => Number::from_f64(PI),
-                    "e" => Number::from_f64(E),
-                    _ => {
-                        let parsed = n.parse::<f64>().map_err(|_| format!("invalid_number:{n}"))?;
-                        Number::from_f64(parsed)
+                let value = if precision_bits > 0 {
+                    #[cfg(feature = "precision")]
+                    {
+                        use rug::Float;
+                        let value = match n.as_str() {
+                            "pi" => Float::with_val(precision_bits, PI),
+                            "e" => Float::with_val(precision_bits, E),
+                            _ => {
+                                let parsed = n.parse::<f64>().map_err(|_| format!("invalid_number:{n}"))?;
+                                Float::with_val(precision_bits, parsed)
+                            }
+                        };
+                        Number::from_rug_float(value)
+                    }
+                    #[cfg(not(feature = "precision"))]
+                    {
+                        return Err("precision feature required for arbitrary precision".into());
+                    }
+                } else {
+                    // Use standard f64 precision
+                    match n.as_str() {
+                        "pi" => Number::from_f64(PI),
+                        "e" => Number::from_f64(E),
+                        _ => {
+                            let parsed = n.parse::<f64>().map_err(|_| format!("invalid_number:{n}"))?;
+                            Number::from_f64(parsed)
+                        }
                     }
                 };
                 stack.push(value);
@@ -950,7 +971,7 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
                     }
                     Operator::Div => {
                         let (b, a) = pop_two(&mut stack);
-                        if b.to_f64().abs() < f64::EPSILON {
+                        if b.clone().to_f64().abs() < f64::EPSILON {
                             return Err("division_by_zero".into());
                         }
                         a / b
@@ -964,7 +985,7 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
                         Number::from_f64(-a.to_f64())
                     }
                 };
-                if !result.to_f64().is_finite() {
+                if !result.clone().to_f64().is_finite() {
                     return Err("non_finite_result".into());
                 }
                 stack.push(result);
@@ -973,27 +994,80 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
                 let Some(arg) = stack.pop() else {
                     return Err("missing_operand".into());
                 };
-                let res = match name.as_str() {
-                    "sin" => Number::from_f64(arg.to_f64().sin()),
-                    "cos" => Number::from_f64(arg.to_f64().cos()),
-                    "tan" => Number::from_f64(arg.to_f64().tan()),
-                    "exp" => Number::from_f64(arg.to_f64().exp()),
-                    "atan" => Number::from_f64(arg.to_f64().atan()),
-                    "sqrt" => {
-                        if arg.to_f64() < 0.0 {
-                            return Err("sqrt_of_negative".into());
-                        }
-                        Number::from_f64(arg.to_f64().sqrt())
+                let res = if precision_bits > 0 {
+                    #[cfg(feature = "precision")]
+                    {
+                        use rug::Float;
+                        let result = match name.as_str() {
+                            "sin" => {
+                                let arg_float = arg.to_rug_float();
+                                Number::from_rug_float(arg_float.sin())
+                            }
+                            "cos" => {
+                                let arg_float = arg.to_rug_float();
+                                Number::from_rug_float(arg_float.cos())
+                            }
+                            "tan" => {
+                                let arg_float = arg.to_rug_float();
+                                Number::from_rug_float(arg_float.tan())
+                            }
+                            "exp" => {
+                                let arg_float = arg.to_rug_float();
+                                Number::from_rug_float(arg_float.exp())
+                            }
+                            "atan" => {
+                                let arg_float = arg.to_rug_float();
+                                Number::from_rug_float(arg_float.atan())
+                            }
+                            "sqrt" => {
+                                let arg_float = arg.to_rug_float();
+                                if arg_float < Float::with_val(precision_bits, 0.0) {
+                                    return Err("sqrt_of_negative".into());
+                                }
+                                Number::from_rug_float(arg_float.sqrt())
+                            }
+                            "log" => {
+                                let arg_float = arg.to_rug_float();
+                                if arg_float <= Float::with_val(precision_bits, 0.0) {
+                                    return Err("log_non_positive".into());
+                                }
+                                Number::from_rug_float(arg_float.ln())
+                            }
+                            other => return Err(format!("unknown_function:{other}")),
+                        };
+                        result
                     }
-                    "log" => {
-                        if arg.to_f64() <= 0.0 {
-                            return Err("log_non_positive".into());
-                        }
-                        Number::from_f64(arg.to_f64().ln())
+                    #[cfg(not(feature = "precision"))]
+                    {
+                        return Err("precision feature required for arbitrary precision".into());
                     }
-                    other => return Err(format!("unknown_function:{other}")),
+                } else {
+                    // Use standard f64 precision
+                    match name.as_str() {
+                        "sin" => Number::from_f64(arg.to_f64().sin()),
+                        "cos" => Number::from_f64(arg.to_f64().cos()),
+                        "tan" => Number::from_f64(arg.to_f64().tan()),
+                        "exp" => Number::from_f64(arg.to_f64().exp()),
+                        "atan" => Number::from_f64(arg.to_f64().atan()),
+                        "sqrt" => {
+                            if arg.clone().to_f64() < 0.0 {
+                                return Err("sqrt_of_negative".into());
+                            }
+                            Number::from_f64(arg.to_f64().sqrt())
+                        }
+                        "log" => {
+                            if arg.clone().to_f64() <= 0.0 {
+                                return Err("log_non_positive".into());
+                            }
+                            Number::from_f64(arg.to_f64().ln())
+                        }
+                        other => return Err(format!("unknown_function:{other}")),
+                    }
                 };
-                if !res.to_f64().is_finite() {
+                
+                // Check if result is finite (convert to f64 for checking)
+                let f64_val = res.clone().to_f64();
+                if !f64_val.is_finite() {
                     return Err("non_finite_result".into());
                 }
                 stack.push(res);
@@ -1002,7 +1076,7 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
     }
 
     if stack.len() == 1 {
-        Ok(stack[0])
+        Ok(stack[0].clone())
     } else {
         Err("invalid_expression".into())
     }
@@ -1037,13 +1111,13 @@ mod tests {
 
     #[test]
     fn respects_operator_precedence() {
-        let res = evaluate_expression("2 + 3 * 4").unwrap();
+        let res = evaluate_expression("2 + 3 * 4", 0).unwrap();
         assert!(approx_eq(res, 14.0));
     }
 
     #[test]
     fn handles_parentheses_and_exponent() {
-        let res = evaluate_expression("(2 + 3) * 4 ^ 2").unwrap();
+        let res = evaluate_expression("(2 + 3) * 4 ^ 2", 0).unwrap();
         assert!(approx_eq(res, 80.0));
     }
 
@@ -1071,36 +1145,36 @@ mod tests {
 
     #[test]
     fn supports_unary_minus_and_functions() {
-        let res = evaluate_expression("-cos(0) + sqrt(9)").unwrap();
+        let res = evaluate_expression("-cos(0) + sqrt(9)", 0).unwrap();
         assert!(approx_eq(res, 2.0));
     }
 
     #[test]
     fn exponent_is_right_associative() {
-        let res = evaluate_expression("2^3^2").unwrap();
+        let res = evaluate_expression("2^3^2", 0).unwrap();
         assert!(approx_eq(res, 512.0));
     }
 
     #[test]
     fn detects_division_by_zero() {
-        let err = evaluate_expression("1/0").unwrap_err();
+        let err = evaluate_expression("1/0", 0).unwrap_err();
         assert_eq!(err, "division_by_zero");
     }
 
     #[test]
     fn errors_on_unknown_function() {
-        let err = evaluate_expression("foo(2)").unwrap_err();
+        let err = evaluate_expression("foo(2)", 0).unwrap_err();
         assert!(err.contains("unknown"));
     }
 
     #[test]
     fn numeric_and_symbolic_paths_coexist() {
         // Numeric evaluation stays numeric.
-        let num = evaluate_expression("2+2").unwrap();
+        let num = evaluate_expression("2+2", 0).unwrap();
         assert!(approx_eq(num, 4.0));
 
         // Symbolic deriv triggers symbolic_result string payload.
-        let sym_err = evaluate_expression("deriv(x^2)").unwrap_err();
+        let sym_err = evaluate_expression("deriv(x^2)", 0).unwrap_err();
         assert!(sym_err.starts_with("symbolic_result:"));
         assert!(sym_err.contains("2*x"));
     }
@@ -1156,7 +1230,7 @@ mod tests {
 
     #[test]
     fn integrate_dispatches_in_eval() {
-        let res = evaluate_expression("integ(x^3)").unwrap_err();
+        let res = evaluate_expression("integ(x^3)", 0).unwrap_err();
         assert!(res.starts_with("symbolic_result:"));
         assert!(res.contains("x^4/4"));
     }
@@ -1208,5 +1282,44 @@ mod tests {
         handle_math_action(&mut state, "math_clear_history", &HashMap::new());
         assert!(state.math_tool.history.is_empty());
         assert!(state.math_tool.expression.is_empty());
+    }
+
+    #[cfg(feature = "precision")]
+    #[test]
+    fn test_precision_evaluation() {
+        // Test with standard precision (f64)
+        let result_f64 = evaluate_expression("1/3 + 1/3 + 1/3", 0).unwrap();
+        let f64_sum = result_f64.to_f64();
+        
+        // Test with higher precision
+        let result_precise = evaluate_expression("1/3 + 1/3 + 1/3", 100).unwrap();
+        let precise_sum = result_precise.to_f64();
+        
+        // Both should be close to 1.0, but precise should be more accurate
+        assert!((f64_sum - 1.0).abs() < 1e-15);
+        assert!((precise_sum - 1.0).abs() < 1e-15);
+    }
+
+    #[cfg(feature = "precision")]
+    #[test]
+    fn test_precision_trigonometry() {
+        // Test sin(π) with different precisions
+        let result_f64 = evaluate_expression("sin(pi)", 0).unwrap();
+        let result_precise = evaluate_expression("sin(pi)", 100).unwrap();
+        
+        // Both should be close to 0
+        assert!(result_f64.to_f64().abs() < 1e-10);
+        assert!(result_precise.to_f64().abs() < 1e-10);
+    }
+
+    #[cfg(feature = "precision")]
+    #[test]
+    fn test_precision_error_handling() {
+        // Test that precision feature is required when precision_bits > 0
+        #[cfg(not(feature = "precision"))]
+        {
+            let err = evaluate_expression("1+1", 64).unwrap_err();
+            assert_eq!(err, "precision feature required for arbitrary precision");
+        }
     }
 }

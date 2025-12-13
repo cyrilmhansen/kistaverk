@@ -314,6 +314,8 @@ pub struct MathToolState {
     pub expression: String,
     pub history: Vec<MathHistoryEntry>,
     pub error: Option<String>,
+    /// Precision setting in bits (0 = f64, 64+ = arbitrary precision via rug::Float)
+    pub precision_bits: u32,
 }
 
 impl MathToolState {
@@ -322,6 +324,7 @@ impl MathToolState {
             expression: String::new(),
             history: Vec::new(),
             error: None,
+            precision_bits: 0, // Default to f64 precision
         }
     }
 
