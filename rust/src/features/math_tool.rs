@@ -116,6 +116,18 @@ pub fn handle_math_action(
     }
 }
 
+pub fn get_math_backend_info() -> String {
+    #[cfg(feature = "precision")]
+    {
+        // Indicate that we are using the arbitrary precision backend (GMP/MPFR/MPC via rug)
+        "Arbitrary Precision (GMP/MPFR/MPC)".to_string()
+    }
+    #[cfg(not(feature = "precision"))]
+    {
+        "Standard Precision (f64)".to_string()
+    }
+}
+
 pub fn evaluate_expression(expr: &str, precision_bits: u32) -> Result<Number, String> {
     if let Some((inner, var)) = extract_integ_call(expr) {
         let ast = parse_symbolic(&inner)?;

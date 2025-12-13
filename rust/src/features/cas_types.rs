@@ -66,6 +66,7 @@ impl Number {
     }
     
     /// Convert to Fast variant (losing precision if necessary)
+    #[allow(dead_code)]
     pub fn to_fast(self) -> Self {
         Number::Fast(self.to_f64())
     }

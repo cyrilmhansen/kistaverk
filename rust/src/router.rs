@@ -1862,6 +1862,17 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_processQrCameraFrame(
     }
 }
 
+#[no_mangle]
+pub extern "system" fn Java_aeska_kistaverk_MainActivity_getMathBackendInfo(
+    env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    let info = features::math_tool::get_math_backend_info();
+    env.new_string(info)
+        .map(|s| s.into_raw())
+        .unwrap_or(ptr::null_mut())
+}
+
 fn handle_command(command: Command) -> Result<Value, String> {
     let mut lock_poisoned = false;
     let mut state = match STATE.ui.lock() {
