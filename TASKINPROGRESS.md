@@ -66,7 +66,7 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ **Documentation**: Created `ARM64_OPTIMIZATIONS.md`.
 
 ## Immediate To-Do List
-1.  Verify cumulative error calculation with unit tests (logic currently not asserted).
+1.  **Fix Test Integration:** `rust/src/features/math_tool_test.rs` is orphaned and not running.
 2.  Monitor scheduler stability.
 3.  Test Android precision build on device.
 
@@ -82,4 +82,3 @@ All AI agents contributing to this repository must specify their name and versio
 ## Roadmap
 *   **Optimization:** Review memory usage of in-memory SQLite and Rhai engine.
 *   **Integration Tests:** Verify router handling for new actions.
-*   **Test Coverage:** Add unit tests for cumulative FP error calculation and accumulation logic in math_tool.rs
