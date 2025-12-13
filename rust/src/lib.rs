@@ -39,22 +39,37 @@ fn mir_version_string() -> String {
 // Provide an implementation for arm64-v8a so the JIT can flush the instruction cache.
 #[cfg(all(target_os = "android", target_arch = "aarch64"))]
 #[no_mangle]
-pub unsafe extern "C" fn __clear_cache(mut begin: *mut u8, end: *mut u8) {
+pub unsafe extern "C" fn __clear_cache(begin: *mut core::ffi::c_void, end: *mut core::ffi::c_void) {
+    let begin = begin as *mut u8;
+    let end = end as *mut u8;
     if begin.is_null() || end.is_null() || begin >= end {
         return;
     }
 
-    // AArch64 I-cache maintenance: `ic ivau` per cache line, then barriers.
+    // AArch64 cache maintenance for self-modifying/JIT code:
+    // - Clean D-cache to PoU for modified range (`dc cvau`)
+    // - DSB to ensure completion
+    // - Invalidate I-cache to PoU for range (`ic ivau`)
+    // - DSB + ISB to ensure visibility to instruction fetch
+    //
     // Cache line size is typically 64 bytes on Android arm64; using 64 is a pragmatic default.
     const LINE: usize = 64;
-    let mut ptr = begin as usize;
+    let mut start = (begin as usize) & !(LINE - 1);
     let end = end as usize;
-    ptr &= !(LINE - 1);
+
+    let mut ptr = start;
     while ptr < end {
-        core::arch::asm!("ic ivau, {}", in(reg) ptr, options(nostack, preserves_flags));
+        core::arch::asm!("dc cvau, {}", in(reg) ptr, options(nostack));
         ptr += LINE;
     }
-    core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags));
+    core::arch::asm!("dsb ish", options(nostack));
+
+    ptr = start;
+    while ptr < end {
+        core::arch::asm!("ic ivau, {}", in(reg) ptr, options(nostack));
+        ptr += LINE;
+    }
+    core::arch::asm!("dsb ish", "isb", options(nostack));
 }
 
 #[no_mangle]
