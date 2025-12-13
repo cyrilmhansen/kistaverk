@@ -46,6 +46,10 @@ rust/target/
 app/src/main/jniLibs/
 **/jniLibs/
 *.so
+*.o
+
+# Native toolchain outputs rebuilt by scripts
+rust/libs/
 
 # ------------------
 # 4. EDITORS (VS Code / Linux)
