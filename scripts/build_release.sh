@@ -10,6 +10,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GMP_LIBS_DIR="$PROJECT_ROOT/rust/libs/android"
 # Check just one architecture to verify presence (assuming all built together)
 CHECK_FILE="$GMP_LIBS_DIR/aarch64-linux-android/lib/libgmp.a"
+# Enable UPX compression by default (set USE_UPX=false to skip)
+USE_UPX="${USE_UPX:-true}"
 
 # --- Setup Environment from local.properties ---
 LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
@@ -73,7 +75,7 @@ echo "🚀 Starting Android Gradle Build..."
 TASK="${1:-assembleDebug}"
 
 cd "$PROJECT_ROOT/app"
-./gradlew "app:$TASK"
+./gradlew -PuseUpx="$USE_UPX" "app:$TASK"
 
 echo ""
 echo "🎉 Build Complete!"

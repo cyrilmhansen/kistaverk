@@ -3,15 +3,17 @@ fn main() {
     // Note: Symbolica is not currently used due to compilation complexity in mobile environment
     // println!("cargo:rustc-env=SYMBOLICA_SINGLE_CORE=1");
 
-    // Diagnostic: Print GMP environment variables to verify they are being passed correctly
-    println!("cargo:warning=Checking GMP environment variables...");
-    if let Ok(val) = std::env::var("GMP_LIB_DIR") {
-        println!("cargo:warning=GMP_LIB_DIR is set to: {}", val);
-    } else {
-        println!("cargo:warning=GMP_LIB_DIR is NOT set.");
-    }
+    // Ensure DT_INIT points to our _init shim for UPX
+    println!("cargo:rustc-link-arg=-Wl,-init=_init");
 
-    if let Ok(val) = std::env::var("GMP_STATIC") {
-        println!("cargo:warning=GMP_STATIC is set to: {}", val);
-    }
+    // Re-run if env vars change
+    println!("cargo:rerun-if-env-changed=GMP_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=GMP_INCLUDE_DIR");
+    println!("cargo:rerun-if-env-changed=GMP_STATIC");
+    println!("cargo:rerun-if-env-changed=MPFR_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=MPFR_INCLUDE_DIR");
+    println!("cargo:rerun-if-env-changed=MPFR_STATIC");
+    println!("cargo:rerun-if-env-changed=MPC_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=MPC_INCLUDE_DIR");
+    println!("cargo:rerun-if-env-changed=MPC_STATIC");
 }

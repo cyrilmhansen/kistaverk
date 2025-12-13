@@ -1,6 +1,23 @@
+import java.io.ByteArrayOutputStream
+import org.gradle.kotlin.dsl.support.serviceOf
+import org.gradle.process.ExecOperations
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+}
+
+// UPX compression toggle (override with -PuseUpx=false)
+val useUpx: Boolean = (findProperty("useUpx") as String?)?.toBoolean() ?: false
+val upxExecutable = providers.environmentVariable("UPX").orElse("upx")
+val execOps: ExecOperations = serviceOf()
+
+// ABI selection via -Pabi (arm64, armv7, both). Defaults to arm64 only.
+val abiProp = (findProperty("abi") as String?)?.lowercase()
+val selectedAbis = when (abiProp) {
+    "armv7" -> listOf("armeabi-v7a")
+    "both", "all" -> listOf("arm64-v8a", "armeabi-v7a")
+    else -> listOf("arm64-v8a")
 }
 
 android {
@@ -39,6 +56,10 @@ android {
                 "META-INF/LGPL2.1"
             )
         }
+        jniLibs {
+            // We strip before UPX; avoid a second strip pass that breaks packed libs.
+            keepDebugSymbols += "**/libkistaverk_core.so"
+        }
     }
 
     bundle {
@@ -56,7 +77,7 @@ android {
         abi {
             isEnable = true
             reset()
-            include("arm64-v8a", "armeabi-v7a")
+            include(*selectedAbis.toTypedArray())
             isUniversalApk = false
         }
     }
@@ -95,9 +116,9 @@ android {
             }
             
             // Define the architectures to build for, mapping Android ABI to Rust target and lib folder name
-            val architectures = listOf(
-                Triple("arm64-v8a", "aarch64-linux-android", "aarch64-linux-android"),
-                Triple("armeabi-v7a", "armv7-linux-androideabi", "armv7a-linux-androideabi")
+            val architectures = listOfNotNull(
+                if (selectedAbis.contains("arm64-v8a")) Triple("arm64-v8a", "aarch64-linux-android", "aarch64-linux-android") else null,
+                if (selectedAbis.contains("armeabi-v7a")) Triple("armeabi-v7a", "armv7-linux-androideabi", "armv7a-linux-androideabi") else null
             )
 
             // Check if we should enable precision feature
@@ -117,47 +138,55 @@ android {
                     currentAbiJniLibsDir.mkdirs()
                 }
 
-                exec {
+                // Base command line arguments for cargo ndk build
+                val baseArgs = mutableListOf(
+                    "ndk",
+                    "-t", androidAbi, // Use Android ABI here
+                    "-o", currentAbiJniLibsDir.absolutePath, // Output to ABI-specific folder
+                    "build", 
+                    "--release",
+                    "--target", rustTarget // Explicitly pass the Rust target
+                )
+
+                // Add precision feature if enabled
+                if (precisionFeatureArg.isNotBlank()) {
+                    baseArgs.add("--features")
+                    baseArgs.add(precisionFeatureArg)
+                }
+
+                // Run: cargo ndk ...
+                execOps.exec {
                     workingDir = rustDir
                     executable = cargoPath
-                    // Common environment variables
                     environment("ANDROID_NDK_HOME", ndkDir.absolutePath)
                     environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
-                    environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
+                    environment(
+                        "RUSTFLAGS",
+                        "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init"
+                    )
                     environment("CFLAGS", "-Os")
-                    
-                    // GMP/MPFR/MPC environment variables, dynamically set per architecture
                     environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
                     environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
                     environment("GMP_STATIC", "1")
-                    
                     environment("MPFR_LIB_DIR", gmpLibsDir.absolutePath)
                     environment("MPFR_INCLUDE_DIR", gmpIncludeDir.absolutePath)
                     environment("MPFR_STATIC", "1")
-
                     environment("MPC_LIB_DIR", gmpLibsDir.absolutePath)
                     environment("MPC_INCLUDE_DIR", gmpIncludeDir.absolutePath)
                     environment("MPC_STATIC", "1")
-
                     environment("GMP_MPFR_SYS_USE_PKG_CONFIG", "0")
-                    
-                    // Base command line arguments for cargo ndk build
-                    val baseArgs = mutableListOf(
-                        "ndk",
-                        "-t", androidAbi, // Use Android ABI here
-                        "-o", currentAbiJniLibsDir.absolutePath, // Output to ABI-specific folder
-                        "build", 
-                        "--release",
-                        "--target", rustTarget // Explicitly pass the Rust target
-                    )
+                    commandLine = listOf(cargoPath) + baseArgs
+                }
 
-                    // Add precision feature if enabled
-                    if (precisionFeatureArg.isNotBlank()) {
-                        baseArgs.add("--features")
-                        baseArgs.add(precisionFeatureArg)
-                    }
-                    
-                    commandLine = baseArgs
+                // Overwrite with unstripped artifact from target dir to preserve init array
+                val builtLib = File(rustDir, "target/$rustTarget/release/libkistaverk_core.so")
+                if (builtLib.exists()) {
+                    builtLib.copyTo(File(currentAbiJniLibsDir, builtLib.name), overwrite = true)
+                }
+                // Clean cargo-ndk nested output if present (e.g., jniLibs/abi/abi/lib*.so)
+                val nested = File(currentAbiJniLibsDir, androidAbi)
+                if (nested.exists()) {
+                    nested.deleteRecursively()
                 }
                 println("✅ Built for $androidAbi (Rust target: $rustTarget). Output in ${currentAbiJniLibsDir.absolutePath}")
             }
@@ -225,10 +254,6 @@ tasks.register<Exec>("generateDepsMetadata") {
     }
 }
 
-tasks.named("preBuild") {
-    dependsOn("generateDepsMetadata")
-}
-
 // Task to build with precision feature enabled
 tasks.register("buildWithPrecision") {
     group = "build"
@@ -256,4 +281,68 @@ tasks.register("buildWithoutPrecision") {
         println("⚡ Building without precision feature (default)")
         println("   This uses standard f64 arithmetic - faster build, smaller APK")
     }
+}
+
+// Compress built JNI libs with UPX (opt-in via -PuseUpx=true)
+tasks.register("compressJniWithUpx") {
+    group = "build"
+    description = "Compress JNI .so files with UPX (requires UPX installed)"
+    dependsOn("cargoBuild")
+    onlyIf { useUpx }
+
+    doLast {
+        val upxName = upxExecutable.get()
+        val upxPath = run {
+            val candidate = File(upxName)
+            if (candidate.isAbsolute && candidate.canExecute()) candidate
+            else {
+                val pathEnv = System.getenv("PATH") ?: ""
+                pathEnv.split(File.pathSeparator)
+                    .map { File(it, upxName) }
+                    .firstOrNull { it.canExecute() }
+            }
+        } ?: throw GradleException("UPX not found on PATH. Install UPX or rerun with -PuseUpx=false / USE_UPX=false.")
+
+        val jniLibsRoot = File(projectDir, "src/main/jniLibs")
+        if (!jniLibsRoot.exists()) {
+            throw GradleException("JNI libs directory not found: ${jniLibsRoot.absolutePath}. Ensure cargoBuild ran.")
+        }
+
+        val libs = fileTree(jniLibsRoot) { include("**/*.so") }.files
+        if (libs.isEmpty()) {
+            logger.lifecycle("compressJniWithUpx: no .so files found under ${jniLibsRoot.absolutePath}")
+            return@doLast
+        }
+
+        libs.forEach { lib ->
+            logger.lifecycle("UPX compressing ${lib.absolutePath}")
+            val output = ByteArrayOutputStream()
+            val result = execOps.exec {
+                // Ensure executable bit for UPX
+                lib.setExecutable(true, false)
+                // Strip debug symbols before packing to avoid Gradle strip failures later
+                val ndkDir = android.ndkDirectory
+                val stripTool = File(ndkDir, "toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip")
+                if (stripTool.canExecute()) {
+                    execOps.exec {
+                        commandLine(stripTool.absolutePath, "--strip-unneeded", lib.absolutePath)
+                    }
+                } else {
+                    logger.warn("llvm-strip not found/executable at ${stripTool.absolutePath}, skipping pre-strip")
+                }
+                commandLine(upxPath.absolutePath, "--best", "--lzma", lib.absolutePath)
+                isIgnoreExitValue = true
+                standardOutput = output
+                errorOutput = output
+            }
+            if (result.exitValue != 0) {
+                throw GradleException("UPX failed for ${lib.name}: ${output.toString().trim()}")
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("generateDepsMetadata")
+    dependsOn("compressJniWithUpx")
 }
