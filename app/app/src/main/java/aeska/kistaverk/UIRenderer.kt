@@ -932,13 +932,29 @@ class UiRenderer(
             val pxPerInch = ppi
             val pxPerCm = ppi / 2.54f
 
-            val topBase = drawHeight * 0.45f
-            val bottomBase = drawHeight * 0.90f
+            val margin = dp(6f)
+            val topEdge = margin
+            val bottomEdge = (drawHeight.toFloat() - margin).coerceAtLeast(margin)
 
-            // Inches scale (top)
-            drawInches(canvas, drawWidth.toFloat(), drawHeight.toFloat(), pxPerInch, topBase)
-            // Centimeters scale (bottom)
-            drawCentimeters(canvas, drawWidth.toFloat(), drawHeight.toFloat(), pxPerCm, bottomBase)
+            // Tick marks near edges; labels closer to middle.
+            // Inches scale (top edge, ticks down)
+            drawInches(
+                canvas,
+                drawWidth.toFloat(),
+                drawHeight.toFloat(),
+                pxPerInch,
+                baseY = topEdge,
+                tickDirection = 1f,
+            )
+            // Centimeters scale (bottom edge, ticks up)
+            drawCentimeters(
+                canvas,
+                drawWidth.toFloat(),
+                drawHeight.toFloat(),
+                pxPerCm,
+                baseY = bottomEdge,
+                tickDirection = -1f,
+            )
 
             if (rotated) canvas.restore()
         }
@@ -948,7 +964,8 @@ class UiRenderer(
             drawWidth: Float,
             drawHeight: Float,
             pxPerInch: Float,
-            baseY: Float
+            baseY: Float,
+            tickDirection: Float,
         ) {
             val maxInches = drawWidth / pxPerInch
             val maxTick = floor(maxInches * 16f).toInt()
@@ -962,10 +979,14 @@ class UiRenderer(
                     frac == 2 || frac == 6 || frac == 10 || frac == 14 -> drawHeight * 0.12f
                     else -> drawHeight * 0.08f
                 }
-                canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
+                val y0 = baseY
+                val y1 = baseY + (tickH * tickDirection)
+                canvas.drawLine(x, y0, x, y1, tickPaint)
                 if (frac == 0) {
                     val label = (i / 16).toString()
-                    canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
+                    val labelOffset = dp(6f)
+                    val labelY = baseY + (tickH * tickDirection) + (labelOffset * tickDirection)
+                    canvas.drawText(label, x + 4f, labelY, labelPaint)
                 }
             }
             canvas.drawLine(0f, baseY, drawWidth, baseY, tickPaint)
@@ -976,7 +997,8 @@ class UiRenderer(
             drawWidth: Float,
             drawHeight: Float,
             pxPerCm: Float,
-            baseY: Float
+            baseY: Float,
+            tickDirection: Float,
         ) {
             val maxCm = drawWidth / pxPerCm
             val maxTick = floor(maxCm * 10f).toInt()
@@ -988,13 +1010,21 @@ class UiRenderer(
                     frac == 5 -> drawHeight * 0.18f
                     else -> drawHeight * 0.10f
                 }
-                canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
+                val y0 = baseY
+                val y1 = baseY + (tickH * tickDirection)
+                canvas.drawLine(x, y0, x, y1, tickPaint)
                 if (frac == 0) {
                     val label = (i / 10).toString()
-                    canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
+                    val labelOffset = dp(6f)
+                    val labelY = baseY + (tickH * tickDirection) + (labelOffset * tickDirection)
+                    canvas.drawText(label, x + 4f, labelY, labelPaint)
                 }
             }
             canvas.drawLine(0f, baseY, drawWidth, baseY, tickPaint)
+        }
+
+        private fun dp(value: Float): Float {
+            return value * resources.displayMetrics.density
         }
     }
 
