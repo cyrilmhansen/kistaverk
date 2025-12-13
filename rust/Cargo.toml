@@ -39,12 +39,13 @@ sqlite = { version = "0.37.0", features = ["bundled"] }
 cron = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rhai = { version = "1.18", features = ["std", "sync", "serde"] }
-rug = { version = "1.24", optional = true }
 
 [features]
-precision = ["rug"]
+precision = ["dep:rug", "dep:gmp-mpfr-sys"]
 
 [target.'cfg(target_os = "android")'.dependencies]
+rug = { version = "1.24", optional = true }
+gmp-mpfr-sys = { version = "1.6", features = ["force-cross", "std"], optional = true } # Added std feature as it might be needed
 android_log-sys = "0.3"
 
 [profile.release]
