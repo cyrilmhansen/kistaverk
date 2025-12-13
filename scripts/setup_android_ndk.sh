@@ -14,8 +14,8 @@ echo ""
     echo "🔍 Searching for Android NDK installations..."
     echo ""
     
-    local found_ndks=()
-    local ndk_paths=()
+    found_ndks=()
+    ndk_paths=()
     
     # Common NDK installation locations
     local search_paths=(
