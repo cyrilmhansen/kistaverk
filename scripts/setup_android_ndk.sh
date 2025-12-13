@@ -198,8 +198,8 @@ setup_environment() {
         else
             echo "" >> "$shell_config"
             echo "# Android NDK Configuration for Kistaverk" >> "$shell_config"
-            echo "export ANDROID_NDK_HOME="$ndk_path"" >> "$shell_config"
-            echo "export PATH=\"$ANDROID_NDK_HOME:\"$PATH"" >> "$shell_config"
+            echo "export ANDROID_NDK_HOME=\"$ndk_path\"" >> "$shell_config"
+            echo "export PATH=\"\$ANDROID_NDK_HOME:\$PATH\"" >> "$shell_config"
             echo "" >> "$shell_config"
             echo "✅ Environment variables added to $shell_config"
         fi
