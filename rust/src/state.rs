@@ -56,6 +56,7 @@ pub enum Screen {
     Scripting,
     Scheduler,
     UnitConverter,
+    Settings,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

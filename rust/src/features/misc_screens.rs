@@ -6,6 +6,7 @@ use crate::ui::{
     TextInput as UiTextInput,
 };
 use serde_json::{json, Value};
+use rust_i18n::t;
 
 pub const SAMPLE_SHADER: &str = r#"`
 precision mediump float;
@@ -200,4 +201,128 @@ pub fn render_about_screen(state: &AppState) -> Value {
     ];
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(24).scrollable(false)).unwrap()
+}
+
+pub fn render_settings_screen(state: &AppState) -> Value {
+    use crate::ui::{Button as UiButton, Card as UiCard, Column as UiColumn};
+    
+    let settings_title = t!("settings_locale");
+    let settings_description = t!("settings_locale_description");
+    let system_default = t!("settings_system_default");
+    let english = t!("locale_english");
+    let french = t!("locale_french");
+    let german = t!("locale_german");
+    let icelandic = t!("locale_icelandic");
+    
+    let current_locale = state.locale.clone();
+    let preferred_locale = state.preferred_locale.clone();
+    
+    // Check if we're using the system locale (no preferred locale set or it's empty)
+    let is_using_system = preferred_locale.is_empty() || preferred_locale == "system";
+    
+    let locale_buttons = vec![
+        {
+            let mut button = UiButton::new(&system_default, "set_locale")
+                .payload(json!({"locale": ""}))  // Empty string means use system
+            ;
+            if is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&english, "set_locale")
+                .payload(json!({"locale": "en"}))
+            ;
+            if current_locale == "en" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&french, "set_locale")
+                .payload(json!({"locale": "fr"}))
+            ;
+            if current_locale == "fr" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&german, "set_locale")
+                .payload(json!({"locale": "de"}))
+            ;
+            if current_locale == "de" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&icelandic, "set_locale")
+                .payload(json!({"locale": "is"}))
+            ;
+            if current_locale == "is" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+    ];
+    
+    let locale_card = UiCard::new(vec![
+        serde_json::to_value(UiColumn::new(locale_buttons).padding(8)).unwrap()
+    ])
+    .title(&settings_title)
+    .subtitle(&settings_description)
+    .padding(16);
+    
+    let mut children = vec![
+        serde_json::to_value(locale_card).unwrap(),
+    ];
+    
+    maybe_push_back(&mut children, state);
+    
+    serde_json::to_value(UiColumn::new(children).padding(20).scrollable(false)).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_settings_screen;
+    use crate::state::AppState;
+    
+    #[test]
+    fn test_settings_screen_renders() {
+        let state = AppState::new();
+        let result = render_settings_screen(&state);
+        
+        // Basic check that the function returns a valid JSON value
+        assert!(result.is_object());
+        
+        // Check that it has the expected structure
+        if let Some(obj) = result.as_object() {
+            assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("Column"));
+        }
+    }
+    
+    #[test]
+    fn test_settings_screen_with_different_locales() {
+        let mut state = AppState::new();
+        
+        // Test with English locale
+        state.locale = "en".to_string();
+        state.preferred_locale = "en".to_string();
+        let result_en = render_settings_screen(&state);
+        assert!(result_en.is_object());
+        
+        // Test with French locale
+        state.locale = "fr".to_string();
+        state.preferred_locale = "fr".to_string();
+        let result_fr = render_settings_screen(&state);
+        assert!(result_fr.is_object());
+        
+        // Test with system locale (empty preferred_locale)
+        state.locale = "en".to_string();
+        state.preferred_locale = String::new();
+        let result_system = render_settings_screen(&state);
+        assert!(result_system.is_object());
+    }
 }

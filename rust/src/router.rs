@@ -16,7 +16,7 @@ use crate::features::kotlin_image::{
 };
 use crate::features::misc_screens::{
     render_about_screen, render_barometer_screen, render_compass_screen, render_loading_screen,
-    render_magnetometer_screen, render_progress_demo_screen, render_shader_screen,
+    render_magnetometer_screen, render_progress_demo_screen, render_settings_screen, render_shader_screen,
 };
 use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
 use crate::features::unit_converter::{handle_unit_converter_action, render_unit_converter_screen};
@@ -858,6 +858,7 @@ pub(crate) enum Action {
         data: Option<String>,
     },
     PdfSignatureClear,
+    SettingsScreen,
     About,
     SchedulerScreen,
     SchedulerAdd {
@@ -1335,6 +1336,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
             })
         },
         "sql_clear_all" => Ok(Action::SqlClearAll),
+        "settings_screen" => Ok(Action::SettingsScreen),
         "about" => Ok(Action::About),
         "scheduler_screen" => Ok(Action::SchedulerScreen),
         "scheduler_add" => Ok(Action::SchedulerAdd {
@@ -1927,11 +1929,19 @@ fn handle_command(command: Command) -> Result<Value, String> {
             }
         }
         Action::SetLocale { locale } => {
-            // Update the locale
-            i18n::update_locale(&mut *state, &locale);
-            
-            // Store the preference (this would be enhanced with persistent storage)
-            state.preferred_locale = locale.clone();
+            // Handle empty locale (system default)
+            if locale.is_empty() {
+                // Use system locale - this would be set during initialization
+                // For now, we'll just clear the preferred locale
+                state.preferred_locale = String::new();
+                // Don't change the current locale, keep using whatever was set from system
+            } else {
+                // Update the locale
+                i18n::update_locale(&mut *state, &locale);
+                
+                // Store the preference (this would be enhanced with persistent storage)
+                state.preferred_locale = locale.clone();
+            }
             
             // Force UI refresh to show new translations by reloading current screen
             let current_screen = state.current_screen().clone();
@@ -2340,6 +2350,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         a @ Action::PdfSignatureStore { .. } | a @ Action::PdfSignatureClear => {
             handle_pdf_actions(&mut state, a);
+        }
+        Action::SettingsScreen => {
+            state.push_screen(Screen::Settings);
         }
         Action::About => {
             state.push_screen(Screen::About);
@@ -4623,6 +4636,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PdfTools => render_pdf_screen(state),
         Screen::PdfPreview => render_pdf_preview_screen(state),
         Screen::About => render_about_screen(state),
+        Screen::Settings => render_settings_screen(state),
         Screen::SensorLogger => render_sensor_logger_screen(state),
         Screen::TextViewer => render_text_viewer_screen(state),
         Screen::Dithering => render_dithering_screen(state),
@@ -5276,6 +5290,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "sensor_logger_screen",
             requires_file_picker: false,
             description: "log sensors to CSV",
+        },
+        Feature {
+            id: "settings",
+            name: "⚙️ Settings",
+            category: "ℹ️ Info",
+            action: "settings_screen",
+            requires_file_picker: false,
+            description: "app preferences & language",
         },
         Feature {
             id: "about",
