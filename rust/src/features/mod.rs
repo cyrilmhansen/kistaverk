@@ -31,3 +31,4 @@ pub mod sql_engine;
 pub mod scripting;
 pub mod scheduler;
 pub mod unit_converter;
+pub mod math_tool_test;

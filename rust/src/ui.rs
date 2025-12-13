@@ -12,6 +12,8 @@ pub struct Text<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_description: Option<&'a str>,
 }
 
@@ -22,6 +24,7 @@ impl<'a> Text<'a> {
             text,
             id: None,
             size: None,
+            color: None,
             content_description: None,
         }
     }
@@ -33,6 +36,11 @@ impl<'a> Text<'a> {
 
     pub fn size(mut self, size: f64) -> Self {
         self.size = Some(size);
+        self
+    }
+
+    pub fn color(mut self, color: &'a str) -> Self {
+        self.color = Some(color);
         self
     }
 
