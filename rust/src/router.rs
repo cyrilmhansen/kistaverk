@@ -1118,6 +1118,10 @@ pub(crate) enum Action {
         source: String,
         entry: String,
     },
+    MirScriptingExecuteScan {
+        source: String,
+        entry: String,
+    },
     MirScriptingClearOutput,
     MirScriptingClearSource,
     MirScriptingLoadExample,
@@ -1347,6 +1351,10 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "sql_clear_all" => Ok(Action::SqlClearAll),
         "mir_scripting_screen" => Ok(Action::MirScriptingScreen),
         "mir_scripting_execute" => Ok(Action::MirScriptingExecute {
+            source: bindings.get("mir_scripting.source").cloned().unwrap_or_default(),
+            entry: bindings.get("mir_scripting.entry").cloned().unwrap_or_default(),
+        }),
+        "mir_scripting_execute_scan" => Ok(Action::MirScriptingExecuteScan {
             source: bindings.get("mir_scripting.source").cloned().unwrap_or_default(),
             entry: bindings.get("mir_scripting.entry").cloned().unwrap_or_default(),
         }),
@@ -2419,6 +2427,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         a @ Action::MirScriptingScreen
         | a @ Action::MirScriptingExecute { .. }
+        | a @ Action::MirScriptingExecuteScan { .. }
         | a @ Action::MirScriptingClearOutput
         | a @ Action::MirScriptingClearSource
         | a @ Action::MirScriptingLoadExample => {

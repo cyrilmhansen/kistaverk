@@ -43,6 +43,14 @@ impl MirScriptingState {
     }
 
     pub fn execute(&mut self) {
+        self.execute_impl(false);
+    }
+
+    pub fn execute_scan_string(&mut self) {
+        self.execute_impl(true);
+    }
+
+    fn execute_impl(&mut self, force_scan_string: bool) {
         self.output.clear();
         self.error = None;
 
@@ -56,14 +64,14 @@ impl MirScriptingState {
 
         logcat("MIR execute: start");
         logcat(&format!("MIR execute: entry={}", entry));
+        logcat(&format!("MIR execute: force_scan_string={}", force_scan_string));
 
         #[cfg(target_os = "android")]
-        {
+        if !force_scan_string {
             self.execute_android_programmatic(&entry);
             return;
         }
 
-        #[cfg(not(target_os = "android"))]
         let source = match CString::new(self.source.clone()) {
             Ok(v) => v,
             Err(_) => {
@@ -72,7 +80,6 @@ impl MirScriptingState {
             }
         };
 
-        #[cfg(not(target_os = "android"))]
         let entry_c = match CString::new(entry.as_str()) {
             Ok(v) => v,
             Err(_) => {
@@ -81,7 +88,6 @@ impl MirScriptingState {
             }
         };
 
-        #[cfg(not(target_os = "android"))]
         unsafe {
             #[cfg(unix)]
             let mut code_alloc = mir_sys::code_alloc::unix_mmap();
@@ -356,6 +362,12 @@ pub fn render_mir_scripting_screen(state: &AppState) -> serde_json::Value {
             },
             {
                 "type": "Button",
+                "text": "Execute (scan_string) ⚠",
+                "action": "mir_scripting_execute_scan",
+                "margin_bottom": 8.0
+            },
+            {
+                "type": "Button",
                 "text": "Clear Output",
                 "action": "mir_scripting_clear_output",
                 "margin_bottom": 8.0
@@ -421,6 +433,12 @@ pub fn handle_mir_scripting_actions(
             state.mir_scripting.source = source;
             state.mir_scripting.entry = entry;
             state.mir_scripting.execute();
+            Some(render_mir_scripting_screen(state))
+        }
+        MirScriptingExecuteScan { source, entry } => {
+            state.mir_scripting.source = source;
+            state.mir_scripting.entry = entry;
+            state.mir_scripting.execute_scan_string();
             Some(render_mir_scripting_screen(state))
         }
         MirScriptingClearOutput => {
