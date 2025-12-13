@@ -43,11 +43,14 @@ impl MirScriptingState {
     }
 
     pub fn execute(&mut self) {
+        // Android: scan_string is now the default path again.
+        #[cfg(target_os = "android")]
+        {
+            self.execute_impl(true);
+            return;
+        }
+        #[cfg(not(target_os = "android"))]
         self.execute_impl(false);
-    }
-
-    pub fn execute_scan_string(&mut self) {
-        self.execute_impl(true);
     }
 
     fn execute_impl(&mut self, force_scan_string: bool) {
@@ -377,12 +380,6 @@ pub fn render_mir_scripting_screen(state: &AppState) -> serde_json::Value {
             },
             {
                 "type": "Button",
-                "text": "Execute (scan_string) ⚠",
-                "action": "mir_scripting_execute_scan",
-                "margin_bottom": 8.0
-            },
-            {
-                "type": "Button",
                 "text": "Clear Output",
                 "action": "mir_scripting_clear_output",
                 "margin_bottom": 8.0
@@ -448,12 +445,6 @@ pub fn handle_mir_scripting_actions(
             state.mir_scripting.source = source;
             state.mir_scripting.entry = entry;
             state.mir_scripting.execute();
-            Some(render_mir_scripting_screen(state))
-        }
-        MirScriptingExecuteScan { source, entry } => {
-            state.mir_scripting.source = source;
-            state.mir_scripting.entry = entry;
-            state.mir_scripting.execute_scan_string();
             Some(render_mir_scripting_screen(state))
         }
         MirScriptingClearOutput => {
