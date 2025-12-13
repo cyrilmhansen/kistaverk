@@ -96,6 +96,17 @@ android {
         environment("RUSTFLAGS", "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384")
         environment("CFLAGS", "-Os")
 
+        // Setup GMP/MPFR/MPC environment variables for Android cross-compilation
+        // We need to point to the architecture-specific pre-built libraries
+        val targetArch = "aarch64-linux-android" // Matches the -t arm64-v8a below
+        val gmpLibsDir = File(rustDir, "libs/android/$targetArch/lib")
+        val gmpIncludeDir = File(rustDir, "libs/android/$targetArch/include")
+        
+        environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
+        environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
+        environment("GMP_STATIC", "1")
+        environment("GMP_MPFR_SYS_USE_PKG_CONFIG", "0")
+
         // Check if we should enable precision feature (default to true)
         val enablePrecision = !project.hasProperty("enablePrecision") || 
                              project.property("enablePrecision").toString().toBoolean()

@@ -6,11 +6,13 @@
 # Force all builds to use our pre-built GMP libraries instead of building from source
 
 # Environment variables to prevent gmp-mpfr-sys from building GMP from source
-[env]
-GMP_LIB_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
-GMP_INCLUDE_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
-GMP_STATIC = "1"
-GMP_MPFR_SYS_USE_PKG_CONFIG = "0"
+# NOTE: These variables are now injected dynamically by Gradle (for Android) or setup scripts
+# to point to the correct architecture-specific paths.
+# [env]
+# GMP_LIB_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+# GMP_INCLUDE_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+# GMP_STATIC = "1"
+# GMP_MPFR_SYS_USE_PKG_CONFIG = "0"
 
 # ============================================================================
 # Platform-Specific Optimizations
