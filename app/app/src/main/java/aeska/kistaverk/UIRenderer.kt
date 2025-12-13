@@ -758,8 +758,6 @@ class UiRenderer(
     private fun createRuler(data: JSONObject, existing: RulerView?): View {
         val view = existing ?: RulerView(context)
         val heightDp = data.optInt("height_dp", 140).coerceAtLeast(48)
-        val orientation = data.optString("orientation", "horizontal")
-        view.setOrientation(orientation)
         val contentDescription = data.optString("content_description", "")
         view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
         val lp = LinearLayout.LayoutParams(
@@ -880,7 +878,6 @@ class UiRenderer(
     }
 
     private class RulerView(context: Context) : View(context) {
-        private var orientation: String = "horizontal"
         private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             strokeWidth = 2f
@@ -893,45 +890,69 @@ class UiRenderer(
             color = Color.WHITE
         }
 
-        fun setOrientation(value: String) {
-            val normalized = value.lowercase()
-            orientation = if (normalized == "vertical") "vertical" else "horizontal"
-            invalidate()
-        }
-
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
             if (width <= 0 || height <= 0) return
 
+            // Always draw "landscape style": use the longer dimension as the ruler length.
+            // If the view is taller than it is wide (portrait), rotate the canvas so we
+            // still get a long horizontal ruler instead of a cramped one.
+            val rotated = height > width
+            val drawWidth: Int
+            val drawHeight: Int
+            if (rotated) {
+                canvas.save()
+                canvas.rotate(-90f)
+                canvas.translate(-height.toFloat(), 0f)
+                drawWidth = height
+                drawHeight = width
+            } else {
+                drawWidth = width
+                drawHeight = height
+            }
+
+            canvas.drawRect(0f, 0f, drawWidth.toFloat(), drawHeight.toFloat(), bgPaint)
+
             val metrics = resources.displayMetrics
-            val ppi = if (orientation == "vertical") metrics.ydpi else metrics.xdpi
-            if (ppi <= 0f) return
+            // Use xdpi consistently for a horizontal (landscape) ruler.
+            val ppi = metrics.xdpi
+            if (ppi <= 0f) {
+                if (rotated) canvas.restore()
+                return
+            }
 
             val pxPerInch = ppi
             val pxPerCm = ppi / 2.54f
 
-            val topBase = height * 0.45f
-            val bottomBase = height * 0.90f
+            val topBase = drawHeight * 0.45f
+            val bottomBase = drawHeight * 0.90f
 
             // Inches scale (top)
-            drawInches(canvas, pxPerInch, topBase)
+            drawInches(canvas, drawWidth.toFloat(), drawHeight.toFloat(), pxPerInch, topBase)
             // Centimeters scale (bottom)
-            drawCentimeters(canvas, pxPerCm, bottomBase)
+            drawCentimeters(canvas, drawWidth.toFloat(), drawHeight.toFloat(), pxPerCm, bottomBase)
+
+            if (rotated) canvas.restore()
         }
 
-        private fun drawInches(canvas: Canvas, pxPerInch: Float, baseY: Float) {
-            val maxInches = width.toFloat() / pxPerInch
+        private fun drawInches(
+            canvas: Canvas,
+            drawWidth: Float,
+            drawHeight: Float,
+            pxPerInch: Float,
+            baseY: Float
+        ) {
+            val maxInches = drawWidth / pxPerInch
             val maxTick = floor(maxInches * 16f).toInt()
             for (i in 0..maxTick) {
                 val x = i * (pxPerInch / 16f)
                 val frac = i % 16
                 val tickH = when {
-                    frac == 0 -> height * 0.30f
-                    frac == 8 -> height * 0.22f
-                    frac == 4 || frac == 12 -> height * 0.16f
-                    frac == 2 || frac == 6 || frac == 10 || frac == 14 -> height * 0.12f
-                    else -> height * 0.08f
+                    frac == 0 -> drawHeight * 0.30f
+                    frac == 8 -> drawHeight * 0.22f
+                    frac == 4 || frac == 12 -> drawHeight * 0.16f
+                    frac == 2 || frac == 6 || frac == 10 || frac == 14 -> drawHeight * 0.12f
+                    else -> drawHeight * 0.08f
                 }
                 canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
                 if (frac == 0) {
@@ -939,19 +960,25 @@ class UiRenderer(
                     canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
                 }
             }
-            canvas.drawLine(0f, baseY, width.toFloat(), baseY, tickPaint)
+            canvas.drawLine(0f, baseY, drawWidth, baseY, tickPaint)
         }
 
-        private fun drawCentimeters(canvas: Canvas, pxPerCm: Float, baseY: Float) {
-            val maxCm = width.toFloat() / pxPerCm
+        private fun drawCentimeters(
+            canvas: Canvas,
+            drawWidth: Float,
+            drawHeight: Float,
+            pxPerCm: Float,
+            baseY: Float
+        ) {
+            val maxCm = drawWidth / pxPerCm
             val maxTick = floor(maxCm * 10f).toInt()
             for (i in 0..maxTick) {
                 val x = i * (pxPerCm / 10f)
                 val frac = i % 10
                 val tickH = when {
-                    frac == 0 -> height * 0.24f
-                    frac == 5 -> height * 0.18f
-                    else -> height * 0.10f
+                    frac == 0 -> drawHeight * 0.24f
+                    frac == 5 -> drawHeight * 0.18f
+                    else -> drawHeight * 0.10f
                 }
                 canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
                 if (frac == 0) {
@@ -959,7 +986,7 @@ class UiRenderer(
                     canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
                 }
             }
-            canvas.drawLine(0f, baseY, width.toFloat(), baseY, tickPaint)
+            canvas.drawLine(0f, baseY, drawWidth, baseY, tickPaint)
         }
     }
 
