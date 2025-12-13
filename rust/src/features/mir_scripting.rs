@@ -72,7 +72,17 @@ impl MirScriptingState {
             return;
         }
 
-        let source = match CString::new(self.source.clone()) {
+        let normalized_source = self.source.replace("\r\n", "\n").replace('\r', "");
+        if force_scan_string {
+            let cr_count = self.source.as_bytes().iter().filter(|&&b| b == b'\r').count();
+            logcat(&format!(
+                "MIR execute: source_bytes={} cr_count={}",
+                self.source.as_bytes().len(),
+                cr_count
+            ));
+        }
+
+        let source = match CString::new(normalized_source) {
             Ok(v) => v,
             Err(_) => {
                 self.error = Some("MIR source contains a NUL byte".to_string());
