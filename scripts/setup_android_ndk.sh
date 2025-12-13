@@ -123,7 +123,7 @@ check_ndk_version() {
         # Check if version is recent enough (r21+ recommended)
         local major_version=$(echo "$version" | cut -d'.' -f1)
         if [ "$major_version" -ge 21 ]; then
-            echo "✅ NDK version is suitable for building (r21+)"
+            echo "✅ NDK version is suitable for building \(r21+\)"
             return 0
         else
             echo "⚠️  NDK version might be too old. r21+ is recommended."
@@ -155,7 +155,7 @@ check_ndk_components() {
         if [ -f "$ndk_path/$tool" ] || [ -f "$ndk_path/$tool" ]; then
             echo "  ✅ $tool"
         else
-            echo "  ❌ $tool (missing)"
+            echo "  ❌ $tool \(missing\)"
             all_found=false
         fi
     done
@@ -238,7 +238,7 @@ download_instructions() {
     echo "You can download the Android NDK from these sources:"
     echo ""
     
-    echo "1. Official Android NDK Download (Recommended):"
+    echo "1. Official Android NDK Download \(Recommended\):"
     echo "   🌐 https://developer.android.com/ndk/downloads"
     echo ""
     
@@ -246,26 +246,26 @@ download_instructions() {
     echo "   - Install Android Studio"
     echo "   - Go to Tools > SDK Manager"
     echo "   - Select 'SDK Tools' tab"
-    echo "   - Check 'NDK (Side by side)' and install"
+    echo "   - Check 'NDK \(Side by side\)' and install"
     echo ""
     
-    echo "3. Command line download (Linux/macOS):"
+    echo "3. Command line download \(Linux/macOS\):"
     echo "   wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip"
     echo "   unzip android-ndk-r26b-linux.zip"
     echo "   mv android-ndk-r26b ~/android-ndk"
     echo ""
     
     echo "Recommended NDK Versions:"
-    echo "  - r26b (latest stable)"
+    echo "  - r26b \(latest stable\)"
     echo "  - r25c"
-    echo "  - r21+ (minimum required)"
+    echo "  - r21+ \(minimum required\)"
     echo ""
     
     echo "After downloading, run this setup script again."
 }
 
 # Function to test NDK setup
- test_ndk_setup() {
+test_ndk_setup() {
     echo "🧪 Testing NDK Setup..."
     echo ""
     
@@ -312,7 +312,7 @@ EOF
         rm -f /tmp/ndk_test "$test_file"
         return 0
     else
-        echo "⚠️  Basic compilation test failed (this might be expected)"
+        echo "⚠️  Basic compilation test failed \(this might be expected\)"
         rm -f /tmp/ndk_test "$test_file"
         return 1
     fi
