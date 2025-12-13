@@ -34,6 +34,29 @@ fn mir_version_string() -> String {
     format!("{}", mir_sys::MIR_API_VERSION)
 }
 
+// Android/NDK: MIR uses `__builtin___clear_cache`, which may lower to a call to `__clear_cache`.
+// Some link setups leave this symbol unresolved at runtime, causing `dlopen` to fail.
+// Provide an implementation for arm64-v8a so the JIT can flush the instruction cache.
+#[cfg(all(target_os = "android", target_arch = "aarch64"))]
+#[no_mangle]
+pub unsafe extern "C" fn __clear_cache(mut begin: *mut u8, end: *mut u8) {
+    if begin.is_null() || end.is_null() || begin >= end {
+        return;
+    }
+
+    // AArch64 I-cache maintenance: `ic ivau` per cache line, then barriers.
+    // Cache line size is typically 64 bytes on Android arm64; using 64 is a pragmatic default.
+    const LINE: usize = 64;
+    let mut ptr = begin as usize;
+    let end = end as usize;
+    ptr &= !(LINE - 1);
+    while ptr < end {
+        core::arch::asm!("ic ivau, {}", in(reg) ptr, options(nostack, preserves_flags));
+        ptr += LINE;
+    }
+    core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags));
+}
+
 #[no_mangle]
 pub extern "system" fn Java_aeska_kistaverk_MainActivity_mirVersion<'local>(
     env: JNIEnv<'local>,

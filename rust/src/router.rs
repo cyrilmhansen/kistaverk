@@ -40,6 +40,7 @@ use crate::features::qr_transfer::{
 use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
 use crate::features::scripting::handle_scripting_actions;
+use crate::features::mir_scripting::handle_mir_scripting_actions;
 use crate::features::scheduler::{
     apply_scheduler_result, drain_events as drain_scheduler_events, render_scheduler_screen,
     runtime as scheduler_runtime,
@@ -1112,6 +1113,14 @@ pub(crate) enum Action {
     ScriptingLoadExample {
         example_type: String,
     },
+    MirScriptingScreen,
+    MirScriptingExecute {
+        source: String,
+        entry: String,
+    },
+    MirScriptingClearOutput,
+    MirScriptingClearSource,
+    MirScriptingLoadExample,
 }
 
 struct FdHandle(Option<i32>);
@@ -1336,6 +1345,14 @@ fn parse_action(command: Command) -> Result<Action, String> {
             })
         },
         "sql_clear_all" => Ok(Action::SqlClearAll),
+        "mir_scripting_screen" => Ok(Action::MirScriptingScreen),
+        "mir_scripting_execute" => Ok(Action::MirScriptingExecute {
+            source: bindings.get("mir_scripting.source").cloned().unwrap_or_default(),
+            entry: bindings.get("mir_scripting.entry").cloned().unwrap_or_default(),
+        }),
+        "mir_scripting_clear_output" => Ok(Action::MirScriptingClearOutput),
+        "mir_scripting_clear_source" => Ok(Action::MirScriptingClearSource),
+        "mir_scripting_load_example" => Ok(Action::MirScriptingLoadExample),
         "settings_screen" => Ok(Action::SettingsScreen),
         "about" => Ok(Action::About),
         "scheduler_screen" => Ok(Action::SchedulerScreen),
@@ -2397,6 +2414,15 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::ScriptingClearScript
         | a @ Action::ScriptingLoadExample { .. } => {
             if let Some(ui) = handle_scripting_actions(&mut state, a) {
+                return Ok(ui);
+            }
+        }
+        a @ Action::MirScriptingScreen
+        | a @ Action::MirScriptingExecute { .. }
+        | a @ Action::MirScriptingClearOutput
+        | a @ Action::MirScriptingClearSource
+        | a @ Action::MirScriptingLoadExample => {
+            if let Some(ui) = handle_mir_scripting_actions(&mut state, a) {
                 return Ok(ui);
             }
         }
@@ -4663,6 +4689,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Plotting => render_plotting_screen(state),
         Screen::SqlQuery => render_sql_screen(state),
         Screen::Scripting => features::scripting::render_scripting_screen(state),
+        Screen::MirScripting => features::mir_scripting::render_mir_scripting_screen(state),
         Screen::Scheduler => render_scheduler_screen(state),
     }
 }
@@ -5314,6 +5341,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "scripting_screen",
             requires_file_picker: false,
             description: "Rhai scripting engine",
+        },
+        Feature {
+            id: "mir_scripting",
+            name: "🧩 MIR Lab",
+            category: "🧰 Utilities",
+            action: "mir_scripting_screen",
+            requires_file_picker: false,
+            description: "MIR JIT playground",
         },
         Feature {
             id: "scheduler",
