@@ -78,21 +78,25 @@ for TARGET in "${TARGETS[@]}"; do
     case "$TARGET" in
         aarch64-linux-android)
             TOOLCHAIN="aarch64-linux-android"
+            COMPILER_PREFIX="aarch64-linux-android${API_LEVEL}"
             HOST="aarch64-linux-android"
             GMP_ABI="64"
             ;;
         armv7a-linux-androideabi)
             TOOLCHAIN="arm-linux-androideabi"
+            COMPILER_PREFIX="armv7a-linux-androideabi${API_LEVEL}"
             HOST="arm-linux-androideabi"
             GMP_ABI="32"
             ;;
         i686-linux-android)
             TOOLCHAIN="i686-linux-android"
+            COMPILER_PREFIX="i686-linux-android${API_LEVEL}"
             HOST="i686-linux-android"
             GMP_ABI="32"
             ;;
         x86_64-linux-android)
             TOOLCHAIN="x86_64-linux-android"
+            COMPILER_PREFIX="x86_64-linux-android${API_LEVEL}"
             HOST="x86_64-linux-android"
             GMP_ABI="64"
             ;;
@@ -116,14 +120,14 @@ for TARGET in "${TARGETS[@]}"; do
 
     # Set up environment
     export PATH="$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/bin:$PATH"
-    export CC="${TOOLCHAIN}-clang"
-    export CXX="${TOOLCHAIN}-clang++"
+    export CC="${COMPILER_PREFIX}-clang"
+    export CXX="${COMPILER_PREFIX}-clang++"
     export AR="llvm-ar"
     export RANLIB="llvm-ranlib"
     export STRIP="llvm-strip"
-    export CFLAGS="--target=${TARGET}${API_LEVEL} --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/sysroot -fPIC"
+    export CFLAGS="-fPIC"
     export CXXFLAGS="$CFLAGS"
-    export LDFLAGS="--target=${TARGET}${API_LEVEL} --sysroot=$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/sysroot"
+    export LDFLAGS=""
     
     # Build GMP
     echo "Building GMP..."

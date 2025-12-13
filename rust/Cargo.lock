@@ -1572,6 +1572,7 @@ dependencies = [
  "cron",
  "csv",
  "flate2",
+ "gmp-mpfr-sys",
  "image 0.24.9",
  "infer",
  "jni",
