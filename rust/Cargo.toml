@@ -45,7 +45,7 @@ precision = ["dep:rug", "dep:gmp-mpfr-sys"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 rug = { version = "1.24", optional = true }
-gmp-mpfr-sys = { version = "1.6", features = ["force-cross", "std"], optional = true } # Added std feature as it might be needed
+gmp-mpfr-sys = { version = "1.6", features = ["force-cross"], optional = true }
 android_log-sys = "0.3"
 
 [profile.release]
