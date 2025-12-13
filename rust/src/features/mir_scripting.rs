@@ -10,7 +10,7 @@ fn logcat(msg: &str) {
         let tag = b"kistaverk-mir\0";
         let c_msg = CString::new(msg).unwrap_or_else(|_| CString::new("<log msg had NUL>").unwrap());
         android_log_sys::__android_log_print(
-            android_log_sys::ANDROID_LOG_INFO as _,
+            android_log_sys::LogPriority::INFO as _,
             tag.as_ptr() as *const _,
             b"%s\0".as_ptr() as *const _,
             c_msg.as_ptr(),

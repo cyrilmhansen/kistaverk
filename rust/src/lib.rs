@@ -54,7 +54,7 @@ pub unsafe extern "C" fn __clear_cache(begin: *mut core::ffi::c_void, end: *mut 
     //
     // Cache line size is typically 64 bytes on Android arm64; using 64 is a pragmatic default.
     const LINE: usize = 64;
-    let mut start = (begin as usize) & !(LINE - 1);
+    let start = (begin as usize) & !(LINE - 1);
     let end = end as usize;
 
     let mut ptr = start;
