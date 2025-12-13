@@ -36,6 +36,7 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 *   **QR Tools:** Generation, Scanning (Rust-driven), and "Air Gap" File Transfer protocol.
 *   **Sensor Logger:** CSV export of device sensors.
 *   **Math Tool:** Symbolic differentiation and expression evaluation.
+    *   *Upgrade Planned:* Integration of **Symbolica** for float error reduction, high-precision display, and advanced CAS features.
 *   **Cron/Task Scheduler:** Recurring task scheduling and automation.
 *   **Unit Converter:** Conversion of Length, Mass, Temperature, and Digital Storage units.
 

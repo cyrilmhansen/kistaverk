@@ -10,6 +10,8 @@ use std::sync::OnceLock;
 const DEPS_JSON: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../app/app/src/main/assets/deps.json"));
 
+const FEATURED_PACKAGES: &[(&str, &str)] = &[("symbolica", "✨ Symbolica (CAS Engine)")];
+
 #[derive(Debug, Clone, Deserialize)]
 struct DependenciesFile {
     packages: Vec<DependencyEntry>,
@@ -26,9 +28,17 @@ struct DependencyEntry {
 
 impl DependencyEntry {
     fn display_name(&self) -> String {
-        match self.version.as_deref() {
-            Some(v) if !v.is_empty() => format!("{} {}", self.name, v),
-            _ => self.name.clone(),
+        // Check if this is a featured package with a custom label
+        if let Some((_, label)) = FEATURED_PACKAGES.iter().find(|(name, _)| *name == self.name) {
+            match self.version.as_deref() {
+                Some(v) if !v.is_empty() => format!("{} {}", label, v),
+                _ => label.to_string(),
+            }
+        } else {
+            match self.version.as_deref() {
+                Some(v) if !v.is_empty() => format!("{} {}", self.name, v),
+                _ => self.name.clone(),
+            }
         }
     }
 
@@ -52,6 +62,10 @@ impl DependencyEntry {
         .to_ascii_lowercase();
         haystack.contains(&needle_lower)
     }
+
+    fn is_featured(&self) -> bool {
+        FEATURED_PACKAGES.iter().any(|(name, _)| *name == self.name)
+    }
 }
 
 static CACHED_DEPENDENCIES: OnceLock<Vec<DependencyEntry>> = OnceLock::new();
@@ -67,21 +81,27 @@ fn load_dependencies() -> &'static [DependencyEntry] {
 fn group_dependencies<'a>(
     deps: &'a [DependencyEntry],
     query: &str,
-) -> BTreeMap<String, Vec<&'a DependencyEntry>> {
+) -> (Vec<&'a DependencyEntry>, BTreeMap<String, Vec<&'a DependencyEntry>>) {
     let needle = query.trim().to_ascii_lowercase();
+    let mut featured: Vec<&DependencyEntry> = Vec::new();
     let mut grouped: BTreeMap<String, Vec<&DependencyEntry>> = BTreeMap::new();
+
     for dep in deps.iter().filter(|d| d.matches(&needle)) {
-        grouped
-            .entry(dep.license_label().to_string())
-            .or_default()
-            .push(dep);
+        if dep.is_featured() {
+            featured.push(dep);
+        } else {
+            grouped
+                .entry(dep.license_label().to_string())
+                .or_default()
+                .push(dep);
+        }
     }
-    grouped
+    (featured, grouped)
 }
 
 pub fn render_dependencies_list(state: &DependencyState) -> Value {
     let deps = load_dependencies();
-    let grouped = group_dependencies(deps, &state.query);
+    let (featured, grouped) = group_dependencies(deps, &state.query);
 
     let mut items: Vec<Value> = Vec::new();
 
@@ -89,7 +109,7 @@ pub fn render_dependencies_list(state: &DependencyState) -> Value {
         items.push(
             to_value(UiText::new("Dependencies unavailable").size(12.0)).unwrap(),
         );
-    } else if grouped.is_empty() {
+    } else if featured.is_empty() && grouped.is_empty() {
         let query = state.query.trim();
         let message = if query.is_empty() {
             "No dependencies available".to_string()
@@ -98,6 +118,22 @@ pub fn render_dependencies_list(state: &DependencyState) -> Value {
         };
         items.push(to_value(UiText::new(&message).size(12.0)).unwrap());
     } else {
+        // Render Featured Section
+        if !featured.is_empty() {
+            let mut section_children = vec![to_value(
+                UiText::new("Featured Components").size(16.0), // Slightly larger/bolder
+            )
+            .unwrap()];
+            for dep in featured {
+                section_children
+                    .push(to_value(UiText::new(&format!("{}", dep.display_name())).size(14.0)).unwrap());
+            }
+            items.push(
+                to_value(UiColumn::new(section_children).padding(8)).unwrap(),
+            );
+        }
+
+        // Render Regular Sections
         for (license, mut entries) in grouped {
             entries.sort_by(|a, b| a.display_name().cmp(&b.display_name()));
             let mut section_children = vec![to_value(
@@ -233,21 +269,54 @@ mod tests {
         ];
 
         // Test grouping without query
-        let grouped = group_dependencies(&deps, "");
+        let (featured, grouped) = group_dependencies(&deps, "");
+        assert!(featured.is_empty());
         assert_eq!(grouped.len(), 2);
         assert_eq!(grouped.get("MIT").unwrap().len(), 2);
         assert_eq!(grouped.get("Apache-2.0").unwrap().len(), 1);
 
         // Test filtering
-        let filtered = group_dependencies(&deps, "dep1");
+        let (featured, filtered) = group_dependencies(&deps, "dep1");
+        assert!(featured.is_empty());
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered.get("MIT").unwrap().len(), 1);
         assert_eq!(filtered.get("MIT").unwrap()[0].name, "dep1");
 
         // Test case insensitive filtering
-        let filtered_case = group_dependencies(&deps, "DEP1");
+        let (featured, filtered_case) = group_dependencies(&deps, "DEP1");
+        assert!(featured.is_empty());
         assert_eq!(filtered_case.len(), 1);
         assert_eq!(filtered_case.get("MIT").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_featured_dependencies() {
+        let deps = vec![
+            DependencyEntry {
+                name: "symbolica".to_string(),
+                version: Some("0.1.0".to_string()),
+                license: Some("MIT".to_string()),
+                repository: None,
+                homepage: None,
+            },
+            DependencyEntry {
+                name: "other".to_string(),
+                version: Some("1.0".to_string()),
+                license: Some("MIT".to_string()),
+                repository: None,
+                homepage: None,
+            },
+        ];
+
+        // Symbolica should be in featured, not in the general list
+        let (featured, grouped) = group_dependencies(&deps, "");
+        assert_eq!(featured.len(), 1);
+        assert_eq!(featured[0].name, "symbolica");
+        assert_eq!(featured[0].display_name(), "✨ Symbolica (CAS Engine) 0.1.0");
+
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped.get("MIT").unwrap().len(), 1);
+        assert_eq!(grouped.get("MIT").unwrap()[0].name, "other");
     }
 
     #[test]

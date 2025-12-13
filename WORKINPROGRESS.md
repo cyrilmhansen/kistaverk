@@ -22,6 +22,7 @@ Keep this file short and actionable. Update it at the end of each session.
 3. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
 
 ## Roadmap (Future Features)
+- **Advanced CAS**: Integrate `symbolica` for precision math and float error reduction.
 - **Search/Filtering**: Extend filtering to other lists.
 
 ## Immediate Focus

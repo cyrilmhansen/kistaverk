@@ -32,6 +32,8 @@ Kistaverk follows a **Unidirectional Data Flow** architecture, heavily inspired 
 *   **Architecture:**
     *   `State`: A giant enum or struct holding the data for the active screen.
     *   `Features`: Modules (e.g., `features/vault.rs`) implementing specific tools.
+    *   **Notable Dependencies:**
+        *   `symbolica`: Used for CAS and high-precision math. *Note: Restricted to single-core execution for non-commercial use (Hobbyist License). MIT-licensed modules used where applicable.*
 
 ---
 

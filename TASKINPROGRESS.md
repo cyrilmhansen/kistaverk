@@ -61,6 +61,15 @@
     4.  **Implement UI:** Dropdowns for category and units, numeric input.
     5.  **Add Tests:** Verify conversions (e.g., Meters to Feet, Celsius to Fahrenheit).
 
+### Feature 2: Advanced CAS (Symbolica Integration)
+*   **Status:** 📅 PLANNED
+*   **Objective:** Upgrade the Math Tool to use `symbolica` for robust symbolic math, float error reduction, and advanced calculus.
+*   **Implementation Plan:**
+    1.  **Dependency:** Add `symbolica` to `Cargo.toml`.
+    2.  **Configuration:** Ensure single-core environment variable is set for hobbyist license compliance.
+    3.  **Integration:** Refactor `features/math_tool.rs` to use Symbolica's `Expr` and `Context`.
+    4.  **UI:** Update display to handle pretty-printed symbolic output and precision float results.
+
 ### Completed Features (Recent)
 *   **Regex Tester Enhancements:** (Merged 2025-12-12) Added Global Search and Common Patterns.
 *   **Extend Symbolic Integration:** (Merged 2025-12-12) Added `exp`, `tan`, `atan` support.
