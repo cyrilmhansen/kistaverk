@@ -72,7 +72,12 @@ impl MirScriptingState {
             return;
         }
 
-        let normalized_source = self.source.replace("\r\n", "\n").replace('\r', "");
+        let mut normalized_source = self.source.replace("\r\n", "\n").replace('\r', "");
+        // MIR scanner expects statements to be separated by NL or ';'. Ensure the last line ends
+        // with a newline so `endmodule`/`endfunc` isn't treated as having trailing junk at EOF.
+        if !normalized_source.ends_with('\n') {
+            normalized_source.push('\n');
+        }
         if force_scan_string {
             let cr_count = self.source.as_bytes().iter().filter(|&&b| b == b'\r').count();
             logcat(&format!(
