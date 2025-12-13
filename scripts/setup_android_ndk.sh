@@ -307,7 +307,7 @@ int main() {
 }
 EOF
     
-    if "$toolchain_path/clang" --target=aarch64-linux-android -o /tmp/ndk_test "$test_file" 2>/dev/null; then
+    if "$toolchain_path/clang" --target=aarch64-linux-android24 -o /tmp/ndk_test "$test_file" 2>/dev/null; then
         echo "✅ Basic compilation test passed"
         rm -f /tmp/ndk_test "$test_file"
         return 0
