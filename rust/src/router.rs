@@ -667,6 +667,7 @@ pub(crate) enum Action {
     Reset,
     Back,
     HomeFilter { query: String },
+    RulerScreen,
     ShaderDemo,
     LoadShader {
         path: Option<String>,
@@ -1179,6 +1180,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "home_filter" => Ok(Action::HomeFilter {
             query: bindings.get("home_filter").cloned().unwrap_or_default(),
         }),
+        "ruler_screen" => Ok(Action::RulerScreen),
         "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
         "pdf_select" => Ok(Action::PdfSelect {
             fd,
@@ -1946,6 +1948,9 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.reset_navigation();
             }
             state.loading_message = None;
+        }
+        Action::RulerScreen => {
+            state.push_screen(Screen::Ruler);
         }
         a @ Action::ArchiveToolsScreen
         | a @ Action::ArchiveOpen { .. }
@@ -4580,6 +4585,7 @@ fn error_ui(message: &str) -> Value {
 fn render_ui(state: &AppState) -> Value {
     match state.current_screen() {
         Screen::Home => render_menu(state, &feature_catalog()),
+        Screen::Ruler => render_ruler_screen(state),
         Screen::ShaderDemo => render_shader_screen(state),
         Screen::KotlinImage => render_kotlin_image_screen(state),
         Screen::HashVerify => render_hash_verify_screen(state),
@@ -4620,6 +4626,22 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Scripting => features::scripting::render_scripting_screen(state),
         Screen::Scheduler => render_scheduler_screen(state),
     }
+}
+
+fn render_ruler_screen(state: &AppState) -> Value {
+    use crate::ui::{maybe_push_back, Column as UiColumn, Ruler as UiRuler, Text as UiText};
+
+    let mut children = vec![
+        serde_json::to_value(UiText::new("Ruler").size(20.0)).unwrap(),
+        serde_json::to_value(
+            UiText::new("Hold your device steady for a physical ruler.").size(14.0),
+        )
+        .unwrap(),
+        serde_json::to_value(UiRuler::new().height_dp(140)).unwrap(),
+    ];
+
+    maybe_push_back(&mut children, state);
+    serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
 }
 
 /// A feature entry for the home menu.
@@ -4923,6 +4945,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "vault_screen",
             requires_file_picker: false,
             description: "age-based file lockbox",
+        },
+        Feature {
+            id: "ruler",
+            name: "📏 Ruler",
+            category: "🧰 Utilities",
+            action: "ruler_screen",
+            requires_file_picker: false,
+            description: "on-screen ruler",
         },
         Feature {
             id: "logic_engine",

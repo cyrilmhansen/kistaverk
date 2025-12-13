@@ -820,6 +820,46 @@ pub struct HtmlView<'a> {
     pub content_description: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+pub struct Ruler {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_dp: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'static str>,
+}
+
+impl Ruler {
+    pub fn new() -> Self {
+        Self {
+            kind: "Ruler",
+            orientation: None,
+            height_dp: None,
+            content_description: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn orientation(mut self, value: &'static str) -> Self {
+        self.orientation = Some(value);
+        self
+    }
+
+    pub fn height_dp(mut self, value: u32) -> Self {
+        self.height_dp = Some(value);
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn content_description(mut self, value: &'static str) -> Self {
+        self.content_description = Some(value);
+        self
+    }
+}
+
 impl<'a> HtmlView<'a> {
     pub fn new(html: &'a str) -> Self {
         Self {

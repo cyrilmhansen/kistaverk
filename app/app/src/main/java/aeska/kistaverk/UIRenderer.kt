@@ -50,6 +50,7 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.floor
 
 // Added 'onAction' callback: (String, Boolean) -> Unit where the boolean flags file picker needs
 class UiRenderer(
@@ -88,6 +89,7 @@ class UiRenderer(
         "Compass" to { data, matched -> createCompass(data, matched) },
         "Barometer" to { data, matched -> createBarometer(data, matched as? SensorShaderView) },
         "Magnetometer" to { data, matched -> createMagnetometer(data, matched as? SensorShaderView) },
+        "Ruler" to { data, matched -> createRuler(data, matched as? RulerView) },
     )
     private val host = FrameLayout(context).apply {
         layoutParams = FrameLayout.LayoutParams(
@@ -126,6 +128,7 @@ class UiRenderer(
         "Compass",
         "Barometer",
         "Magnetometer",
+        "Ruler",
         "VirtualList"
     )
 
@@ -752,6 +755,22 @@ class UiRenderer(
         }
     }
 
+    private fun createRuler(data: JSONObject, existing: RulerView?): View {
+        val view = existing ?: RulerView(context)
+        val heightDp = data.optInt("height_dp", 140).coerceAtLeast(48)
+        val orientation = data.optString("orientation", "horizontal")
+        view.setOrientation(orientation)
+        val contentDescription = data.optString("content_description", "")
+        view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dpToPx(context, heightDp.toFloat())
+        )
+        view.layoutParams = lp
+        setMeta(view, "Ruler", resolveNodeId(data))
+        return view
+    }
+
     private fun createTextInput(data: JSONObject, existing: EditText?): View {
         val editText = existing ?: EditText(context)
         val bindKey = data.optString("bind_key", "")
@@ -858,6 +877,90 @@ class UiRenderer(
         view.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
         setMeta(view, "ShaderToy", resolveNodeId(data))
         return view
+    }
+
+    private class RulerView(context: Context) : View(context) {
+        private var orientation: String = "horizontal"
+        private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            strokeWidth = 2f
+        }
+        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            textSize = 28f
+        }
+        private val bgPaint = Paint().apply {
+            color = Color.WHITE
+        }
+
+        fun setOrientation(value: String) {
+            val normalized = value.lowercase()
+            orientation = if (normalized == "vertical") "vertical" else "horizontal"
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+            if (width <= 0 || height <= 0) return
+
+            val metrics = resources.displayMetrics
+            val ppi = if (orientation == "vertical") metrics.ydpi else metrics.xdpi
+            if (ppi <= 0f) return
+
+            val pxPerInch = ppi
+            val pxPerCm = ppi / 2.54f
+
+            val topBase = height * 0.45f
+            val bottomBase = height * 0.90f
+
+            // Inches scale (top)
+            drawInches(canvas, pxPerInch, topBase)
+            // Centimeters scale (bottom)
+            drawCentimeters(canvas, pxPerCm, bottomBase)
+        }
+
+        private fun drawInches(canvas: Canvas, pxPerInch: Float, baseY: Float) {
+            val maxInches = width.toFloat() / pxPerInch
+            val maxTick = floor(maxInches * 16f).toInt()
+            for (i in 0..maxTick) {
+                val x = i * (pxPerInch / 16f)
+                val frac = i % 16
+                val tickH = when {
+                    frac == 0 -> height * 0.30f
+                    frac == 8 -> height * 0.22f
+                    frac == 4 || frac == 12 -> height * 0.16f
+                    frac == 2 || frac == 6 || frac == 10 || frac == 14 -> height * 0.12f
+                    else -> height * 0.08f
+                }
+                canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
+                if (frac == 0) {
+                    val label = (i / 16).toString()
+                    canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
+                }
+            }
+            canvas.drawLine(0f, baseY, width.toFloat(), baseY, tickPaint)
+        }
+
+        private fun drawCentimeters(canvas: Canvas, pxPerCm: Float, baseY: Float) {
+            val maxCm = width.toFloat() / pxPerCm
+            val maxTick = floor(maxCm * 10f).toInt()
+            for (i in 0..maxTick) {
+                val x = i * (pxPerCm / 10f)
+                val frac = i % 10
+                val tickH = when {
+                    frac == 0 -> height * 0.24f
+                    frac == 5 -> height * 0.18f
+                    else -> height * 0.10f
+                }
+                canvas.drawLine(x, baseY - tickH, x, baseY, tickPaint)
+                if (frac == 0) {
+                    val label = (i / 10).toString()
+                    canvas.drawText(label, x + 4f, baseY - tickH - 6f, labelPaint)
+                }
+            }
+            canvas.drawLine(0f, baseY, width.toFloat(), baseY, tickPaint)
+        }
     }
 
     private fun createProgress(data: JSONObject, existing: LinearLayout?): View {

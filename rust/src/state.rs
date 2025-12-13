@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Screen {
     Home,
+    Ruler,
     ShaderDemo,
     KotlinImage,
     Dithering,
