@@ -2437,6 +2437,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Action::ColorCopyClipboard => {
             state.push_screen(Screen::ColorTools);
             state.toast = Some("Copied to clipboard".into());
+            state.haptic = true;
         }
         Action::Hash {
             algo,
@@ -2511,6 +2512,12 @@ fn handle_command(command: Command) -> Result<Value, String> {
 
 fn render_root(state: &mut AppState) -> Value {
     let mut ui = render_ui(state);
+    if state.haptic {
+        if let Some(obj) = ui.as_object_mut() {
+            obj.insert("haptic".into(), Value::Bool(true));
+        }
+        state.haptic = false;
+    }
     if let Some(toast) = state.toast.take() {
         if let Some(obj) = ui.as_object_mut() {
             obj.insert("toast".into(), Value::String(toast));
@@ -6519,6 +6526,7 @@ fn apply_worker_results(state: &mut AppState) {
                 Ok(hash) => {
                     state.last_hash = Some(hash);
                     state.last_error = None;
+                    state.haptic = true;
                 }
                 Err(e) => {
                     state.last_error = Some(e);
@@ -6632,6 +6640,7 @@ fn apply_worker_results(state: &mut AppState) {
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
+                    state.haptic = true;
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {
@@ -6770,6 +6779,7 @@ fn apply_worker_results(state: &mut AppState) {
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
+                    state.haptic = true;
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {
@@ -6790,6 +6800,7 @@ fn apply_worker_results(state: &mut AppState) {
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
+                    state.haptic = true;
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {
@@ -6811,6 +6822,7 @@ fn apply_worker_results(state: &mut AppState) {
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
+                    state.haptic = true;
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {

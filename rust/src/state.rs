@@ -424,6 +424,8 @@ pub struct AppState {
     pub sql_engine: Option<SqlEngine>,
     #[serde(skip)]
     pub toast: Option<String>,
+    #[serde(skip)]
+    pub haptic: bool,
 }
 
 impl AppState {
@@ -521,6 +523,7 @@ impl AppState {
             unit_converter: UnitConverterState::new(),
             sql_engine: None,
             toast: None,
+            haptic: false,
         }
     }
 
@@ -584,6 +587,7 @@ impl AppState {
         self.home_filter.clear();
         self.theme_mode = None;
         self.toast = None;
+        self.haptic = false;
         self.hash_reference = None;
         self.hash_match = None;
         self.image.reset();

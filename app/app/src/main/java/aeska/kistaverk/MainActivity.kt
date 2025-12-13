@@ -24,6 +24,7 @@ import aeska.kistaverk.features.ConversionResult
 import aeska.kistaverk.features.KotlinImageConversion
 import android.view.View
 import android.view.ViewGroup
+import android.view.HapticFeedbackConstants
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -763,6 +764,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
                 val newUiJson = dispatch(command.toString())
+                val haptic = runCatching { JSONObject(newUiJson).optBoolean("haptic", false) }
+                    .getOrNull() == true
                 val toastText = runCatching { JSONObject(newUiJson).optString("toast", "") }
                     .getOrNull()
                     .orEmpty()
@@ -770,6 +773,11 @@ class MainActivity : ComponentActivity() {
                 if (toastText.isNotEmpty()) {
                     runOnUiThread {
                         Toast.makeText(this, toastText, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                if (haptic) {
+                    runOnUiThread {
+                        window?.decorView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     }
                 }
                 if (loadingOnly) {
@@ -826,6 +834,8 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val newUiJson = withContext(Dispatchers.IO) { dispatch(command.toString()) }
+                val haptic = runCatching { JSONObject(newUiJson).optBoolean("haptic", false) }
+                    .getOrNull() == true
                 val toastText = runCatching { JSONObject(newUiJson).optString("toast", "") }
                     .getOrNull()
                     .orEmpty()
@@ -838,6 +848,9 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.Main) {
                         if (toastText.isNotEmpty()) {
                             Toast.makeText(this@MainActivity, toastText, Toast.LENGTH_SHORT).show()
+                        }
+                        if (haptic) {
+                            window?.decorView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                         }
                         val rootView = runCatching { renderer.render(newUiJson) }
                             .getOrElse { throwable ->
