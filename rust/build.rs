@@ -3,8 +3,10 @@ fn main() {
     // Note: Symbolica is not currently used due to compilation complexity in mobile environment
     // println!("cargo:rustc-env=SYMBOLICA_SINGLE_CORE=1");
 
-    // Ensure DT_INIT points to our _init shim for UPX
-    println!("cargo:rustc-link-arg=-Wl,-init=_init");
+    // Ensure DT_INIT points to our _init shim for UPX (Android targets only)
+    if std::env::var("CARGO_CFG_TARGET_OS").map(|v| v == "android").unwrap_or(false) {
+        println!("cargo:rustc-link-arg=-Wl,-init=_init");
+    }
 
     // Re-run if env vars change
     println!("cargo:rerun-if-env-changed=GMP_LIB_DIR");
