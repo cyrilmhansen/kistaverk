@@ -3,7 +3,7 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-13)
-- **Advanced CAS**: Completed Phase 3 (Android Integration). Implemented build scripts, `build.rs` logic, and Gradle tasks for precision builds.
+- **Advanced CAS**: Completed Phase 4 (Unified GMP Solution). Implemented cross-platform library management for GMP/MPFR/MPC.
 - **Math Tool**: Added cumulative floating-point error display.
 - **Test Coverage**: Integrated `math_tool_test.rs` and verified tests pass.
 - **ARM64 Optimizations**: Implemented NEON SIMD support and build targets.
@@ -22,17 +22,18 @@ Keep this file short and actionable. Update it at the end of each session.
 - **Preset Filtering**: Added real-time filtering to the Preset Manager.
 
 ## Technical Debt & Issues (High Priority)
-1. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
+1. **Disabled Tests**: PDF Preview tests (`UiRendererPdfPreviewTest.kt`) are disabled due to Robolectric issues.
+2. **JSON Overhead**: Full UI tree serialized on every update causes GC churn.
    - *Action*: Implement partial updates/diffing or separate data channels.
-2. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
+3. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
-3. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
+4. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
 
 ## Roadmap (Future Features)
 - **Search/Filtering**: Extend filtering to other lists.
 
 ## Immediate Focus
-- Verify Android build with precision enabled.
+- Verify Android build with precision enabled using new GMP setup.
 
 ## Near-Term
 - Schema hardening: typed builders, validation.

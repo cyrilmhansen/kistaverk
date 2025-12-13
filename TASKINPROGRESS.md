@@ -3,7 +3,7 @@
 ## Status: Feature Implementation
 *   **Date:** 2025-12-13
 *   **Objective:** Stabilization and Documentation.
-*   **Current State:** ✅ Advanced CAS (Phase 3) and Android Precision Support fully implemented.
+*   **Current State:** ✅ Advanced CAS (Unified GMP Solution) and Android Precision Support fully implemented.
 
 ## AI Agent Protocol
 All AI agents contributing to this repository must specify their name and version concisely at the end of each commit message.
@@ -14,8 +14,9 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ Phase 1: Numeric Abstraction (`cas_types.rs`, `Number` enum)
     *   ✅ Phase 2: Arbitrary Precision Logic using `rug`
     *   ✅ Phase 3: Android Integration (Build scripts, `build.rs`, Gradle)
+    *   ✅ Phase 4: Unified GMP Solution (`GMP_SOLUTION_SUMMARY.md`, `scripts/setup_gmp.sh`)
     *   ✅ Feature: Cumulative FP Error Display
-    *   ✅ Documentation: `ADVANCED_CAS.md`, `ADVANCED_CAS_PLAN.md`, `scripts/ANDROID_BUILD_README.md`
+    *   ✅ Documentation: `ADVANCED_CAS.md`, `ADVANCED_CAS_PLAN.md`, `scripts/ANDROID_BUILD_README.md`, `GMP_SETUP_GUIDE.md`
 2.  **Unit Converter** (`features/unit_converter.rs`)
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
@@ -68,11 +69,12 @@ All AI agents contributing to this repository must specify their name and versio
 ## Immediate To-Do List
 1.  Monitor scheduler stability.
 2.  Test Android precision build on device.
+3.  Fix disabled PDF preview tests (Robolectric issue).
 
 ## Planned Features
 
 ### Completed Features (Recent)
-*   **Advanced CAS:** (Merged 2025-12-13) Full `rug` integration with Android cross-compilation.
+*   **Advanced CAS:** (Merged 2025-12-13) Full `rug` integration with Unified GMP Solution.
 *   **Unit Converter:** (Merged 2025-12-12) Implemented dedicated conversion tool.
 *   **Regex Tester Enhancements:** (Merged 2025-12-12) Added Global Search and Common Patterns.
 *   **Extend Symbolic Integration:** (Merged 2025-12-12) Added `exp`, `tan`, `atan` support.
