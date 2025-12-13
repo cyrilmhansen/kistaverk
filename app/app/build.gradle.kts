@@ -100,7 +100,7 @@ android {
         val enablePrecision = !project.hasProperty("enablePrecision") || 
                              project.property("enablePrecision").toString().toBoolean()
         
-        val mut argsList = mutableListOf(
+        val argsList = mutableListOf(
             "ndk",
             "-t", "arm64-v8a",
             "-o", jniLibsDir.absolutePath, // <--- HERE: Absolute path guaranteed!
@@ -108,7 +108,7 @@ android {
         )
         
         // Add precision feature flag if enabled (default is true)
-        if enablePrecision {
+        if (enablePrecision) {
             argsList.add("--features")
             argsList.add("precision")
             println("🔧 Precision feature enabled for Rust build (DEFAULT)")
