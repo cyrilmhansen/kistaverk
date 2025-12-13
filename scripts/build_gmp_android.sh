@@ -130,7 +130,8 @@ for TARGET in "${TARGETS[@]}"; do
     export AR="llvm-ar"
     export RANLIB="llvm-ranlib"
     export STRIP="llvm-strip"
-    export CFLAGS="-fPIC"
+    # Add optimization flags and section splitting for linker GC
+    export CFLAGS="-fPIC -O3 -ffunction-sections -fdata-sections"
     export CXXFLAGS="$CFLAGS"
     export LDFLAGS=""
     
