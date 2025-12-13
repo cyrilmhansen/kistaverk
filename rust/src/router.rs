@@ -1080,7 +1080,7 @@ pub(crate) enum Action {
         predicate: Option<String>,
         object: Option<String>,
     },
-    JwtScreen,
+    JwtScreen { bindings: HashMap<String, String> },
     JwtDecode {
         token: Option<String>,
     },
@@ -1300,7 +1300,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
             predicate: bindings.get("logic_query_p").cloned(),
             object: bindings.get("logic_query_o").cloned(),
         }),
-        "jwt_screen" => Ok(Action::JwtScreen),
+        "jwt_screen" => Ok(Action::JwtScreen { bindings }),
         "jwt_decode" => Ok(Action::JwtDecode {
             token: bindings.get("jwt_input").cloned(),
         }),
@@ -1977,7 +1977,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 return Ok(ui);
             }
         }
-        a @ Action::JwtScreen
+        a @ Action::JwtScreen { .. }
         | a @ Action::JwtDecode { .. }
         | a @ Action::JwtClear
         | a @ Action::JwtPaste { .. } => {
@@ -3025,14 +3025,34 @@ fn handle_logic_actions(state: &mut AppState, action: Action) -> Option<Value> {
 }
 
 fn handle_jwt_actions(state: &mut AppState, action: Action) {
+    fn looks_like_jwt(value: &str) -> bool {
+        let trimmed = value.trim();
+        if trimmed.len() < 10 {
+            return false;
+        }
+        if !trimmed.starts_with("ey") {
+            return false;
+        }
+        if trimmed.contains(char::is_whitespace) {
+            return false;
+        }
+        trimmed.split('.').count() == 3
+    }
+
     match action {
-        Action::JwtScreen => {
+        Action::JwtScreen { bindings } => {
             state.push_screen(Screen::Jwt);
             state.replace_current(Screen::Jwt);
             state.jwt.input_token.clear();
             state.jwt.decoded_header = None;
             state.jwt.decoded_payload = None;
             state.jwt.error = None;
+
+            if let Some(clip) = bindings.get("clipboard") {
+                if looks_like_jwt(clip) {
+                    state.jwt.input_token = clip.trim().to_string();
+                }
+            }
         }
         Action::JwtDecode { token } => {
             state.replace_current(Screen::Jwt);
