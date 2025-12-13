@@ -378,7 +378,7 @@ main() {
                 echo ""
             done
             
-            read -p "Enter your choice (1-${#found_ndks[@]}): " choice
+            read -p "Enter your choice \(1-${#found_ndks[@]}\): " choice
             echo ""
             
             if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#found_ndks[@]} ]; then
