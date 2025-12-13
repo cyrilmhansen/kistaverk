@@ -54,6 +54,6 @@ app/src/main/jniLibs/
 .history/
 *~
 app/.idea/caches/
-app/src/main/assets/deps.json
+app/app/src/main/assets/deps.json
 app/.kotlin/
 rust/cargo_env_config.toml
