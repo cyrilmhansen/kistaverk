@@ -60,6 +60,11 @@ GMP_VERSION="6.3.0"
 MPFR_VERSION="4.2.1"
 MPC_VERSION="1.3.1"
 
+# Download URLs (can be overridden by environment variables)
+GMP_URL="${GMP_URL:-https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz}"
+MPFR_URL="${MPFR_URL:-https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.xz}"
+MPC_URL="${MPC_URL:-https://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz}"
+
 # Output directory
 mkdir -p "rust/libs/android"
 OUTPUT_DIR="$(cd "rust/libs/android" && pwd)"
@@ -132,7 +137,7 @@ for TARGET in "${TARGETS[@]}"; do
     # Build GMP
     echo "Building GMP..."
     if [ ! -f "gmp-${GMP_VERSION}.tar.xz" ]; then
-        curl -f -L -O "https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz"
+        curl -f -L -O "$GMP_URL"
     fi
     tar -xf "gmp-${GMP_VERSION}.tar.xz"
     cd "gmp-${GMP_VERSION}"
@@ -150,7 +155,7 @@ for TARGET in "${TARGETS[@]}"; do
     # Build MPFR (depends on GMP)
     echo "Building MPFR..."
     if [ ! -f "mpfr-${MPFR_VERSION}.tar.xz" ]; then
-        curl -f -L -O "https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.xz"
+        curl -f -L -O "$MPFR_URL"
     fi
     tar -xf "mpfr-${MPFR_VERSION}.tar.xz"
     cd "mpfr-${MPFR_VERSION}"
@@ -168,8 +173,7 @@ for TARGET in "${TARGETS[@]}"; do
     # Build MPC (depends on GMP and MPFR)
     echo "Building MPC..."
     if [ ! -f "mpc-${MPC_VERSION}.tar.gz" ]; then
-        # Use GNU mirror for better reliability
-        curl -f -L -O "https://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz"
+        curl -f -L -O "$MPC_URL"
     fi
     tar -xf "mpc-${MPC_VERSION}.tar.gz"
     cd "mpc-${MPC_VERSION}"
