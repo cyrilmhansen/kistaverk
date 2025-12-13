@@ -21,6 +21,7 @@ fn normalize_locale(locale_str: &str) -> &str {
         "is" => "is",
         "en" => "en",
         "fr" => "fr",
+        "de" => "de",
         _ => "en",
     }
 }
@@ -41,6 +42,11 @@ mod tests {
         assert_eq!(normalize_locale("fr-FR"), "fr");
         assert_eq!(normalize_locale("fr_FR"), "fr");
         
+        // Test German variants
+        assert_eq!(normalize_locale("de"), "de");
+        assert_eq!(normalize_locale("de-DE"), "de");
+        assert_eq!(normalize_locale("de_DE"), "de");
+        
         // Test Icelandic variants
         assert_eq!(normalize_locale("is"), "is");
         assert_eq!(normalize_locale("is-IS"), "is");
@@ -48,7 +54,7 @@ mod tests {
         
         // Test unknown locales fallback to English
         assert_eq!(normalize_locale("es"), "en");
-        assert_eq!(normalize_locale("de"), "en");
+        assert_eq!(normalize_locale("it"), "en");
         assert_eq!(normalize_locale("zh-CN"), "en");
         
         // Test edge cases

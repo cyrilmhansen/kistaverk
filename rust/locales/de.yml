@@ -1,0 +1,88 @@
+# German translations for Kistaverk
+# This file contains translations for all UI elements
+
+# Home screen translations
+home_title: "🧰 Werkzeugmenü"
+home_subtitle: "✨ Wählen Sie ein Werkzeug aus. Hash-Werkzeuge fordern eine Datei an."
+home_quick_access: "⚡ Schnellzugriff"
+home_tools_suffix: "Werkzeuge"
+search_hint: "Werkzeuge suchen…"
+no_matching_tools: "Keine passenden Werkzeuge gefunden."
+legacy_notice: "Hinweis: MD5 und SHA-1 sind nicht für Sicherheit geeignet; bevorzugen Sie SHA-256 oder BLAKE3."
+legacy_hash_warning: "MD5/SHA-1 sind veraltet. Bevorzugen Sie SHA-256 oder BLAKE3."
+theme_section: "🌓 Design"
+theme_system: "System"
+theme_light: "Hell"
+theme_dark: "Dunkel"
+
+# Screen titles and descriptions
+screen_ruler_title: "Lineal"
+screen_ruler_description: "Halten Sie Ihr Gerät ruhig für ein physisches Lineal."
+screen_math_tool_title: "Mathematischer Ausdrucksrechner"
+screen_math_tool_description: "Berechnen Sie Ausdrücke mit +, -, *, /, ^, Klammern und Funktionen: sin, cos, sqrt, log (Basis e)."
+screen_unit_converter_title: "Einheitenumrechner"
+screen_unit_converter_description: "Konvertieren Sie zwischen verschiedenen Maßeinheiten."
+screen_regex_tester_title: "Regex-Tester"
+screen_regex_tester_description: "Geben Sie ein Muster und Beispieltext ein, um Übereinstimmungen und Erfassunggruppen zu testen."
+
+# Common UI elements
+common_back: "Zurück"
+common_cancel: "Abbrechen"
+common_confirm: "Bestätigen"
+common_error: "Fehler"
+common_success: "Erfolg"
+common_warning: "Warnung"
+common_info: "Information"
+common_loading: "Wird geladen…"
+common_save: "Speichern"
+common_open: "Öffnen"
+common_close: "Schließen"
+common_settings: "Einstellungen"
+common_help: "Hilfe"
+common_about: "Über"
+
+# File operations
+file_select: "Datei auswählen"
+file_no_file_selected: "Keine Datei ausgewählt"
+file_invalid_file: "Ungültige Datei"
+file_load_error: "Fehler beim Laden der Datei"
+file_save_success: "Datei erfolgreich gespeichert"
+file_save_error: "Fehler beim Speichern der Datei"
+
+# Tool categories
+category_hashes: "Hashes"
+category_compression: "Komprimierung"
+category_conversion: "Konvertierung"
+category_analysis: "Analyse"
+category_utilities: "Dienstprogramme"
+category_encryption: "Verschlüsselung"
+category_development: "Entwicklung"
+category_multimedia: "Multimedia"
+
+# Error messages
+error_invalid_input: "Ungültige Eingabe"
+error_operation_failed: "Vorgang fehlgeschlagen"
+error_unsupported_format: "Nicht unterstütztes Format"
+error_file_too_large: "Datei zu groß"
+error_permission_denied: "Berechtigung verweigert"
+error_network_error: "Netzwerkfehler"
+
+# Success messages
+success_operation_completed: "Vorgang erfolgreich abgeschlossen"
+success_processing_complete: "Verarbeitung abgeschlossen"
+success_file_processed: "Datei erfolgreich verarbeitet"
+
+# Tool-specific translations
+tool_hash_calculate: "Hash berechnen"
+tool_hash_result: "Hash-Ergebnis"
+tool_compress_file: "Datei komprimieren"
+tool_decompress_file: "Datei dekomprimieren"
+tool_convert_format: "Format konvertieren"
+tool_analyze_data: "Daten analysieren"
+
+# Settings
+settings_language: "Sprache"
+settings_theme: "Design"
+settings_general: "Allgemein"
+settings_advanced: "Erweitert"
+settings_appearance: "Erscheinungsbild"
