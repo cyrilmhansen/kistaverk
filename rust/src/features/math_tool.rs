@@ -41,8 +41,17 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
             .history
             .iter()
             .map(|entry| {
-                serde_json::to_value(UiText::new(&format!("{} = {}", entry.expression, entry.result)).size(12.0))
-                    .unwrap()
+                let mut line = format!("{} = {}", entry.expression, entry.result);
+                if let Some(err) = entry.error_estimate {
+                    line.push_str(&format!("  [error≈{:.2e}", err));
+                    if entry.precision_bits > 0 {
+                        line.push_str(&format!(", {}-bit", entry.precision_bits));
+                    } else {
+                        line.push_str(", f64");
+                    }
+                    line.push(']');
+                }
+                serde_json::to_value(UiText::new(&line).size(12.0)).unwrap()
             })
             .collect();
         children.push(serde_json::to_value(UiVirtualList::new(items).id("math_history")).unwrap());
@@ -58,6 +67,25 @@ pub fn render_math_tool_screen(state: &AppState) -> Value {
             ).unwrap()
         );
     }
+
+    // Precision/backend info
+    let backend = get_math_backend_info();
+    let precision_label = if state.math_tool.precision_bits == 0 {
+        "f64 (fast)".to_string()
+    } else {
+        format!("{}-bit (arbitrary precision)", state.math_tool.precision_bits)
+    };
+    children.push(
+        serde_json::to_value(
+            UiText::new(&format!("Backend: {backend} — Precision: {precision_label}")).size(12.0)
+        ).unwrap()
+    );
+    let toggle_label = if state.math_tool.precision_bits == 0 {
+        "Use high precision (128-bit)"
+    } else {
+        "Use standard precision (f64)"
+    };
+    children.push(serde_json::to_value(UiButton::new(toggle_label, "math_toggle_precision")).unwrap());
 
     maybe_push_back(&mut children, state);
     serde_json::to_value(UiColumn::new(children).padding(20)).unwrap()
@@ -97,7 +125,12 @@ pub fn handle_math_action(
                     state.math_tool.error = None;
                     state.math_tool
                         .history
-                        .insert(0, MathHistoryEntry { expression: expr.to_string(), result });
+                        .insert(0, MathHistoryEntry {
+                            expression: expr.to_string(),
+                            result,
+                            error_estimate: Some(estimated_error),
+                            precision_bits: state.math_tool.precision_bits,
+                        });
                     if state.math_tool.history.len() > 20 {
                         state.math_tool.history.truncate(20);
                     }
@@ -111,6 +144,16 @@ pub fn handle_math_action(
             state.math_tool.clear_history();
             state.math_tool.expression.clear();
             state.math_tool.error = None;
+        }
+        "math_toggle_precision" => {
+            // Toggle between fast f64 and a safer high-precision default
+            if state.math_tool.precision_bits == 0 {
+                state.math_tool.precision_bits = 128;
+            } else {
+                state.math_tool.precision_bits = 0;
+            }
+            // Reset cumulative error when switching modes
+            state.math_tool.cumulative_error = 0.0;
         }
         _ => {}
     }
@@ -1277,10 +1320,14 @@ mod tests {
         state.math_tool.history.push(MathHistoryEntry {
             expression: "1+1".into(),
             result: "2".into(),
+            error_estimate: None,
+            precision_bits: 0,
         });
         state.math_tool.history.push(MathHistoryEntry {
             expression: "2+2".into(),
             result: "4".into(),
+            error_estimate: None,
+            precision_bits: 0,
         });
 
         let ui = render_math_tool_screen(&state);

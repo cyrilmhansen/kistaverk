@@ -252,6 +252,8 @@ pub struct UuidGeneratorState {
 pub struct MathHistoryEntry {
     pub expression: String,
     pub result: String,
+    pub error_estimate: Option<f64>,
+    pub precision_bits: u32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
