@@ -420,6 +420,8 @@ pub struct AppState {
     pub unit_converter: UnitConverterState,
     #[serde(skip)]
     pub sql_engine: Option<SqlEngine>,
+    #[serde(skip)]
+    pub toast: Option<String>,
 }
 
 impl AppState {
@@ -515,6 +517,7 @@ impl AppState {
             scheduler: SchedulerState::new(),
             unit_converter: UnitConverterState::new(),
             sql_engine: None,
+            toast: None,
         }
     }
 
@@ -576,6 +579,7 @@ impl AppState {
         self.last_shader = None;
         self.last_hash_algo = None;
         self.home_filter.clear();
+        self.toast = None;
         self.hash_reference = None;
         self.hash_match = None;
         self.image.reset();

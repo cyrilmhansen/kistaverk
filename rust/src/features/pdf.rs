@@ -555,11 +555,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         );
     }
 
-    if let Some(out) = &state.pdf.last_output {
-        children.push(
-            serde_json::to_value(UiText::new(&format!("Result saved to: {}", out)).size(12.0))
-                .unwrap(),
-        );
+    if state.pdf.last_output.is_some() {
         children.push(
             serde_json::to_value(UiButton::new("Save as…", "pdf_save_as").id("pdf_save_as_btn"))
                 .unwrap(),

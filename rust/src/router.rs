@@ -1894,7 +1894,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         Ok(action) => action,
         Err(err) => {
             state.last_error = Some(err);
-            return Ok(render_ui(&state));
+            return Ok(render_root(&mut state));
         }
     };
 
@@ -2064,7 +2064,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.preset_state.error = Some("preset_missing_tool".into());
                 state.preset_state.is_saving = false;
                 state.replace_current(Screen::PresetSave);
-                return Ok(render_ui(&state));
+                return Ok(render_root(&mut state));
             };
             state.preset_state.current_tool_id = Some(tool_id.clone());
 
@@ -2082,7 +2082,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.preset_state.error = Some("preset_name_empty".into());
                 state.preset_state.is_saving = false;
                 state.replace_current(Screen::PresetSave);
-                return Ok(render_ui(&state));
+                return Ok(render_root(&mut state));
             }
             state.preset_state.name_input = trimmed.to_string();
 
@@ -2092,7 +2092,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     state.preset_state.error = Some(e);
                     state.preset_state.is_saving = false;
                     state.replace_current(Screen::PresetSave);
-                    return Ok(render_ui(&state));
+                    return Ok(render_root(&mut state));
                 }
             };
 
@@ -2417,7 +2417,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         }
         Action::ColorCopyClipboard => {
             state.push_screen(Screen::ColorTools);
-            // no-op in Rust; Kotlin handles clipboard using cached Result text
+            state.toast = Some("Copied to clipboard".into());
         }
         Action::Hash {
             algo,
@@ -2437,7 +2437,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             if loading_only {
                 state.replace_current(Screen::Loading);
                 state.loading_message = Some("Working...".into());
-                return Ok(render_ui(&state));
+                return Ok(render_root(&mut state));
             } else {
                 state.replace_current(Screen::ProgressDemo);
                 state.progress_status = Some("Starting...".into());
@@ -2487,7 +2487,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
         state.last_error = Some("state_poisoned".into());
     }
 
-    Ok(render_ui(&state))
+    Ok(render_root(&mut state))
+}
+
+fn render_root(state: &mut AppState) -> Value {
+    let mut ui = render_ui(state);
+    if let Some(toast) = state.toast.take() {
+        if let Some(obj) = ui.as_object_mut() {
+            obj.insert("toast".into(), Value::String(toast));
+        }
+    }
+    ui
 }
 
 fn handle_qr_actions(state: &mut AppState, action: Action) {
@@ -3190,7 +3200,7 @@ fn handle_hash_job(
         state.loading_with_spinner = false;
         state.replace_current(Screen::Loading);
         state.loading_message = Some(hash_loading_message(algo).into());
-        return Ok(render_ui(&state));
+        return Ok(render_root(&mut state));
     }
     state.reset_navigation();
     state.last_hash_algo = Some(hash_label(algo).into());
@@ -3199,7 +3209,7 @@ fn handle_hash_job(
         state.last_hash = None;
         state.loading_message = None;
         state.loading_with_spinner = true;
-        return Ok(render_ui(&state));
+        return Ok(render_root(&mut state));
     }
 
     let source = hash_job_source(fd_handle.take(), path.as_deref());
@@ -3208,7 +3218,7 @@ fn handle_hash_job(
         state.last_hash = None;
         state.loading_message = None;
         state.loading_with_spinner = true;
-        return Ok(render_ui(&state));
+        return Ok(render_root(&mut state));
     }
 
     drop(fd_handle);
@@ -3226,7 +3236,7 @@ fn handle_hash_job(
     }
     state.loading_message = None;
     state.loading_with_spinner = true;
-    Ok(render_ui(&state))
+    Ok(render_root(&mut state))
 }
 
 fn handle_multi_hash_job(
@@ -3242,7 +3252,7 @@ fn handle_multi_hash_job(
         state.loading_message = Some("Computing all hashes...".into());
         state.multi_hash_results = None;
         state.multi_hash_error = None;
-        return Ok(render_ui(&state));
+        return Ok(render_root(&mut state));
     }
     let source = hash_job_source(fd_handle.take(), path.as_deref());
     state.reset_navigation();
@@ -3268,14 +3278,14 @@ fn handle_multi_hash_job(
             }
             state.loading_message = None;
             state.loading_with_spinner = true;
-            return Ok(render_ui(&state));
+            return Ok(render_root(&mut state));
         }
         None => {
             state.multi_hash_error = Some("missing_path".into());
             state.multi_hash_results = None;
             state.loading_message = None;
             state.loading_with_spinner = true;
-            return Ok(render_ui(&state));
+            return Ok(render_root(&mut state));
         }
     }
 }
@@ -4050,6 +4060,13 @@ fn handle_sql_actions(state: &mut AppState, action: Action) -> Option<Value> {
 
 fn handle_hex_editor_actions(state: &mut AppState, action: Action) -> Option<Value> {
     use crate::features::hex_editor;
+    fn maybe_toast_hex_saved(state: &mut AppState) {
+        let msg = state.hex_editor.status.clone().unwrap_or_default();
+        if msg.starts_with("Result saved to:") {
+            state.toast = Some(msg);
+            state.hex_editor.status = None;
+        }
+    }
     match action {
         Action::HexEditorScreen => {
             state.hex_editor.reset();
@@ -4136,6 +4153,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) -> Option<Val
             if let Err(e) = hex_editor::save_changes(&mut state.hex_editor) {
                 state.hex_editor.error = Some(e);
             }
+            maybe_toast_hex_saved(state);
             None
         }
         Action::HexEditorSaveAs { path } => {
@@ -4157,6 +4175,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) -> Option<Val
                     state.hex_editor.error = Some("save_as_path_missing".into());
                 }
             }
+            maybe_toast_hex_saved(state);
             None
         }
         Action::HexEditorSaveAsPicker => {
@@ -4164,6 +4183,7 @@ fn handle_hex_editor_actions(state: &mut AppState, action: Action) -> Option<Val
             if let Err(e) = hex_editor::export_to_temp(&mut state.hex_editor) {
                 state.hex_editor.error = Some(e);
             }
+            maybe_toast_hex_saved(state);
             None
         }
         _ => None
@@ -4320,7 +4340,7 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 state.loading_with_spinner = false;
                 state.loading_message = Some("Pixelating...".into());
                 state.replace_current(Screen::Loading);
-                return Some(render_ui(&state));
+                return Some(render_root(state));
             }
             state.loading_message = Some("Pixelating...".into());
             state.loading_with_spinner = true;
@@ -4471,7 +4491,7 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                 state.loading_with_spinner = false;
                 state.loading_message = Some("Applying dithering...".into());
                 state.replace_current(Screen::Loading);
-                return Some(render_ui(&state));
+                return Some(render_root(state));
             }
             state.loading_message = Some("Applying dithering...".into());
             state.loading_with_spinner = true;
@@ -6447,6 +6467,11 @@ fn apply_worker_results(state: &mut AppState) {
                 Ok(status) => {
                     state.compression_status = Some(status);
                     state.compression_error = None;
+                    if let Some(msg) = state.compression_status.as_deref() {
+                        if msg.starts_with("Result saved to:") {
+                            state.toast = Some(msg.to_string());
+                        }
+                    }
                     state.replace_current(Screen::Compression);
                 }
                 Err(e) => {
@@ -6460,6 +6485,11 @@ fn apply_worker_results(state: &mut AppState) {
                     state.vault.status = Some(status);
                     state.vault.error = None;
                     state.vault.is_processing = false;
+                    if let Some(msg) = state.vault.status.as_deref() {
+                        if msg.starts_with("Result saved to:") {
+                            state.toast = Some(msg.to_string());
+                        }
+                    }
                     state.replace_current(Screen::Vault);
                 }
                 Err(e) => {
@@ -6473,6 +6503,9 @@ fn apply_worker_results(state: &mut AppState) {
                 Ok(out) => {
                     state.dithering_result_path = Some(out);
                     state.dithering_error = None;
+                    if let Some(path) = state.dithering_result_path.as_deref() {
+                        state.toast = Some(format!("Result saved to: {path}"));
+                    }
                     state.replace_current(Screen::Dithering);
                 }
                 Err(e) => {
@@ -6502,6 +6535,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.current_title = res.title;
                     if res.source_uri.is_some() {
                         state.pdf.source_uri = res.source_uri;
+                    }
+                    if let Some(path) = state.pdf.last_output.as_deref() {
+                        state.toast = Some(format!("Result saved to: {path}"));
                     }
                     state.replace_current(Screen::PdfTools);
                 }
@@ -6632,6 +6668,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.current_title = res.title.clone();
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.last_error = None;
+                    if let Some(path) = state.pdf.last_output.as_deref() {
+                        state.toast = Some(format!("Result saved to: {path}"));
+                    }
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {
@@ -6646,6 +6685,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.current_title = res.title.clone();
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.last_error = None;
+                    if let Some(path) = state.pdf.last_output.as_deref() {
+                        state.toast = Some(format!("Result saved to: {path}"));
+                    }
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {
@@ -6661,6 +6703,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.merge_queue.clear();
                     state.pdf.last_error = None;
+                    if let Some(path) = state.pdf.last_output.as_deref() {
+                        state.toast = Some(format!("Result saved to: {path}"));
+                    }
                     state.replace_current(Screen::PdfTools);
                 }
                 Err(e) => {

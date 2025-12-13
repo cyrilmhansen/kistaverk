@@ -711,11 +711,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
                 val newUiJson = dispatch(command.toString())
+                val toastText = runCatching { JSONObject(newUiJson).optString("toast", "") }
+                    .getOrNull()
+                    .orEmpty()
+                    .trim()
+                if (toastText.isNotEmpty()) {
+                    runOnUiThread {
+                        Toast.makeText(this, toastText, Toast.LENGTH_SHORT).show()
+                    }
+                }
                 if (loadingOnly) {
                     showOverlay(command.optString("action", "Working..."))
                 } else {
-                val rootView = runCatching { renderer.render(newUiJson) }
-                    .getOrElse { throwable ->
+                    val rootView = runCatching { renderer.render(newUiJson) }
+                        .getOrElse { throwable ->
                         renderer.renderFallback(
                             title = "Render error",
                             message = throwable.message ?: "unknown_render_error"
@@ -750,12 +759,19 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val newUiJson = withContext(Dispatchers.IO) { dispatch(command.toString()) }
+                val toastText = runCatching { JSONObject(newUiJson).optString("toast", "") }
+                    .getOrNull()
+                    .orEmpty()
+                    .trim()
                 if (loadingOnly) {
                     withContext(Dispatchers.Main) {
                         showOverlay(command.optString("action", "Working..."))
                     }
                 } else {
                     withContext(Dispatchers.Main) {
+                        if (toastText.isNotEmpty()) {
+                            Toast.makeText(this@MainActivity, toastText, Toast.LENGTH_SHORT).show()
+                        }
                         val rootView = runCatching { renderer.render(newUiJson) }
                             .getOrElse { throwable ->
                                 renderer.renderFallback(

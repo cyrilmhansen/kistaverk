@@ -339,14 +339,6 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     if let Some(result) = &state.dithering_result_path {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Result saved to: {result}"))
-                    .size(12.0)
-                    .content_description("dithering_result_path"),
-            )
-            .unwrap(),
-        );
-        children.push(
-            serde_json::to_value(
                 UiButton::new("Copy result path", "copy_clipboard")
                     .copy_text(result)
                     .id("copy_dithering_result"),
