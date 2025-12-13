@@ -58,7 +58,10 @@ use crate::features::text_viewer::render_text_viewer_screen;
 use crate::features::uuid_gen::{handle_uuid_action, render_uuid_screen};
 use crate::ui::render_multi_hash_screen;
 
-use crate::state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, PlotType, Screen};
+use crate::{
+    i18n,
+    state::{AppState, DitheringMode, DitheringPalette, MultiHashResults, PlotType, Screen}
+};
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
@@ -667,6 +670,7 @@ pub(crate) enum Action {
     Reset,
     Back,
     HomeFilter { query: String },
+    SetLocale { locale: String },
     RulerScreen,
     ShaderDemo,
     LoadShader {
@@ -1179,6 +1183,9 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "back" => Ok(Action::Back),
         "home_filter" => Ok(Action::HomeFilter {
             query: bindings.get("home_filter").cloned().unwrap_or_default(),
+        }),
+        "set_locale" => Ok(Action::SetLocale {
+            locale: bindings.get("locale").cloned().unwrap_or_default(),
         }),
         "ruler_screen" => Ok(Action::RulerScreen),
         "pdf_tools_screen" => Ok(Action::PdfToolsScreen),
@@ -1918,6 +1925,17 @@ fn handle_command(command: Command) -> Result<Value, String> {
             if matches!(state.current_screen(), Screen::Home) {
                 state.replace_current(Screen::Home);
             }
+        }
+        Action::SetLocale { locale } => {
+            // Update the locale
+            i18n::update_locale(&mut *state, &locale);
+            
+            // Store the preference (this would be enhanced with persistent storage)
+            state.preferred_locale = locale.clone();
+            
+            // Force UI refresh to show new translations by reloading current screen
+            let current_screen = state.current_screen().clone();
+            state.replace_current(current_screen);
         }
         Action::Snapshot => {
             state.ensure_navigation();

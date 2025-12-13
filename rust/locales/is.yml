@@ -21,6 +21,15 @@ screen_unit_converter_description: "Breyttið milli mismunandi mælieininga."
 screen_regex_tester_title: "Regluleg málsgreining"
 screen_regex_tester_description: "Settið inn mynstur og sýnitexta til að prófa samsvörun og hópa."
 
+# Settings and locale switching
+settings_locale: "Forritstungumál"
+settings_locale_description: "Veldu áskildan tungumál"
+settings_system_default: "Kerfissjálfgefið"
+locale_english: "Enska"
+locale_french: "Franska"
+locale_german: "Þýska"
+locale_icelandic: "Íslenska"
+
 # Common UI elements
 common_back: "Til baka"
 common_cancel: "Hætta við"

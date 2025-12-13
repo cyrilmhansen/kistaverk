@@ -25,6 +25,15 @@ screen_unit_converter_description: "Convertissez entre différentes unités de m
 screen_regex_tester_title: "Testeur d'expressions régulières"
 screen_regex_tester_description: "Entrez un motif et un texte exemple pour tester les correspondances et les groupes de capture."
 
+# Settings and locale switching
+settings_locale: "Langue de l'application"
+settings_locale_description: "Choisissez votre langue préférée"
+settings_system_default: "Système par défaut"
+locale_english: "English"
+locale_french: "Français"
+locale_german: "Allemand"
+locale_icelandic: "Islandais"
+
 # Common UI elements
 common_back: "Retour"
 common_cancel: "Annuler"

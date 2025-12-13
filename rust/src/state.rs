@@ -343,6 +343,7 @@ impl MathToolState {
 pub struct AppState {
     pub counter: i32,
     pub locale: String,
+    pub preferred_locale: String,
     pub home_filter: String,
     pub theme_mode: Option<String>,
     pub nav_stack: Vec<Screen>,
@@ -434,6 +435,7 @@ impl AppState {
         Self {
             counter: 0,
             locale: String::new(),
+            preferred_locale: String::new(),
             home_filter: String::new(),
             theme_mode: None,
             nav_stack: Vec::new(),

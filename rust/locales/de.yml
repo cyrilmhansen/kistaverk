@@ -25,6 +25,15 @@ screen_unit_converter_description: "Konvertieren Sie zwischen verschiedenen Maß
 screen_regex_tester_title: "Regex-Tester"
 screen_regex_tester_description: "Geben Sie ein Muster und Beispieltext ein, um Übereinstimmungen und Erfassunggruppen zu testen."
 
+# Settings and locale switching
+settings_locale: "App-Sprache"
+settings_locale_description: "Wählen Sie Ihre bevorzugte Sprache"
+settings_system_default: "Systemstandard"
+locale_english: "Englisch"
+locale_french: "Französisch"
+locale_german: "Deutsch"
+locale_icelandic: "Isländisch"
+
 # Common UI elements
 common_back: "Zurück"
 common_cancel: "Abbrechen"
