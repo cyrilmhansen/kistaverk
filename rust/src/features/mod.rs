@@ -1,4 +1,5 @@
 pub mod archive;
+pub mod cas_types;
 pub mod color_tools;
 pub mod compression;
 pub mod dithering;

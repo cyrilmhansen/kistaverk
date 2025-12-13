@@ -6,6 +6,7 @@ use crate::ui::{
 use serde_json::Value;
 use std::collections::HashMap;
 use std::f64::consts::{E, PI};
+use crate::features::cas_types::Number;
 
 pub fn render_math_tool_screen(state: &AppState) -> Value {
     let mut children = vec![
@@ -91,7 +92,7 @@ pub fn handle_math_action(
     }
 }
 
-pub fn evaluate_expression(expr: &str) -> Result<f64, String> {
+pub fn evaluate_expression(expr: &str) -> Result<Number, String> {
     if let Some((inner, var)) = extract_integ_call(expr) {
         let ast = parse_symbolic(&inner)?;
         let integral = integrate(&ast, &var);
@@ -207,7 +208,15 @@ fn rpn_to_symbol(tokens: &[RpnToken]) -> Result<Symbol, String> {
     let mut stack: Vec<Symbol> = Vec::new();
     for token in tokens {
         match token {
-            RpnToken::Number(n) => stack.push(Symbol::Number(*n)),
+            RpnToken::NumberStr(n) => {
+                // Convert string to f64 for symbolic representation
+                let value = match n.as_str() {
+                    "pi" => PI,
+                    "e" => E,
+                    _ => n.parse::<f64>().map_err(|_| format!("invalid_number:{n}"))?,
+                };
+                stack.push(Symbol::Number(value));
+            }
             RpnToken::Variable(name) => stack.push(Symbol::Var(name.clone())),
             RpnToken::Operator(op) => {
                 let sym = match op {
@@ -693,7 +702,7 @@ impl Operator {
 
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
-    Number(f64),
+    NumberStr(String),
     Variable(String),
     Operator(Operator),
     Function(String),
@@ -703,7 +712,7 @@ enum Token {
 
 #[derive(Debug, Clone)]
 enum RpnToken {
-    Number(f64),
+    NumberStr(String),
     Variable(String),
     Operator(Operator),
     Function(String),
@@ -720,18 +729,18 @@ fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
                 chars.next();
             }
             c if c.is_ascii_digit() || c == '.' => {
-                let number = parse_number(&mut chars)?;
-                tokens.push(Token::Number(number));
+                let number_str = parse_number(&mut chars)?;
+                tokens.push(Token::NumberStr(number_str));
                 prev_is_value = true;
             }
             c if c.is_ascii_alphabetic() => {
                 let ident = parse_identifier(&mut chars);
                 let lowered = ident.to_lowercase();
                 if lowered == "pi" {
-                    tokens.push(Token::Number(PI));
+                    tokens.push(Token::NumberStr("pi".to_string()));
                     prev_is_value = true;
                 } else if lowered == "e" {
-                    tokens.push(Token::Number(E));
+                    tokens.push(Token::NumberStr("e".to_string()));
                     prev_is_value = true;
                 } else if matches!(lowered.as_str(), "sin" | "cos" | "tan" | "exp" | "atan" | "sqrt" | "log" | "deriv") {
                     tokens.push(Token::Function(lowered));
@@ -792,7 +801,7 @@ fn tokenize(expr: &str) -> Result<Vec<Token>, String> {
     Ok(tokens)
 }
 
-fn parse_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<f64, String> {
+fn parse_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<String, String> {
     let mut buf = String::new();
     let mut has_exp = false;
 
@@ -815,8 +824,12 @@ fn parse_number(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Result<
         }
     }
 
-    buf.parse::<f64>()
-        .map_err(|_| format!("invalid_number:{buf}"))
+    // Validate that the string can be parsed as a number
+    if buf.parse::<f64>().is_err() {
+        return Err(format!("invalid_number:{buf}"));
+    }
+    
+    Ok(buf)
 }
 
 fn parse_identifier(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
@@ -838,7 +851,7 @@ fn shunting_yard(tokens: &[Token]) -> Result<Vec<RpnToken>, String> {
 
     for token in tokens {
         match token {
-            Token::Number(n) => output.push(RpnToken::Number(*n)),
+            Token::NumberStr(n) => output.push(RpnToken::NumberStr(n.clone())),
             Token::Variable(name) => output.push(RpnToken::Variable(name.clone())),
             Token::Function(name) => stack.push(Token::Function(name.clone())),
             Token::Operator(op) => {
@@ -898,11 +911,22 @@ fn shunting_yard(tokens: &[Token]) -> Result<Vec<RpnToken>, String> {
     Ok(output)
 }
 
-fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
-    let mut stack: Vec<f64> = Vec::new();
+fn eval_rpn(tokens: &[RpnToken]) -> Result<Number, String> {
+    let mut stack: Vec<Number> = Vec::new();
     for token in tokens {
         match token {
-            RpnToken::Number(n) => stack.push(*n),
+            RpnToken::NumberStr(n) => {
+                // Convert string to Number at evaluation time
+                let value = match n.as_str() {
+                    "pi" => Number::from_f64(PI),
+                    "e" => Number::from_f64(E),
+                    _ => {
+                        let parsed = n.parse::<f64>().map_err(|_| format!("invalid_number:{n}"))?;
+                        Number::from_f64(parsed)
+                    }
+                };
+                stack.push(value);
+            }
             RpnToken::Variable(name) => {
                 return Err(format!("unknown_variable:{name}"));
             }
@@ -926,21 +950,21 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
                     }
                     Operator::Div => {
                         let (b, a) = pop_two(&mut stack);
-                        if b.abs() < f64::EPSILON {
+                        if b.to_f64().abs() < f64::EPSILON {
                             return Err("division_by_zero".into());
                         }
                         a / b
                     }
                     Operator::Pow => {
                         let (b, a) = pop_two(&mut stack);
-                        a.powf(b)
+                        Number::from_f64(a.to_f64().powf(b.to_f64()))
                     }
                     Operator::Neg => {
                         let a = stack.pop().unwrap();
-                        -a
+                        Number::from_f64(-a.to_f64())
                     }
                 };
-                if !result.is_finite() {
+                if !result.to_f64().is_finite() {
                     return Err("non_finite_result".into());
                 }
                 stack.push(result);
@@ -950,26 +974,26 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
                     return Err("missing_operand".into());
                 };
                 let res = match name.as_str() {
-                    "sin" => arg.sin(),
-                    "cos" => arg.cos(),
-                    "tan" => arg.tan(),
-                    "exp" => arg.exp(),
-                    "atan" => arg.atan(),
+                    "sin" => Number::from_f64(arg.to_f64().sin()),
+                    "cos" => Number::from_f64(arg.to_f64().cos()),
+                    "tan" => Number::from_f64(arg.to_f64().tan()),
+                    "exp" => Number::from_f64(arg.to_f64().exp()),
+                    "atan" => Number::from_f64(arg.to_f64().atan()),
                     "sqrt" => {
-                        if arg < 0.0 {
+                        if arg.to_f64() < 0.0 {
                             return Err("sqrt_of_negative".into());
                         }
-                        arg.sqrt()
+                        Number::from_f64(arg.to_f64().sqrt())
                     }
                     "log" => {
-                        if arg <= 0.0 {
+                        if arg.to_f64() <= 0.0 {
                             return Err("log_non_positive".into());
                         }
-                        arg.ln()
+                        Number::from_f64(arg.to_f64().ln())
                     }
                     other => return Err(format!("unknown_function:{other}")),
                 };
-                if !res.is_finite() {
+                if !res.to_f64().is_finite() {
                     return Err("non_finite_result".into());
                 }
                 stack.push(res);
@@ -984,14 +1008,15 @@ fn eval_rpn(tokens: &[RpnToken]) -> Result<f64, String> {
     }
 }
 
-fn pop_two(stack: &mut Vec<f64>) -> (f64, f64) {
+fn pop_two(stack: &mut Vec<Number>) -> (Number, Number) {
     let b = stack.pop().unwrap();
     let a = stack.pop().unwrap();
     (b, a)
 }
 
-fn format_result(value: f64) -> String {
-    let mut out = format!("{:.10}", value);
+fn format_result(value: Number) -> String {
+    let f64_value = value.to_f64();
+    let mut out = format!("{:.10}", f64_value);
     while out.contains('.') && out.ends_with('0') {
         out.pop();
     }
@@ -1006,8 +1031,8 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    fn approx_eq(a: f64, b: f64) -> bool {
-        (a - b).abs() < 1e-9
+    fn approx_eq(a: Number, b: f64) -> bool {
+        (a.to_f64() - b).abs() < 1e-9
     }
 
     #[test]
