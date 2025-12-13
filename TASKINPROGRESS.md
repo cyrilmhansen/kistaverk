@@ -21,6 +21,7 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
+    *   ✅ Documentation: Created `docs/features/ARM64_OPTIMIZATIONS.md`.
 3.  **CSV/JSON SQL Engine** (`features/sql_engine.rs`)
     *   ✅ Core Logic & SQLite Integration
     *   ✅ UI Integration
@@ -64,7 +65,7 @@ All AI agents contributing to this repository must specify their name and versio
 *   **Implementation Status:**
     *   ✅ **NEON Optimizations:** Added comprehensive ARM64 optimization framework.
     *   ✅ **Multi-Level Targets**: Created optional build targets for ARMv8.0 through ARMv8.5.
-    *   ✅ Documentation: Created `docs/features/ARM64_OPTIMIZATIONS.md`.
+    *   ✅ **Documentation**: Created `ARM64_OPTIMIZATIONS.md`.
 
 ## Immediate To-Do List
 1.  Monitor scheduler stability.
