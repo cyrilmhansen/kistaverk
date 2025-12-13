@@ -303,6 +303,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (!skipNativeLoad) {
+            val mathBackend = getMathBackendInfo()
+            Toast.makeText(
+                this,
+                "Kistaverk v1.0 (AGPL-3.0)\nBackend: $mathBackend",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
         val entry = resolveEntry(intent)
 
         sensors = AppSensorManager(
@@ -1196,6 +1205,7 @@ class MainActivity : ComponentActivity() {
         rowStride: Int,
         rotationDeg: Int
     ): String?
+    external fun getMathBackendInfo(): String
 
     companion object {
         init {
