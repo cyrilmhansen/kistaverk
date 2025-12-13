@@ -61,7 +61,7 @@ MPFR_VERSION="4.2.1"
 MPC_VERSION="1.3.1"
 
 # Download URLs (can be overridden by environment variables)
-GMP_URL="${GMP_URL:-https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.xz}"
+GMP_URL="${GMP_URL:-https://ftp.gnu.org/gnu/gmp/gmp-${GMP_VERSION}.tar.xz}"
 MPFR_URL="${MPFR_URL:-https://www.mpfr.org/mpfr-${MPFR_VERSION}/mpfr-${MPFR_VERSION}.tar.xz}"
 MPC_URL="${MPC_URL:-https://ftp.gnu.org/gnu/mpc/mpc-${MPC_VERSION}.tar.gz}"
 
