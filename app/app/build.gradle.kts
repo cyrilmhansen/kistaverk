@@ -126,7 +126,33 @@ android {
             "-o", jniLibsDir.absolutePath, // <--- HERE: Absolute path guaranteed!
             "build", "--release"
         )
+
+        // Pass GMP/MPFR/MPC environment variables via --config to ensure they reach the build script
+        // regardless of cargo-ndk environment handling.
+        argsList.add("--config")
+        argsList.add("env.GMP_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.GMP_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.GMP_STATIC=\"1\"")
         
+        argsList.add("--config")
+        argsList.add("env.MPFR_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.MPFR_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.MPFR_STATIC=\"1\"")
+        
+        argsList.add("--config")
+        argsList.add("env.MPC_LIB_DIR=\"${gmpLibsDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.MPC_INCLUDE_DIR=\"${gmpIncludeDir.absolutePath}\"")
+        argsList.add("--config")
+        argsList.add("env.MPC_STATIC=\"1\"")
+        
+        argsList.add("--config")
+        argsList.add("env.GMP_MPFR_SYS_USE_PKG_CONFIG=\"0\"")
+
         // Add precision feature flag if enabled (default is true)
         if (enablePrecision) {
             argsList.add("--features")
