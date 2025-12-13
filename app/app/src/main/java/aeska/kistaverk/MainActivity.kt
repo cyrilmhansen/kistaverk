@@ -742,13 +742,7 @@ class MainActivity : ComponentActivity() {
                 val mode = mergedBindings["theme_mode"] ?: themeModeDefault
                 persistThemeMode(mode)
                 applyThemeMode(mode)
-                refreshUi(
-                    "init",
-                    bindings = mapOf(
-                        "system_locale" to getSystemLocale(),
-                        "theme_mode" to loadThemeMode(),
-                    ),
-                )
+                recreate()
                 return
             }
             val command = JSONObject().apply {
@@ -809,15 +803,7 @@ class MainActivity : ComponentActivity() {
                     val mode = mergedBindings["theme_mode"] ?: themeModeDefault
                     persistThemeMode(mode)
                     applyThemeMode(mode)
-                    withContext(Dispatchers.Main) {
-                        refreshUi(
-                            "init",
-                            bindings = mapOf(
-                                "system_locale" to getSystemLocale(),
-                                "theme_mode" to loadThemeMode(),
-                            ),
-                        )
-                    }
+                    withContext(Dispatchers.Main) { recreate() }
                     return@launch
                 }
                 val command = JSONObject().apply {
