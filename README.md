@@ -90,6 +90,11 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep dive.
 
     *Note: The build is currently configured for `arm64-v8a` only to optimize iteration speed and size.*
 
+    To build other ABIs (property `abi`):
+    - armv7 only: `./gradlew :app:assembleRelease -Pabi=armv7`
+    - arm64+armv7: `./gradlew :app:assembleRelease -Pabi=both`
+    - (scripts) `abi=armv7 scripts/build_release.sh` or `abi=both scripts/build_release.sh`
+
 3.  **Install:**
     ```bash
     adb install app/build/outputs/apk/release/app-release.apk

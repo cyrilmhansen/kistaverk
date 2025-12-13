@@ -115,6 +115,13 @@ android {
                 jniLibsDir.mkdirs()
             }
             
+            // Remove stale ABI outputs not being built this run
+            jniLibsDir.listFiles()?.forEach { abiDir ->
+                if (abiDir.isDirectory && !selectedAbis.contains(abiDir.name)) {
+                    abiDir.deleteRecursively()
+                }
+            }
+
             // Define the architectures to build for, mapping Android ABI to Rust target and lib folder name
             val architectures = listOfNotNull(
                 if (selectedAbis.contains("arm64-v8a")) Triple("arm64-v8a", "aarch64-linux-android", "aarch64-linux-android") else null,
@@ -308,7 +315,9 @@ tasks.register("compressJniWithUpx") {
             throw GradleException("JNI libs directory not found: ${jniLibsRoot.absolutePath}. Ensure cargoBuild ran.")
         }
 
-        val libs = fileTree(jniLibsRoot) { include("**/*.so") }.files
+        val libs = fileTree(jniLibsRoot) {
+            include(*selectedAbis.map { "$it/**/*.so" }.toTypedArray())
+        }.files
         if (libs.isEmpty()) {
             logger.lifecycle("compressJniWithUpx: no .so files found under ${jniLibsRoot.absolutePath}")
             return@doLast
