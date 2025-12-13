@@ -143,10 +143,10 @@ check_ndk_components() {
     
     local required_tools=(
         "ndk-build"
-        "prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin/clang"
-        "prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin/clang++"
-        "prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin/llvm-ar"
-        "prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin/llvm-ranlib"
+        "toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+        "toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+        "toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+        "toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib"
     )
     
     local all_found=true
@@ -286,7 +286,7 @@ test_ndk_setup() {
     fi
     
     # Test toolchain
-    local toolchain_path="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin"
+    local toolchain_path="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
     
     if [ ! -f "$toolchain_path/clang" ]; then
         echo "❌ clang compiler not found in toolchain"

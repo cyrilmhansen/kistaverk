@@ -84,8 +84,14 @@ for TARGET in "${TARGETS[@]}"; do
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     
+    # Determine host tag for NDK toolchain
+    HOST_TAG="linux-x86_64"
+    if [ "$(uname -s)" == "Darwin" ]; then
+        HOST_TAG="darwin-x86_64"
+    fi
+
     # Set up environment
-    export PATH="$NDK_PATH/toolchains/llvm/prebuilt/$(uname -m | sed 's/x86_64/x86_64/;s/arm64/aarch64/')-linux-android/bin:$PATH"
+    export PATH="$NDK_PATH/toolchains/llvm/prebuilt/$HOST_TAG/bin:$PATH"
     export CC="${TOOLCHAIN}-clang"
     export CXX="${TOOLCHAIN}-clang++"
     export AR="llvm-ar"
