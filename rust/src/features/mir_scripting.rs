@@ -86,10 +86,12 @@ impl MirScriptingState {
             while !item.is_null() {
                 if (*item).item_type == mir_sys::MIR_item_type_t_MIR_func_item {
                     let name_ptr = mir_sys::MIR_item_name(ctx, item);
-                    let name = CStr::from_ptr(name_ptr);
-                    if name == entry_c.as_c_str() {
-                        found = item;
-                        break;
+                    if !name_ptr.is_null() {
+                        let name = CStr::from_ptr(name_ptr);
+                        if name == entry_c.as_c_str() {
+                            found = item;
+                            break;
+                        }
                     }
                 }
                 item = (*item).item_link.next;
@@ -293,4 +295,3 @@ impl IfEmptyThen for String {
         }
     }
 }
-
