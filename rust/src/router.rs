@@ -4672,8 +4672,9 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     let home_subtitle = t!("home_subtitle");
     let home_quick_access = t!("home_quick_access");
     let home_tools_suffix = t!("home_tools_suffix");
-
-    let filter_hint = "Search tools…";
+    let search_hint = t!("search_hint");
+    let legacy_notice = t!("legacy_notice");
+    let theme_section = t!("theme_section");
 
     let mut children = vec![
         serde_json::to_value(UiText::new(&home_title).size(22.0)).unwrap(),
@@ -4681,14 +4682,14 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         serde_json::to_value(
             UiTextInput::new("home_filter")
                 .text(&state.home_filter)
-                .hint(filter_hint)
+                .hint(&search_hint)
                 .action_on_submit("home_filter")
                 .debounce_ms(120)
                 .single_line(true),
         )
         .unwrap(),
         serde_json::to_value(
-            UiText::new("Legacy notice: MD5 and SHA-1 are not suitable for security; prefer SHA-256 or BLAKE3.")
+            UiText::new(&legacy_notice)
                 .size(12.0),
         )
         .unwrap(),
@@ -4736,7 +4737,11 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         .unwrap_or("system")
         .to_ascii_lowercase();
     let mut theme_buttons: Vec<Value> = Vec::new();
-    for (label, value) in [("System", "system"), ("Light", "light"), ("Dark", "dark")] {
+    let theme_system = t!("theme_system");
+    let theme_light = t!("theme_light");
+    let theme_dark = t!("theme_dark");
+    
+    for (label, value) in [(&theme_system, "system"), (&theme_light, "light"), (&theme_dark, "dark")] {
         let mut button = json!({
             "type": "Button",
             "text": label,
@@ -4752,7 +4757,7 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
         theme_buttons.push(button);
     }
     let theme_card = UiCard::new(vec![serde_json::to_value(UiColumn::new(theme_buttons)).unwrap()])
-        .title("🌓 Theme")
+        .title(&theme_section)
         .padding(12);
     children.push(serde_json::to_value(theme_card).unwrap());
 
@@ -4762,17 +4767,19 @@ pub fn render_menu(state: &AppState, catalog: &[Feature]) -> Value {
     }
 
     if !filter.is_empty() && grouped.is_empty() {
+    let no_matching_tools = t!("no_matching_tools");
         children.push(
-            serde_json::to_value(UiText::new("No matching tools.").size(14.0)).unwrap(),
+            serde_json::to_value(UiText::new(&no_matching_tools).size(14.0)).unwrap(),
         );
     }
 
     for (category, feats) in grouped {
         let mut section_children: Vec<Value> = Vec::new();
+    let legacy_hash_warning = t!("legacy_hash_warning");
         if category.contains("Hash") {
             section_children.push(
                 serde_json::to_value(
-                    UiText::new("MD5/SHA-1 are legacy. Prefer SHA-256 or BLAKE3.").size(12.0),
+                    UiText::new(&legacy_hash_warning).size(12.0),
                 )
                 .unwrap(),
             );
