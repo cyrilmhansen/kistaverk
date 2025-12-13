@@ -16,7 +16,7 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ Phase 3: Android Integration (Build scripts, `build.rs`, Gradle)
     *   ✅ Phase 4: Unified GMP Solution (`GMP_SOLUTION_SUMMARY.md`, `scripts/setup_gmp.sh`)
     *   ✅ Feature: Cumulative FP Error Display
-    *   ✅ Documentation: `ADVANCED_CAS.md`, `ADVANCED_CAS_PLAN.md`, `scripts/ANDROID_BUILD_README.md`, `GMP_SETUP_GUIDE.md`
+    *   ✅ Documentation: `docs/features/ADVANCED_CAS.md`, `docs/features/ADVANCED_CAS_PLAN.md`, `docs/features/ANDROID_BUILD_README.md`, `docs/features/GMP_SETUP_GUIDE.md`
 2.  **Unit Converter** (`features/unit_converter.rs`)
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
@@ -64,7 +64,7 @@ All AI agents contributing to this repository must specify their name and versio
 *   **Implementation Status:**
     *   ✅ **NEON Optimizations:** Added comprehensive ARM64 optimization framework.
     *   ✅ **Multi-Level Targets**: Created optional build targets for ARMv8.0 through ARMv8.5.
-    *   ✅ **Documentation**: Created `ARM64_OPTIMIZATIONS.md`.
+    *   ✅ Documentation: Created `docs/features/ARM64_OPTIMIZATIONS.md`.
 
 ## Immediate To-Do List
 1.  Monitor scheduler stability.
