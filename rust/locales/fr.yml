@@ -1,0 +1,77 @@
+# French translations for Kistaverk
+# This file contains translations for the home screen and common UI elements
+
+# Home screen translations
+home_title: "🧰 Menu des outils"
+home_subtitle: "✨ Sélectionnez un outil. Les outils de hachage demandent un fichier."
+home_quick_access: "⚡ Accès rapide"
+home_tools_suffix: "outils"
+
+# Common UI elements
+common_back: "Retour"
+common_cancel: "Annuler"
+common_confirm: "Confirmer"
+common_error: "Erreur"
+common_success: "Succès"
+common_warning: "Avertissement"
+common_info: "Information"
+common_loading: "Chargement..."
+common_save: "Enregistrer"
+common_open: "Ouvrir"
+common_close: "Fermer"
+common_settings: "Paramètres"
+common_help: "Aide"
+common_about: "À propos"
+
+# File operations
+file_select: "Sélectionner un fichier"
+file_no_file_selected: "Aucun fichier sélectionné"
+file_invalid_file: "Fichier invalide"
+file_load_error: "Erreur de chargement du fichier"
+file_save_success: "Fichier enregistré avec succès"
+file_save_error: "Erreur lors de l'enregistrement du fichier"
+
+# Tool categories (will be expanded as we add more tools)
+category_hashes: "Hachages"
+category_compression: "Compression"
+category_conversion: "Conversion"
+category_analysis: "Analyse"
+category_utilities: "Utilitaires"
+category_encryption: "Chiffrement"
+category_development: "Développement"
+category_multimedia: "Multimédia"
+
+# Error messages
+error_invalid_input: "Entrée invalide"
+error_operation_failed: "L'opération a échoué"
+error_unsupported_format: "Format non supporté"
+error_file_too_large: "Fichier trop volumineux"
+error_permission_denied: "Permission refusée"
+error_network_error: "Erreur réseau"
+
+# Success messages
+success_operation_completed: "Opération terminée avec succès"
+success_processing_complete: "Traitement terminé"
+success_file_processed: "Fichier traité avec succès"
+
+# Tool-specific translations (basic ones for now)
+tool_hash_calculate: "Calculer le hachage"
+tool_hash_result: "Résultat du hachage"
+tool_compress_file: "Compresser le fichier"
+tool_decompress_file: "Décompresser le fichier"
+tool_convert_format: "Convertir le format"
+tool_analyze_data: "Analyser les données"
+
+# Settings
+settings_language: "Langue"
+settings_theme: "Thème"
+settings_general: "Général"
+settings_advanced: "Avancé"
+settings_appearance: "Apparence"
+
+# About section
+about_title: "À propos de Kistaverk"
+about_version: "Version"
+about_author: "Auteur"
+about_license: "Licence"
+about_description: "Kistaverk est une boîte à outils polyvalente pour les développeurs et les utilisateurs avancés."

@@ -3,3 +3,72 @@ home_subtitle: "✨ Veldu verkfæri. Tætiformál biðja um skrá."
 home_quick_access: "⚡ Flýtiaðgangur"
 home_tools_suffix: "verkfæri"
 
+# Common UI elements
+common_back: "Til baka"
+common_cancel: "Hætta við"
+common_confirm: "Staðfesta"
+common_error: "Villa"
+common_success: "Tókst"
+common_warning: "Viðvörun"
+common_info: "Upplysingar"
+common_loading: "Hleður..."
+common_save: "Vista"
+common_open: "Opna"
+common_close: "Loka"
+common_settings: "Stillingar"
+common_help: "Hjálp"
+common_about: "Um forritið"
+
+# File operations
+file_select: "Veldu skrá"
+file_no_file_selected: "Engin skrá valin"
+file_invalid_file: "Ógild skrá"
+file_load_error: "Villa við að hlaða skrá"
+file_save_success: "Skrá vistað"
+file_save_error: "Villa við að vista skrá"
+
+# Tool categories
+category_hashes: "Dulkóðun"
+category_compression: "Þjappa"
+category_conversion: "Umbreyting"
+category_analysis: "Greining"
+category_utilities: "Hjálparforrit"
+category_encryption: "Dulritun"
+category_development: "Þróun"
+category_multimedia: "Fjölmiðlar"
+
+# Error messages
+error_invalid_input: "Ógild inntak"
+error_operation_failed: "Aðgerð mistókst"
+error_unsupported_format: "Óstuddur snið"
+error_file_too_large: "Skrá of stór"
+error_permission_denied: "Heimild neituð"
+error_network_error: "Netvilla"
+
+# Success messages
+success_operation_completed: "Aðgerð tókst"
+success_processing_complete: "Vinnsla lokið"
+success_file_processed: "Skrá vinnsluð"
+
+# Tool-specific translations
+tool_hash_calculate: "Reikna dulkóða"
+tool_hash_result: "Dulkóðaniðurstaða"
+tool_compress_file: "Þjappa skrá"
+tool_decompress_file: "Afþjappa skrá"
+tool_convert_format: "Breyta sniði"
+tool_analyze_data: "Greina gögn"
+
+# Settings
+settings_language: "Tungumál"
+settings_theme: "Þema"
+settings_general: "Almennt"
+settings_advanced: "Ítarlegt"
+settings_appearance: "Útlit"
+
+# About section
+about_title: "Um Kistaverk"
+about_version: "Útgáfa"
+about_author: "Höfundur"
+about_license: "Leyfi"
+about_description: "Kistaverk er fjölhæf verkfærakista fyrir þróunaraðila og áhugamenn."
+

@@ -20,7 +20,65 @@ fn normalize_locale(locale_str: &str) -> &str {
     match lang {
         "is" => "is",
         "en" => "en",
+        "fr" => "fr",
         _ => "en",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_locale_normalization() {
+        // Test English variants
+        assert_eq!(normalize_locale("en"), "en");
+        assert_eq!(normalize_locale("en-US"), "en");
+        assert_eq!(normalize_locale("en_US"), "en");
+        
+        // Test French variants
+        assert_eq!(normalize_locale("fr"), "fr");
+        assert_eq!(normalize_locale("fr-FR"), "fr");
+        assert_eq!(normalize_locale("fr_FR"), "fr");
+        
+        // Test Icelandic variants
+        assert_eq!(normalize_locale("is"), "is");
+        assert_eq!(normalize_locale("is-IS"), "is");
+        assert_eq!(normalize_locale("is_IS"), "is");
+        
+        // Test unknown locales fallback to English
+        assert_eq!(normalize_locale("es"), "en");
+        assert_eq!(normalize_locale("de"), "en");
+        assert_eq!(normalize_locale("zh-CN"), "en");
+        
+        // Test edge cases
+        assert_eq!(normalize_locale(""), "en");
+        assert_eq!(normalize_locale("   "), "en");
+    }
+
+    #[test]
+    fn test_locale_translations() {
+        // Test that we can set different locales without panicking
+        // Note: This tests the locale switching mechanism, not the actual translation content
+        // since rust-i18n macros are expanded at compile time
+        
+        // Test English
+        rust_i18n::set_locale("en");
+        
+        // Test French
+        rust_i18n::set_locale("fr");
+        
+        // Test Icelandic
+        rust_i18n::set_locale("is");
+        
+        // Test fallback to English
+        rust_i18n::set_locale("es");
+        
+        // Reset to English
+        rust_i18n::set_locale("en");
+        
+        // If we got here without panicking, the test passes
+        assert!(true);
     }
 }
 
