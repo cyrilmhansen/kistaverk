@@ -10,7 +10,11 @@ All AI agents contributing to this repository must specify their name and versio
 **Example:** `co-authored by Gemini 3.0 Pro`
 
 ## Completed Features
-1.  **Unit Converter** (`features/unit_converter.rs`)
+1.  **Advanced CAS Investigation** (`ADVANCED_CAS.md`)
+    *   ✅ Analyzed `rug` vs `numerica` vs `symbolica`
+    *   ✅ Documented refactoring roadmap and Android build risks
+    *   ✅ Created report file
+2.  **Unit Converter** (`features/unit_converter.rs`)
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
