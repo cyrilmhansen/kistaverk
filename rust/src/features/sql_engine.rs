@@ -738,6 +738,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(unused_mut)]
     fn test_invalid_json_handling() {
         // Create a temporary JSON file with invalid content
         let mut temp_file = NamedTempFile::new().unwrap();
