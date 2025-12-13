@@ -114,6 +114,22 @@ android {
         // Resolve cargo from PATH (portable)
         val cargoPath = System.getenv("CARGO") ?: "cargo"
 
+        // Heuristic: Android Studio's normal "Run" / "Debug" builds should be fast.
+        // Only use Cargo release/LTO when building a Release variant/task.
+        val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+        val cargoProfileDir = if (isReleaseBuild) "release" else "debug"
+
+        // Make the task incremental in Gradle (Cargo is incremental too, but this prevents
+        // re-running cargo at all when nothing Rust-related changed).
+        inputs.files(
+            fileTree(rustDir.resolve("src")),
+            rustDir.resolve("Cargo.toml"),
+            rustDir.resolve("Cargo.lock"),
+            rustDir.resolve("build.rs")
+        )
+        inputs.dir(rustDir.resolve("locales")).optional()
+        outputs.dir(jniLibsDir)
+
         doLast {
             // Create the directory if it doesn't exist
             if (!jniLibsDir.exists()) {
@@ -155,9 +171,12 @@ android {
                     "-t", androidAbi, // Use Android ABI here
                     "-o", currentAbiJniLibsDir.absolutePath, // Output to ABI-specific folder
                     "build", 
-                    "--release",
                     "--target", rustTarget // Explicitly pass the Rust target
                 )
+
+                if (isReleaseBuild) {
+                    baseArgs.add("--release")
+                }
 
                 // Add precision feature if enabled
                 if (precisionFeatureArg.isNotBlank()) {
@@ -176,6 +195,7 @@ android {
                         "RUSTFLAGS",
                         "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init"
                     )
+                    environment("CARGO_INCREMENTAL", "1")
                     environment("CFLAGS", "-Os")
                     environment("GMP_LIB_DIR", gmpLibsDir.absolutePath)
                     environment("GMP_INCLUDE_DIR", gmpIncludeDir.absolutePath)
@@ -191,7 +211,7 @@ android {
                 }
 
                 // Overwrite with unstripped artifact from target dir to preserve init array
-                val builtLib = File(rustDir, "target/$rustTarget/release/libkistaverk_core.so")
+                val builtLib = File(rustDir, "target/$rustTarget/$cargoProfileDir/libkistaverk_core.so")
                 if (builtLib.exists()) {
                     builtLib.copyTo(File(currentAbiJniLibsDir, builtLib.name), overwrite = true)
                 }
@@ -261,6 +281,12 @@ tasks.register<Exec>("generateDepsMetadata") {
     description = "Generate deps.json from cargo metadata"
     val repoRoot = rootProject.rootDir.parentFile
     workingDir = File(repoRoot, "rust")
+    val outputFile = File(repoRoot, "app/app/src/main/assets/deps.json")
+    inputs.files(
+        File(workingDir, "Cargo.toml"),
+        File(workingDir, "Cargo.lock"),
+    )
+    outputs.file(outputFile)
     commandLine = listOf("./scripts/generate_deps_metadata.sh")
     doFirst {
         println("Generating deps metadata in ${workingDir.absolutePath}")
