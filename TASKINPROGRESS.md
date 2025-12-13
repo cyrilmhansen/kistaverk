@@ -2,37 +2,37 @@
 
 ## Status: Feature Implementation
 *   **Date:** 2025-12-13
-*   **Objective:** Maintain documentation and stabilize recent features (Unit Converter, NEON).
-*   **Current State:** ✅ Unit Converter and NEON Optimizations landed.
+*   **Objective:** Stabilization and Documentation.
+*   **Current State:** ✅ Advanced CAS (Phase 3) and Android Precision Support fully implemented.
 
 ## AI Agent Protocol
 All AI agents contributing to this repository must specify their name and version concisely at the end of each commit message.
 **Example:** `co-authored by Gemini 3.0 Pro`
 
 ## Completed Features
-1.  **Advanced CAS Investigation** (`ADVANCED_CAS.md`)
-    *   ✅ Analyzed `rug` vs `numerica` vs `symbolica`
-    *   ✅ Documented refactoring roadmap and Android build risks
-    *   ✅ Created report file
-2.  **Advanced CAS Plan** (`ADVANCED_CAS_PLAN.md`)
-    *   ✅ Detailed actionable tasks for implementation
-3.  **Unit Converter** (`features/unit_converter.rs`)
+1.  **Advanced CAS Implementation** (`features/math_tool.rs` & Build System)
+    *   ✅ Phase 1: Numeric Abstraction (`cas_types.rs`, `Number` enum)
+    *   ✅ Phase 2: Arbitrary Precision Logic using `rug`
+    *   ✅ Phase 3: Android Integration (Build scripts, `build.rs`, Gradle)
+    *   ✅ Feature: Cumulative FP Error Display
+    *   ✅ Documentation: `ADVANCED_CAS.md`, `ADVANCED_CAS_PLAN.md`, `scripts/ANDROID_BUILD_README.md`
+2.  **Unit Converter** (`features/unit_converter.rs`)
     *   ✅ Core Logic & State (Metric/Imperial/Digital)
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
-2.  **CSV/JSON SQL Engine** (`features/sql_engine.rs`)
+3.  **CSV/JSON SQL Engine** (`features/sql_engine.rs`)
     *   ✅ Core Logic & SQLite Integration
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
-3.  **Embedded Scripting (Rhai)** (`features/scripting.rs`)
+4.  **Embedded Scripting (Rhai)** (`features/scripting.rs`)
     *   ✅ Core Logic & Rhai Integration
     *   ✅ UI Integration
     *   ✅ Unit Tests (Implemented)
-4.  **Dependency List with Search** (`features/dependencies.rs`)
+5.  **Dependency List with Search** (`features/dependencies.rs`)
     *   ✅ Rust-side rendering
     *   ✅ Filtering logic
     *   ✅ Unit Tests (Implemented)
-5.  **Preset Filtering** (`features/presets.rs`)
+6.  **Preset Filtering** (`features/presets.rs`)
     *   ✅ Filter UI & Logic
     *   ✅ Unit Tests (Implemented)
 
@@ -66,20 +66,14 @@ All AI agents contributing to this repository must specify their name and versio
     *   ✅ **Documentation**: Created `ARM64_OPTIMIZATIONS.md`.
 
 ## Immediate To-Do List
-1.  Monitor scheduler stability and expand coverage if new actions are added.
-2.  Test the new Regex Tester and Unit Converter features in the Android app.
+1.  Verify cumulative error calculation with unit tests (logic currently not asserted).
+2.  Monitor scheduler stability.
+3.  Test Android precision build on device.
 
 ## Planned Features
 
-### Feature 1: Advanced CAS (Numerica Integration for Arbitrary Precision)
-*   **Status:** ⚠️ ON HOLD (NEON Optimizations Added)
-*   **Objective:** Upgrade the Math Tool to use `numerica` for arbitrary precision arithmetic, exact error tracking, and robust symbolic math.
-*   **Implementation Status:**
-    *   ✅ **Dependency:** Added `numerica` to `Cargo.toml`.
-    *   ❌ **Integration:** Complex API differences and type system issues.
-    *   📅 **Alternative Approach:** Maintain current implementation with enhanced error tracking.
-
 ### Completed Features (Recent)
+*   **Advanced CAS:** (Merged 2025-12-13) Full `rug` integration with Android cross-compilation.
 *   **Unit Converter:** (Merged 2025-12-12) Implemented dedicated conversion tool.
 *   **Regex Tester Enhancements:** (Merged 2025-12-12) Added Global Search and Common Patterns.
 *   **Extend Symbolic Integration:** (Merged 2025-12-12) Added `exp`, `tan`, `atan` support.

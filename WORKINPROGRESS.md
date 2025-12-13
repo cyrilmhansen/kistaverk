@@ -3,6 +3,8 @@
 Keep this file short and actionable. Update it at the end of each session.
 
 ## Status (2025-12-13)
+- **Advanced CAS**: Completed Phase 3 (Android Integration). Implemented build scripts, `build.rs` logic, and Gradle tasks for precision builds.
+- **Math Tool**: Added cumulative floating-point error display.
 - **ARM64 Optimizations**: Implemented NEON SIMD support and build targets.
 - **Documentation**: Updated `TASKINPROGRESS.md` with AI Agent Protocol.
 
@@ -12,7 +14,7 @@ Keep this file short and actionable. Update it at the end of each session.
 - **Symbolic Integration**: Merged extensions for `exp`, `tan`, `atan` in `math_tool.rs`.
 - **Cron/Task Scheduler**: Implemented core logic, UI, state, and unit tests (`features/scheduler.rs`).
 - **Embedded Scripting (Rhai)**: Implemented "Scripting Lab" (`features/scripting.rs`).
-- **SQL Query Lab**: Implemented `features/sql_engine.rs`.
+- **SQL Query Lab**: Implemented `features/sql_engine.rs`).
 - **Dependency List**: Implemented searching and filtering (`features/dependencies.rs`).
 
 ## Status (2025-12-11)
@@ -24,13 +26,13 @@ Keep this file short and actionable. Update it at the end of each session.
 2. **UI Scalability**: `LinearLayout` usage for lists risks OOM.
    - *Action*: Implement a JSON-backed `RecyclerView` adapter.
 3. **CSV Parsing**: Naive split(',') in Logic Engine doesn't handle quoted fields.
+4. **Testing**: Cumulative error calculation in Math Tool lacks unit tests.
 
 ## Roadmap (Future Features)
-- **Advanced CAS**: Integrate `symbolica` for precision math and float error reduction.
 - **Search/Filtering**: Extend filtering to other lists.
 
 ## Immediate Focus
-- Harden input UX: avoid spamming Rust on every character.
+- Verify Android build with precision enabled.
 
 ## Near-Term
 - Schema hardening: typed builders, validation.
@@ -46,4 +48,3 @@ Keep this file short and actionable. Update it at the end of each session.
 ## Notes
 - Prism assets are MIT; license stored in `assets/prism/PRISM_LICENSE.txt`.
 - Keep APK slim (< 5 MB).
-
