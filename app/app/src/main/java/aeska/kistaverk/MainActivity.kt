@@ -335,6 +335,13 @@ class MainActivity : ComponentActivity() {
         )
 
         renderer = UiRenderer(this) { action, needsFilePicker, allowMultiple, bindings ->
+            if (action == "pdf_select_recent") {
+                val uriStr = bindings["path"].orEmpty()
+                if (uriStr.isNotEmpty()) {
+                    handlePickerResult("pdf_select", Uri.parse(uriStr), emptyMap())
+                }
+                return@UiRenderer
+            }
             if (action == "kotlin_image_batch_process") {
                 processKotlinImageBatch(bindings)
                 return@UiRenderer

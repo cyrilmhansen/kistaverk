@@ -86,6 +86,7 @@ use crate::ui::{
     maybe_push_back, Button as UiButton, Column as UiColumn, PdfPagePicker as UiPdfPagePicker,
     Text as UiText, VirtualList as UiVirtualList,
 };
+use std::collections::VecDeque;
 
 #[cfg(target_os = "android")]
 fn log_pdf_debug(message: &str) {
@@ -109,6 +110,7 @@ fn log_pdf_debug(message: &str) {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfState {
     pub source_uri: Option<String>,
+    pub recent_files: VecDeque<String>,
     pub page_count: Option<u32>,
     pub page_aspect_ratio: Option<f64>,
     pub selected_pages: Vec<u32>,
@@ -130,6 +132,7 @@ impl PdfState {
     pub const fn new() -> Self {
         Self {
             source_uri: None,
+            recent_files: VecDeque::new(),
             page_count: None,
             page_aspect_ratio: None,
             selected_pages: Vec::new(),
@@ -165,6 +168,18 @@ impl PdfState {
         self.signature_grid_selection = None;
         self.preview_page = None;
         self.merge_queue.clear();
+    }
+
+    pub fn push_recent(&mut self, uri: &str) {
+        let trimmed = uri.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.recent_files.retain(|v| v != trimmed);
+        self.recent_files.push_front(trimmed.to_string());
+        while self.recent_files.len() > 3 {
+            self.recent_files.pop_back();
+        }
     }
 }
 
@@ -315,12 +330,36 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             UiText::new("Select a PDF, pick pages, then extract or delete them.").size(14.0),
         )
         .unwrap(),
+    ];
+
+    if state.pdf.source_uri.is_none() && !state.pdf.recent_files.is_empty() {
+        children.push(serde_json::to_value(UiText::new("Recent PDFs").size(14.0)).unwrap());
+        for (idx, uri) in state.pdf.recent_files.iter().enumerate() {
+            let label = uri
+                .split('/')
+                .last()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(uri);
+            children.push(
+                serde_json::to_value(
+                    UiButton::new(&format!("Re-open {label}"), "pdf_select_recent")
+                        .id(&format!("pdf_recent_{idx}"))
+                        .payload(serde_json::json!({ "path": uri })),
+                )
+                .unwrap(),
+            );
+        }
+    }
+
+    children.push(
         serde_json::to_value(
             UiButton::new("Pick PDF", "pdf_select")
                 .requires_file_picker(true)
                 .content_description("Pick a PDF to edit"),
         )
         .unwrap(),
+    );
+    children.push(
         serde_json::to_value(
             UiButton::new("Pick PDFs (batch merge)", "pdf_merge_pick")
                 .requires_file_picker(true)
@@ -328,7 +367,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 .content_description("Pick multiple PDFs to merge"),
         )
         .unwrap(),
-    ];
+    );
 
     if let Some(uri) = &state.pdf.source_uri {
         children.push(

@@ -6626,6 +6626,9 @@ fn apply_worker_results(state: &mut AppState) {
                     if res.source_uri.is_some() {
                         state.pdf.source_uri = res.source_uri;
                     }
+                    if let Some(uri) = state.pdf.source_uri.clone() {
+                        state.pdf.push_recent(&uri);
+                    }
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
@@ -6725,6 +6728,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.current_title = res.title;
                     state.pdf.source_uri = res.source_uri;
+                    if let Some(uri) = state.pdf.source_uri.clone() {
+                        state.pdf.push_recent(&uri);
+                    }
                     state.pdf.page_aspect_ratio = res.aspect_ratio;
                     state.pdf.selected_pages.clear();
                     state.pdf.last_error = None;
@@ -6758,6 +6764,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.current_title = res.title.clone();
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.last_error = None;
+                    if let Some(uri) = state.pdf.source_uri.clone() {
+                        state.pdf.push_recent(&uri);
+                    }
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
@@ -6775,6 +6784,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.current_title = res.title.clone();
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.last_error = None;
+                    if let Some(uri) = state.pdf.source_uri.clone() {
+                        state.pdf.push_recent(&uri);
+                    }
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
@@ -6793,6 +6805,9 @@ fn apply_worker_results(state: &mut AppState) {
                     state.pdf.page_count = Some(res.page_count);
                     state.pdf.merge_queue.clear();
                     state.pdf.last_error = None;
+                    if let Some(uri) = state.pdf.source_uri.clone() {
+                        state.pdf.push_recent(&uri);
+                    }
                     if let Some(path) = state.pdf.last_output.as_deref() {
                         state.toast = Some(format!("Result saved to: {path}"));
                     }
