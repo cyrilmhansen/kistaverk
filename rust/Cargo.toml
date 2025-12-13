@@ -59,6 +59,12 @@ strip = "symbols"
 [profile.dev]
 panic = "unwind"
 
+[profile.android-debug]
+inherits = "dev"
+opt-level = 1
+debug = 0
+strip = "symbols"
+
 [dev-dependencies]
 criterion = "0.5"
 

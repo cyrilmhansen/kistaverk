@@ -114,10 +114,11 @@ android {
         // Resolve cargo from PATH (portable)
         val cargoPath = System.getenv("CARGO") ?: "cargo"
 
-        // Heuristic: Android Studio's normal "Run" / "Debug" builds should be fast.
-        // Only use Cargo release/LTO when building a Release variant/task.
+        // Heuristic: Android Studio's normal "Run" / "Debug" builds should be fast *and* small.
+        // Use Cargo release for Release builds, and a slim custom profile for Debug builds.
         val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
-        val cargoProfileDir = if (isReleaseBuild) "release" else "debug"
+        val cargoProfileName = if (isReleaseBuild) "release" else "android-debug"
+        val cargoProfileDir = cargoProfileName
 
         // Make the task incremental in Gradle (Cargo is incremental too, but this prevents
         // re-running cargo at all when nothing Rust-related changed).
@@ -176,6 +177,9 @@ android {
 
                 if (isReleaseBuild) {
                     baseArgs.add("--release")
+                } else {
+                    baseArgs.add("--profile")
+                    baseArgs.add(cargoProfileName)
                 }
 
                 // Add precision feature if enabled
