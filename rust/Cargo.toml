@@ -40,9 +40,10 @@ cron = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rhai = { version = "1.18", features = ["std", "sync", "serde"] }
 rug = { version = "1.24", optional = true }
+gmp-mpfr-sys = { version = "1.6", features = ["force-cross"], optional = true }
 
 [features]
-precision = ["rug"]
+precision = ["rug", "gmp-mpfr-sys"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
