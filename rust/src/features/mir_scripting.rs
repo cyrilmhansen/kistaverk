@@ -57,6 +57,12 @@ impl MirScriptingState {
         logcat("MIR execute: start");
         logcat(&format!("MIR execute: entry={}", entry));
 
+        #[cfg(target_os = "android")]
+        {
+            self.execute_android_programmatic(entry);
+            return;
+        }
+
         let source = match CString::new(self.source.clone()) {
             Ok(v) => v,
             Err(_) => {
@@ -171,6 +177,116 @@ impl MirScriptingState {
             logcat("MIR: MIR_finish");
             mir_sys::MIR_finish(ctx);
             logcat("MIR execute: done");
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn execute_android_programmatic(&mut self, entry: &str) {
+        self.output.clear();
+        self.error = None;
+
+        let entry_c = match CString::new(entry) {
+            Ok(v) => v,
+            Err(_) => {
+                self.error = Some("Entry function name contains a NUL byte".to_string());
+                return;
+            }
+        };
+
+        unsafe {
+            #[cfg(unix)]
+            let mut code_alloc = mir_sys::code_alloc::unix_mmap();
+            #[cfg(unix)]
+            let ctx = mir_sys::_MIR_init(ptr::null_mut(), &mut code_alloc);
+            #[cfg(not(unix))]
+            let ctx = mir_sys::_MIR_init(ptr::null_mut(), ptr::null_mut());
+
+            if ctx.is_null() {
+                self.error = Some("Failed to initialize MIR context".to_string());
+                return;
+            }
+
+            logcat(&format!("MIR(android): ctx={:p}", ctx));
+            logcat("MIR(android): MIR_gen_init");
+            mir_sys::MIR_gen_init(ctx);
+            mir_sys::MIR_gen_set_optimize_level(ctx, 0);
+
+            let mod_name = CString::new("mir_android").unwrap();
+            let module = mir_sys::MIR_new_module(ctx, mod_name.as_ptr());
+            if module.is_null() {
+                self.error = Some("Failed to create MIR module".to_string());
+                mir_sys::MIR_gen_finish(ctx);
+                mir_sys::MIR_finish(ctx);
+                return;
+            }
+
+            let mut result_type = mir_sys::MIR_type_t_MIR_T_I64;
+            let func = mir_sys::MIR_new_func_arr(
+                ctx,
+                entry_c.as_ptr(),
+                1,
+                &mut result_type as *mut _,
+                0,
+                ptr::null_mut(),
+            );
+            if func.is_null() {
+                self.error = Some("Failed to create MIR function".to_string());
+                mir_sys::MIR_gen_finish(ctx);
+                mir_sys::MIR_finish(ctx);
+                return;
+            }
+
+            let reg_name = CString::new("r").unwrap();
+            let reg = mir_sys::MIR_new_func_reg(ctx, (*func).u.func, result_type, reg_name.as_ptr());
+
+            let mut ops_mov = vec![
+                mir_sys::MIR_new_reg_op(ctx, reg),
+                mir_sys::MIR_new_int_op(ctx, 150),
+            ];
+            let insn_mov = mir_sys::MIR_new_insn_arr(
+                ctx,
+                mir_sys::MIR_insn_code_t_MIR_MOV,
+                2,
+                ops_mov.as_mut_ptr(),
+            );
+            mir_sys::MIR_append_insn(ctx, func, insn_mov);
+
+            let mut ops_ret = vec![mir_sys::MIR_new_reg_op(ctx, reg)];
+            let insn_ret = mir_sys::MIR_new_insn_arr(
+                ctx,
+                mir_sys::MIR_insn_code_t_MIR_RET,
+                1,
+                ops_ret.as_mut_ptr(),
+            );
+            mir_sys::MIR_append_insn(ctx, func, insn_ret);
+
+            mir_sys::MIR_finish_func(ctx);
+            mir_sys::MIR_finish_module(ctx);
+            mir_sys::MIR_load_module(ctx, module);
+
+            logcat("MIR(android): MIR_link");
+            mir_sys::MIR_link(ctx, Some(mir_sys::MIR_set_gen_interface), None);
+
+            logcat("MIR(android): MIR_gen");
+            let fun_ptr = mir_sys::MIR_gen(ctx, func);
+            if fun_ptr.is_null() {
+                self.error = Some("MIR code generation failed".to_string());
+                mir_sys::MIR_gen_finish(ctx);
+                mir_sys::MIR_finish(ctx);
+                return;
+            }
+
+            let rust_func: extern "C" fn() -> i64 = std::mem::transmute(fun_ptr);
+            logcat("MIR(android): calling generated function");
+            let result = rust_func();
+            logcat(&format!("MIR(android): function returned {}", result));
+
+            self.output =
+                format!("Result: {} (Android: programmatic MIR; text scan disabled)", result);
+
+            mir_sys::MIR_gen_finish(ctx);
+            mir_sys::MIR_finish(ctx);
+            logcat("MIR(android): done");
         }
     }
 
