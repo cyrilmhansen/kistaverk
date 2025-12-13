@@ -316,6 +316,8 @@ pub struct MathToolState {
     pub error: Option<String>,
     /// Precision setting in bits (0 = f64, 64+ = arbitrary precision via rug::Float)
     pub precision_bits: u32,
+    /// Cumulative floating-point error for the current session
+    pub cumulative_error: f64,
 }
 
 impl MathToolState {
@@ -325,6 +327,7 @@ impl MathToolState {
             history: Vec::new(),
             error: None,
             precision_bits: 0, // Default to f64 precision
+            cumulative_error: 0.0, // Start with zero error
         }
     }
 

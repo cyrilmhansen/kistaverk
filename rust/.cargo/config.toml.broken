@@ -1,0 +1,91 @@
+# Build Script Integration
+# ============================================================================
+# To use these optional targets, add to your build script:
+#
+# For ARMv8.2-A optimized build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-2
+#
+# For baseline ARMv8.0-A compatible build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-0
+#
+# The default target (aarch64-unknown-linux-gnu) will use native CPU detection
+# ============================================================================
+# Android GMP/MPFR/MPC Configuration
+# ============================================================================
+# Force Android builds to use our pre-built GMP libraries instead of building from source
+
+[env]
+GMP_LIB_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+GMP_INCLUDE_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+GMP_STATIC = "1"
+GMP_MPFR_SYS_USE_PKG_CONFIG = "0"
+
+# ============================================================================
+# Build Script Integration
+# ============================================================================
+# To use these optional targets, add to your build script:
+#
+# For ARMv8.2-A optimized build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-2
+#
+# For baseline ARMv8.0-A compatible build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-0
+#
+# The default target (aarch64-unknown-linux-gnu) will use native CPU detectionBuild Script Integration
+# ============================================================================
+# To use these optional targets, add to your build script:
+#
+# For ARMv8.2-A optimized build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-2
+#
+# For baseline ARMv8.0-A compatible build:
+#   cargo build --target aarch64-unknown-linux-gnu.armv8-0
+
+# ============================================================================
+# Android GMP/MPFR/MPC Configuration
+# ============================================================================
+# Force Android builds to use our pre-built GMP libraries instead of building from source
+
+[target.aarch64-linux-android]
+rustflags = [
+    "-C", "target-cpu=cortex-a72",       # ARMv8.1-A (common high-end Android)
+    "-C", "target-feature=+neon",        # NEON SIMD (always available)
+    "-C", "target-feature=+fp-armv8",    # ARMv8 FP
+    "-C", "target-feature=+crypto",     # Crypto instructions
+    "-C", "link-arg=-march=armv8.1-a+neon+crypto",
+    "-L", "${CARGO_MANIFEST_DIR}/libs/android/aarch64-linux-android/lib",
+    "-l", "static=gmp",
+    "-l", "static=mpfr",
+    "-l", "static=mpc"
+]
+
+[target.armv7a-linux-androideabi]
+rustflags = [
+    "-L", "${CARGO_MANIFEST_DIR}/libs/android/armv7a-linux-androideabi/lib",
+    "-l", "static=gmp",
+    "-l", "static=mpfr",
+    "-l", "static=mpc"
+]
+
+[target.i686-linux-android]
+rustflags = [
+    "-L", "${CARGO_MANIFEST_DIR}/libs/android/i686-linux-android/lib",
+    "-l", "static=gmp",
+    "-l", "static=mpfr",
+    "-l", "static=mpc"
+]
+
+[target.x86_64-linux-android]
+rustflags = [
+    "-L", "${CARGO_MANIFEST_DIR}/libs/android/x86_64-linux-android/lib",
+    "-l", "static=gmp",
+    "-l", "static=mpfr",
+    "-l", "static=mpc"
+]
+
+# Environment variables to prevent gmp-mpfr-sys from building GMP from source
+[env]
+GMP_LIB_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+GMP_INCLUDE_DIR = "${CARGO_MANIFEST_DIR}/libs/android"
+GMP_STATIC = "1"
+GMP_MPFR_SYS_USE_PKG_CONFIG = "0"

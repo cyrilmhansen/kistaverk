@@ -85,6 +85,20 @@
       "homepage": "https://github.com/nical/android_system_properties"
     },
     {
+      "name": "anes",
+      "version": "0.1.6",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/zrzka/anes-rs",
+      "homepage": null
+    },
+    {
+      "name": "anstyle",
+      "version": "1.0.13",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-cli/anstyle.git",
+      "homepage": null
+    },
+    {
       "name": "anyhow",
       "version": "1.0.100",
       "license": "MIT OR Apache-2.0",
@@ -288,6 +302,13 @@
       "homepage": null
     },
     {
+      "name": "cast",
+      "version": "0.3.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/japaric/cast.rs",
+      "homepage": null
+    },
+    {
       "name": "cc",
       "version": "1.2.49",
       "license": "MIT OR Apache-2.0",
@@ -344,10 +365,52 @@
       "homepage": null
     },
     {
+      "name": "ciborium",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/enarx/ciborium",
+      "homepage": "https://github.com/enarx/ciborium"
+    },
+    {
+      "name": "ciborium-io",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/enarx/ciborium",
+      "homepage": "https://github.com/enarx/ciborium"
+    },
+    {
+      "name": "ciborium-ll",
+      "version": "0.2.2",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/enarx/ciborium",
+      "homepage": "https://github.com/enarx/ciborium"
+    },
+    {
       "name": "cipher",
       "version": "0.4.4",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/RustCrypto/traits",
+      "homepage": null
+    },
+    {
+      "name": "clap",
+      "version": "4.5.53",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/clap-rs/clap",
+      "homepage": null
+    },
+    {
+      "name": "clap_builder",
+      "version": "4.5.53",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/clap-rs/clap",
+      "homepage": null
+    },
+    {
+      "name": "clap_lex",
+      "version": "0.7.6",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/clap-rs/clap",
       "homepage": null
     },
     {
@@ -425,6 +488,20 @@
       "version": "1.5.0",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/srijs/rust-crc32fast",
+      "homepage": null
+    },
+    {
+      "name": "criterion",
+      "version": "0.5.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/bheisler/criterion.rs",
+      "homepage": "https://bheisler.github.io/criterion.rs/book/index.html"
+    },
+    {
+      "name": "criterion-plot",
+      "version": "0.5.0",
+      "license": "MIT/Apache-2.0",
+      "repository": "https://github.com/bheisler/criterion.rs",
       "homepage": null
     },
     {
@@ -820,6 +897,13 @@
       "homepage": null
     },
     {
+      "name": "hermit-abi",
+      "version": "0.5.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/hermit-os/hermit-rs",
+      "homepage": null
+    },
+    {
       "name": "hkdf",
       "version": "0.12.4",
       "license": "MIT OR Apache-2.0",
@@ -957,6 +1041,20 @@
       "version": "0.1.1",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/TheOnlyMrCat/io_tee",
+      "homepage": null
+    },
+    {
+      "name": "is-terminal",
+      "version": "0.4.17",
+      "license": "MIT",
+      "repository": "https://github.com/sunfishcode/is-terminal",
+      "homepage": null
+    },
+    {
+      "name": "itertools",
+      "version": "0.10.5",
+      "license": "MIT/Apache-2.0",
+      "repository": "https://github.com/rust-itertools/itertools",
       "homepage": null
     },
     {
@@ -1296,6 +1394,13 @@
       "homepage": null
     },
     {
+      "name": "oorandom",
+      "version": "11.1.5",
+      "license": "MIT",
+      "repository": "https://hg.sr.ht/~icefox/oorandom",
+      "homepage": null
+    },
+    {
       "name": "opaque-debug",
       "version": "0.3.1",
       "license": "MIT OR Apache-2.0",
@@ -1392,6 +1497,27 @@
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/rust-lang/pkg-config-rs",
       "homepage": null
+    },
+    {
+      "name": "plotters",
+      "version": "0.3.7",
+      "license": "MIT",
+      "repository": "https://github.com/plotters-rs/plotters",
+      "homepage": "https://plotters-rs.github.io/"
+    },
+    {
+      "name": "plotters-backend",
+      "version": "0.3.7",
+      "license": "MIT",
+      "repository": "https://github.com/plotters-rs/plotters",
+      "homepage": "https://plotters-rs.github.io"
+    },
+    {
+      "name": "plotters-svg",
+      "version": "0.3.7",
+      "license": "MIT",
+      "repository": "https://github.com/plotters-rs/plotters.git",
+      "homepage": "https://plotters-rs.github.io"
     },
     {
       "name": "png",
@@ -2052,6 +2178,13 @@
       "homepage": null
     },
     {
+      "name": "tinytemplate",
+      "version": "1.2.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/bheisler/TinyTemplate",
+      "homepage": null
+    },
+    {
       "name": "toml",
       "version": "0.5.11",
       "license": "MIT/Apache-2.0",
@@ -2204,6 +2337,13 @@
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared",
       "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/"
+    },
+    {
+      "name": "web-sys",
+      "version": "0.3.83",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/web-sys",
+      "homepage": "https://wasm-bindgen.github.io/wasm-bindgen/web-sys/index.html"
     },
     {
       "name": "weezl",

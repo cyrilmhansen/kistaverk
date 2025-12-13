@@ -80,7 +80,7 @@ pub fn handle_math_action(
             }
             match evaluate_expression(expr, state.math_tool.precision_bits) {
                 Ok(value) => {
-                    let result = format_result(value);
+                    let result = format_result(value.clone());
                     
                     // Calculate floating-point error for this operation
                     // We'll use a simple approach: compare the result with a higher precision calculation
