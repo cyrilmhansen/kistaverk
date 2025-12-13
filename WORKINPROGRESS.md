@@ -2,6 +2,10 @@
 
 Keep this file short and actionable. Update it at the end of each session.
 
+## Status (2025-12-13)
+- **ARM64 Optimizations**: Implemented NEON SIMD support and build targets.
+- **Documentation**: Updated `TASKINPROGRESS.md` with AI Agent Protocol.
+
 ## Status (2025-12-12)
 - **Regex Tester Enhancements**: Added Global Search and Common Patterns (`features/regex_tester.rs`).
 - **Unit Converter**: Implemented core logic, UI, state, and unit tests (`features/unit_converter.rs`).
