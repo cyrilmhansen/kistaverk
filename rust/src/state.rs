@@ -7,6 +7,7 @@ use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::mir_scripting::MirScriptingState;
+use crate::features::mir_math::MirMathLibrary;
 use crate::features::c_scripting::CScriptingState;
 use crate::features::sensor_logger::SensorSelection;
 use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
@@ -324,18 +325,26 @@ pub struct MathToolState {
     pub precision_bits: u32,
     /// Cumulative floating-point error for the current session
     pub cumulative_error: f64,
+    /// MIR math function library for hybrid evaluation
+    #[serde(skip)] // Don't serialize the compiled function cache
+    pub mir_math_library: MirMathLibrary,
 }
 
 impl MathToolState {
-    pub const fn new() -> Self {
+    /// Create a new MathToolState with default values
+    /// Note: This is not const because it initializes the MIR math library
+    pub fn new() -> Self {
         Self {
             expression: String::new(),
             history: Vec::new(),
             error: None,
             precision_bits: 0, // Default to f64 precision
             cumulative_error: 0.0, // Start with zero error
+            mir_math_library: MirMathLibrary::default(), // Initialize with default functions
         }
     }
+
+
 
     pub fn clear_history(&mut self) {
         self.history.clear();
@@ -434,8 +443,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    // const so it can be used in static initialization
-    pub const fn new() -> Self {
+    // Note: No longer const due to MIR math library initialization
+    pub fn new() -> Self {
         Self {
             counter: 0,
             locale: String::new(),
