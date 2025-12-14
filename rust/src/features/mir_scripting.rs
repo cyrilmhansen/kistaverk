@@ -4,6 +4,7 @@ use serde_json::json;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
 static MIR_GLOBAL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -42,18 +43,15 @@ impl MirScriptingState {
         }
     }
 
-    pub fn execute(&mut self) {
-        // Android: scan_string is now the default path again.
-        #[cfg(target_os = "android")]
-        {
-            self.execute_impl(true);
-            return;
-        }
-        #[cfg(not(target_os = "android"))]
-        self.execute_impl(false);
+    pub fn execute_jit(&mut self) -> Option<u128> {
+        self.execute_impl(MirExecMode::Jit)
     }
 
-    fn execute_impl(&mut self, force_scan_string: bool) {
+    pub fn execute_interp(&mut self) -> Option<u128> {
+        self.execute_impl(MirExecMode::Interp)
+    }
+
+    fn execute_impl(&mut self, mode: MirExecMode) -> Option<u128> {
         self.output.clear();
         self.error = None;
 
@@ -67,13 +65,7 @@ impl MirScriptingState {
 
         logcat("MIR execute: start");
         logcat(&format!("MIR execute: entry={}", entry));
-        logcat(&format!("MIR execute: force_scan_string={}", force_scan_string));
-
-        #[cfg(target_os = "android")]
-        if !force_scan_string {
-            self.execute_android_programmatic(&entry);
-            return;
-        }
+        logcat(&format!("MIR execute: mode={}", mode.as_str()));
 
         let mut normalized_source = self.source.replace("\r\n", "\n").replace('\r', "");
         // MIR scanner expects statements to be separated by NL or ';'. Ensure the last line ends
@@ -81,20 +73,18 @@ impl MirScriptingState {
         if !normalized_source.ends_with('\n') {
             normalized_source.push('\n');
         }
-        if force_scan_string {
-            let cr_count = self.source.as_bytes().iter().filter(|&&b| b == b'\r').count();
-            logcat(&format!(
-                "MIR execute: source_bytes={} cr_count={}",
-                self.source.as_bytes().len(),
-                cr_count
-            ));
-        }
+        let cr_count = self.source.as_bytes().iter().filter(|&&b| b == b'\r').count();
+        logcat(&format!(
+            "MIR execute: source_bytes={} cr_count={}",
+            self.source.as_bytes().len(),
+            cr_count
+        ));
 
         let source = match CString::new(normalized_source) {
             Ok(v) => v,
             Err(_) => {
                 self.error = Some("MIR source contains a NUL byte".to_string());
-                return;
+                return None;
             }
         };
 
@@ -102,11 +92,12 @@ impl MirScriptingState {
             Ok(v) => v,
             Err(_) => {
                 self.error = Some("Entry function name contains a NUL byte".to_string());
-                return;
+                return None;
             }
         };
 
         unsafe {
+            let started = Instant::now();
             #[cfg(unix)]
             let mut code_alloc = mir_sys::code_alloc::unix_mmap();
             #[cfg(unix)]
@@ -116,7 +107,7 @@ impl MirScriptingState {
 
             if ctx.is_null() {
                 self.error = Some("Failed to initialize MIR context".to_string());
-                return;
+                return None;
             }
 
             logcat(&format!("MIR: ctx={:p}", ctx));
@@ -136,7 +127,7 @@ impl MirScriptingState {
                 logcat("MIR: module_list_ptr is null");
                 mir_sys::MIR_gen_finish(ctx);
                 mir_sys::MIR_finish(ctx);
-                return;
+                return None;
             }
 
             let module = (*module_list_ptr).tail;
@@ -145,7 +136,7 @@ impl MirScriptingState {
                 logcat("MIR: module tail is null");
                 mir_sys::MIR_gen_finish(ctx);
                 mir_sys::MIR_finish(ctx);
-                return;
+                return None;
             }
 
             logcat(&format!("MIR: module={:p}", module));
@@ -174,28 +165,41 @@ impl MirScriptingState {
                 logcat("MIR: entry function not found");
                 mir_sys::MIR_gen_finish(ctx);
                 mir_sys::MIR_finish(ctx);
-                return;
+                return None;
             }
 
             logcat(&format!("MIR: found_func={:p}", found));
-            logcat("MIR: MIR_link");
-            mir_sys::MIR_link(ctx, Some(mir_sys::MIR_set_gen_interface), None);
-            logcat("MIR: MIR_link done");
+            let result = match mode {
+                MirExecMode::Jit => {
+                    logcat("MIR: MIR_link (JIT)");
+                    mir_sys::MIR_link(ctx, Some(mir_sys::MIR_set_gen_interface), None);
+                    logcat("MIR: MIR_link done");
 
-            logcat("MIR: MIR_gen");
-            let fun_ptr = mir_sys::MIR_gen(ctx, found);
-            if fun_ptr.is_null() {
-                self.error = Some("MIR code generation failed".to_string());
-                logcat("MIR: MIR_gen returned null");
-                mir_sys::MIR_gen_finish(ctx);
-                mir_sys::MIR_finish(ctx);
-                return;
-            }
+                    logcat("MIR: MIR_gen");
+                    let fun_ptr = mir_sys::MIR_gen(ctx, found);
+                    if fun_ptr.is_null() {
+                        self.error = Some("MIR code generation failed".to_string());
+                        logcat("MIR: MIR_gen returned null");
+                        mir_sys::MIR_gen_finish(ctx);
+                        mir_sys::MIR_finish(ctx);
+                        return None;
+                    }
 
-            logcat(&format!("MIR: fun_ptr={:p}", fun_ptr));
-            let rust_func: extern "C" fn() -> i64 = std::mem::transmute(fun_ptr);
-            logcat("MIR: calling generated function");
-            let result = rust_func();
+                    logcat(&format!("MIR: fun_ptr={:p}", fun_ptr));
+                    let rust_func: extern "C" fn() -> i64 = std::mem::transmute(fun_ptr);
+                    logcat("MIR: calling generated function");
+                    rust_func()
+                }
+                MirExecMode::Interp => {
+                    logcat("MIR: MIR_set_interp_interface");
+                    mir_sys::MIR_set_interp_interface(ctx, found);
+                    let mut out = mir_sys::MIR_val_t { i: 0 };
+                    logcat("MIR: MIR_interp_arr");
+                    mir_sys::MIR_interp_arr(ctx, found, &mut out as *mut _, 0, ptr::null_mut());
+                    out.i
+                }
+            };
+
             logcat(&format!("MIR: function returned {}", result));
             self.output = format!("Result: {}", result);
 
@@ -204,118 +208,10 @@ impl MirScriptingState {
             logcat("MIR: MIR_finish");
             mir_sys::MIR_finish(ctx);
             logcat("MIR execute: done");
+            Some(started.elapsed().as_millis())
         }
     }
 
-    #[cfg(target_os = "android")]
-    fn execute_android_programmatic(&mut self, entry: &str) {
-        self.output.clear();
-        self.error = None;
-
-        let entry_c = match CString::new(entry) {
-            Ok(v) => v,
-            Err(_) => {
-                self.error = Some("Entry function name contains a NUL byte".to_string());
-                return;
-            }
-        };
-
-        unsafe {
-            #[cfg(unix)]
-            let mut code_alloc = mir_sys::code_alloc::unix_mmap();
-            #[cfg(unix)]
-            let ctx = mir_sys::_MIR_init(ptr::null_mut(), &mut code_alloc);
-            #[cfg(not(unix))]
-            let ctx = mir_sys::_MIR_init(ptr::null_mut(), ptr::null_mut());
-
-            if ctx.is_null() {
-                self.error = Some("Failed to initialize MIR context".to_string());
-                return;
-            }
-
-            logcat(&format!("MIR(android): ctx={:p}", ctx));
-            logcat("MIR(android): MIR_gen_init");
-            mir_sys::MIR_gen_init(ctx);
-            mir_sys::MIR_gen_set_optimize_level(ctx, 0);
-
-            let mod_name = CString::new("mir_android").unwrap();
-            let module = mir_sys::MIR_new_module(ctx, mod_name.as_ptr());
-            if module.is_null() {
-                self.error = Some("Failed to create MIR module".to_string());
-                mir_sys::MIR_gen_finish(ctx);
-                mir_sys::MIR_finish(ctx);
-                return;
-            }
-
-            let mut result_type = mir_sys::MIR_type_t_MIR_T_I64;
-            let func = mir_sys::MIR_new_func_arr(
-                ctx,
-                entry_c.as_ptr(),
-                1,
-                &mut result_type as *mut _,
-                0,
-                ptr::null_mut(),
-            );
-            if func.is_null() {
-                self.error = Some("Failed to create MIR function".to_string());
-                mir_sys::MIR_gen_finish(ctx);
-                mir_sys::MIR_finish(ctx);
-                return;
-            }
-
-            let reg_name = CString::new("r").unwrap();
-            let reg = mir_sys::MIR_new_func_reg(ctx, (*func).u.func, result_type, reg_name.as_ptr());
-
-            let mut ops_mov = vec![
-                mir_sys::MIR_new_reg_op(ctx, reg),
-                mir_sys::MIR_new_int_op(ctx, 150),
-            ];
-            let insn_mov = mir_sys::MIR_new_insn_arr(
-                ctx,
-                mir_sys::MIR_insn_code_t_MIR_MOV,
-                2,
-                ops_mov.as_mut_ptr(),
-            );
-            mir_sys::MIR_append_insn(ctx, func, insn_mov);
-
-            let mut ops_ret = vec![mir_sys::MIR_new_reg_op(ctx, reg)];
-            let insn_ret = mir_sys::MIR_new_insn_arr(
-                ctx,
-                mir_sys::MIR_insn_code_t_MIR_RET,
-                1,
-                ops_ret.as_mut_ptr(),
-            );
-            mir_sys::MIR_append_insn(ctx, func, insn_ret);
-
-            mir_sys::MIR_finish_func(ctx);
-            mir_sys::MIR_finish_module(ctx);
-            mir_sys::MIR_load_module(ctx, module);
-
-            logcat("MIR(android): MIR_link");
-            mir_sys::MIR_link(ctx, Some(mir_sys::MIR_set_gen_interface), None);
-
-            logcat("MIR(android): MIR_gen");
-            let fun_ptr = mir_sys::MIR_gen(ctx, func);
-            if fun_ptr.is_null() {
-                self.error = Some("MIR code generation failed".to_string());
-                mir_sys::MIR_gen_finish(ctx);
-                mir_sys::MIR_finish(ctx);
-                return;
-            }
-
-            let rust_func: extern "C" fn() -> i64 = std::mem::transmute(fun_ptr);
-            logcat("MIR(android): calling generated function");
-            let result = rust_func();
-            logcat(&format!("MIR(android): function returned {}", result));
-
-            self.output =
-                format!("Result: {} (Android: programmatic MIR; text scan disabled)", result);
-
-            mir_sys::MIR_gen_finish(ctx);
-            mir_sys::MIR_finish(ctx);
-            logcat("MIR(android): done");
-        }
-    }
 
     pub fn clear_output(&mut self) {
         self.output.clear();
@@ -325,6 +221,21 @@ impl MirScriptingState {
     pub fn clear_source(&mut self) {
         self.source.clear();
         self.clear_output();
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MirExecMode {
+    Jit,
+    Interp,
+}
+
+impl MirExecMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            MirExecMode::Jit => "jit",
+            MirExecMode::Interp => "interp",
+        }
     }
 }
 
@@ -374,8 +285,14 @@ pub fn render_mir_scripting_screen(state: &AppState) -> serde_json::Value {
         "children": [
             {
                 "type": "Button",
-                "text": "Execute",
-                "action": "mir_scripting_execute",
+                "text": "Run (Interpreter)",
+                "action": "mir_scripting_execute_interp",
+                "margin_bottom": 8.0
+            },
+            {
+                "type": "Button",
+                "text": "Run (JIT)",
+                "action": "mir_scripting_execute_jit",
                 "margin_bottom": 8.0
             },
             {
@@ -441,10 +358,22 @@ pub fn handle_mir_scripting_actions(
             state.push_screen(crate::state::Screen::MirScripting);
             Some(render_mir_scripting_screen(state))
         }
-        MirScriptingExecute { source, entry } => {
+        MirScriptingExecuteJit { source, entry } => {
             state.mir_scripting.source = source;
             state.mir_scripting.entry = entry;
-            state.mir_scripting.execute();
+            let runtime_ms = state.mir_scripting.execute_jit();
+            if let Some(ms) = runtime_ms {
+                state.toast = Some(format!("MIR JIT runtime: {} ms", ms));
+            }
+            Some(render_mir_scripting_screen(state))
+        }
+        MirScriptingExecuteInterp { source, entry } => {
+            state.mir_scripting.source = source;
+            state.mir_scripting.entry = entry;
+            let runtime_ms = state.mir_scripting.execute_interp();
+            if let Some(ms) = runtime_ms {
+                state.toast = Some(format!("MIR interpreter runtime: {} ms", ms));
+            }
             Some(render_mir_scripting_screen(state))
         }
         MirScriptingClearOutput => {

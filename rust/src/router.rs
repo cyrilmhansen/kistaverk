@@ -1114,7 +1114,11 @@ pub(crate) enum Action {
         example_type: String,
     },
     MirScriptingScreen,
-    MirScriptingExecute {
+    MirScriptingExecuteJit {
+        source: String,
+        entry: String,
+    },
+    MirScriptingExecuteInterp {
         source: String,
         entry: String,
     },
@@ -1346,7 +1350,11 @@ fn parse_action(command: Command) -> Result<Action, String> {
         },
         "sql_clear_all" => Ok(Action::SqlClearAll),
         "mir_scripting_screen" => Ok(Action::MirScriptingScreen),
-        "mir_scripting_execute" => Ok(Action::MirScriptingExecute {
+        "mir_scripting_execute_jit" => Ok(Action::MirScriptingExecuteJit {
+            source: bindings.get("mir_scripting.source").cloned().unwrap_or_default(),
+            entry: bindings.get("mir_scripting.entry").cloned().unwrap_or_default(),
+        }),
+        "mir_scripting_execute_interp" => Ok(Action::MirScriptingExecuteInterp {
             source: bindings.get("mir_scripting.source").cloned().unwrap_or_default(),
             entry: bindings.get("mir_scripting.entry").cloned().unwrap_or_default(),
         }),
@@ -2418,7 +2426,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
             }
         }
         a @ Action::MirScriptingScreen
-        | a @ Action::MirScriptingExecute { .. }
+        | a @ Action::MirScriptingExecuteJit { .. }
+        | a @ Action::MirScriptingExecuteInterp { .. }
         | a @ Action::MirScriptingClearOutput
         | a @ Action::MirScriptingClearSource
         | a @ Action::MirScriptingLoadExample => {
