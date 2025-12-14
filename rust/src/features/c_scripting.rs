@@ -325,17 +325,30 @@ pub fn handle_c_scripting_actions(
             Some(render_c_scripting_screen(state))
         }
         CScriptingLoadExample => {
-            state.c_scripting.source = r#"#
+            state.c_scripting.source = r#"
 #include <stdio.h>
 
-int main() {
-    printf("Hello from C!\n");
-    int sum = 0;
-    for (int i = 0; i < 10; i++) {
-        sum += i;
-        printf("i=%d, sum=%d\n", i, sum);
-    }
-    return 0;
+/* Calculate day of week in proleptic Gregorian calendar. Sunday == 0. */
+int wday(int year, int month, int day)
+{
+	int adjustment, mm, yy;
+
+	adjustment = (14 - month) / 12;
+	mm = month + 12 * adjustment - 2;
+	yy = year - adjustment;
+	return (day + (13 * mm - 1) / 5 +
+		yy + yy / 4 - yy / 100 + yy / 400) % 7;
+}
+
+int main()
+{
+	int y;
+
+	for (y = 2008; y <= 2121; y++) {
+		if (wday(y, 12, 25) == 0) printf("%04d-12-25\n", y);
+	}
+
+	return 0;
 }
 "#.trim().to_string();
             state.c_scripting.output.clear();
