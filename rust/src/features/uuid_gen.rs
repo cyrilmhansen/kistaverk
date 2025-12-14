@@ -7,13 +7,14 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde_json::{json, Value};
 use uuid::Uuid;
+use rust_i18n::t;
 
 pub fn render_uuid_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("UUID & Random String").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("Generate UUID v4 or custom random strings.").size(14.0))
+        serde_json::to_value(UiText::new(&t!("uuid_gen_title")).size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("uuid_gen_description")).size(14.0))
             .unwrap(),
-        serde_json::to_value(UiButton::new("Generate UUID v4", "uuid_generate")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("uuid_generate_v4_button"), "uuid_generate")).unwrap(),
     ];
 
     if let Some(u) = &state.uuid_generator.last_uuid {
@@ -22,16 +23,16 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
                 .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy UUID", "copy_clipboard").copy_text(u))
+            serde_json::to_value(UiButton::new(&t!("uuid_copy_button"), "copy_clipboard").copy_text(u))
                 .unwrap(),
         );
     }
 
-    children.push(serde_json::to_value(UiText::new("Random string").size(16.0)).unwrap());
+    children.push(serde_json::to_value(UiText::new(&t!("uuid_gen_random_string_section")).size(16.0)).unwrap());
     children.push(
         serde_json::to_value(
             UiTextInput::new("uuid_str_len")
-                .hint("Length (e.g., 16)")
+                .hint(&t!("uuid_string_length_hint"))
                 .text(&state.uuid_generator.string_length.to_string())
                 .single_line(true),
         )
@@ -39,10 +40,10 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
     );
 
     let charset_options = [
-        (StringCharset::Alphanumeric, "Alphanumeric"),
-        (StringCharset::Numeric, "Numeric"),
-        (StringCharset::Alpha, "Alphabetic"),
-        (StringCharset::Hex, "Hex"),
+        (StringCharset::Alphanumeric, &t!("uuid_charset_alphanumeric")),
+        (StringCharset::Numeric, &t!("uuid_charset_numeric")),
+        (StringCharset::Alpha, &t!("uuid_charset_alphabetic")),
+        (StringCharset::Hex, &t!("uuid_charset_hex")),
     ];
     for (charset, label) in charset_options {
         children.push(json!({
@@ -55,7 +56,7 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
     }
 
     children.push(
-        serde_json::to_value(UiButton::new("Generate string", "random_string_generate")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("uuid_generate_string_button"), "random_string_generate")).unwrap(),
     );
 
     if let Some(s) = &state.uuid_generator.last_string {
@@ -68,7 +69,7 @@ pub fn render_uuid_screen(state: &AppState) -> Value {
             .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy string", "copy_clipboard").copy_text(s))
+            serde_json::to_value(UiButton::new(&t!("uuid_copy_string_button"), "copy_clipboard").copy_text(s))
                 .unwrap(),
         );
     }

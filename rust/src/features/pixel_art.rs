@@ -8,48 +8,49 @@ use serde_json::{json, Value};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
 use tempfile::Builder;
+use rust_i18n::t;
 
 pub fn render_pixel_art_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Pixel Artifier").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("pixel_art_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Downscale + nearest upscale to get chunky pixel vibes.").size(14.0),
+            UiText::new(&t!("pixel_art_description")).size(14.0),
         )
         .unwrap(),
         json!({
             "type": "Button",
-            "text": "Presets",
+            "text": t!("presets_title"),
             "action": "presets_list",
             "id": "pixel_art_presets",
             "payload": { "tool_id": "pixel_art" }
         }),
         json!({
             "type": "Button",
-            "text": "Save preset",
+            "text": t!("presets_save_title"),
             "action": "preset_save_dialog",
             "id": "pixel_art_preset_save",
             "payload": { "tool_id": "pixel_art" }
         }),
         serde_json::to_value(
-            UiButton::new("Pick image", "pixel_art_pick")
+            UiButton::new(&t!("pixel_art_pick_image_button"), "pixel_art_pick")
                 .requires_file_picker(true)
-                .content_description("Pick source image"),
+                .content_description(&t!("pixel_art_pick_image_content_description")),
         )
         .unwrap(),
     ];
 
     if let Some(path) = &state.pixel_art.source_path {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Source: {path}")).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("dithering_source_prefix"), path)).size(12.0)).unwrap(),
         );
     }
 
     let scales = [2u32, 4, 8, 16];
-    children.push(serde_json::to_value(UiText::new("Scale factor").size(14.0)).unwrap());
+    children.push(serde_json::to_value(UiText::new(&t!("pixel_art_scale_factor")).size(14.0)).unwrap());
     for s in scales {
         children.push(json!({
             "type": "Button",
-            "text": format!("{s}x"),
+            "text": format!("{}x", s),
             "action": "pixel_art_set_scale",
             "content_description": if s == state.pixel_art.scale_factor { Some("selected") } else { None::<&str> },
             "payload": { "scale": s }
@@ -58,12 +59,12 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
 
     if let Some(err) = &state.pixel_art.error {
         children
-            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
+            .push(serde_json::to_value(UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(12.0)).unwrap());
     }
 
     if state.pixel_art.source_path.is_some() {
         children.push(
-            serde_json::to_value(UiButton::new("Apply", "pixel_art_apply").id("pixel_art_apply"))
+            serde_json::to_value(UiButton::new(&t!("dithering_apply_button"), "pixel_art_apply").id("pixel_art_apply"))
                 .unwrap(),
         );
     }
@@ -71,7 +72,7 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
     if let Some(out) = &state.pixel_art.result_path {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Result: {}", out))
+                UiText::new(&format!("{}{}", t!("pixel_art_result_prefix"), out))
                     .size(12.0)
                     .content_description("pixel_art_result"),
             )
@@ -79,7 +80,7 @@ pub fn render_pixel_art_screen(state: &AppState) -> Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy result path", "copy_clipboard").copy_text(out),
+                UiButton::new(&t!("dithering_copy_result_path_button"), "copy_clipboard").copy_text(out),
             )
             .unwrap(),
         );

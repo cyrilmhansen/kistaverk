@@ -8,6 +8,7 @@ use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Path, PathBuf};
 use tempfile::Builder;
+use rust_i18n::t;
 
 const MONOCHROME: &[[u8; 3]] = &[[0, 0, 0], [255, 255, 255]];
 const CGA: &[[u8; 3]] = &[[0, 0, 0], [85, 255, 255], [255, 85, 255], [255, 255, 85]];
@@ -242,29 +243,29 @@ fn temp_dirs() -> Vec<PathBuf> {
 
 pub fn render_dithering_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Retro Dithering").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("dithering_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Apply Floyd-Steinberg or Bayer dithering with retro palettes. Pick an image, choose a palette, and apply.")
+            UiText::new(&t!("dithering_description"))
                 .size(14.0),
         )
         .unwrap(),
         json!({
             "type": "Button",
-            "text": "Pick image",
+            "text": t!("dithering_pick_image_button"),
             "action": "dithering_pick_image",
             "requires_file_picker": true,
-            "content_description": "Pick source image for dithering"
+            "content_description": t!("dithering_pick_image_content_description")
         }),
         json!({
             "type": "Button",
-            "text": "Presets",
+            "text": t!("presets_title"),
             "action": "presets_list",
             "id": "dithering_presets",
             "payload": { "tool_id": "dithering" }
         }),
         json!({
             "type": "Button",
-            "text": "Save preset",
+            "text": t!("presets_save_title"),
             "action": "preset_save_dialog",
             "id": "dithering_preset_save",
             "payload": { "tool_id": "dithering" }
@@ -273,34 +274,34 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
 
     if let Some(path) = &state.dithering_source_path {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Source: {path}")).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("dithering_source_prefix"), path)).size(12.0)).unwrap(),
         );
     }
 
     let modes = [
         (
             DitheringMode::Atkinson,
-            "Atkinson",
+            &t!("dithering_mode_atkinson"),
             "dithering_mode_atkinson",
         ),
         (
             DitheringMode::FloydSteinberg,
-            "Floyd-Steinberg",
+            &t!("dithering_mode_fs"),
             "dithering_mode_fs",
         ),
-        (DitheringMode::Sierra, "Sierra", "dithering_mode_sierra"),
+        (DitheringMode::Sierra, &t!("dithering_mode_sierra"), "dithering_mode_sierra"),
         (
             DitheringMode::Bayer4x4,
-            "Bayer 4x4",
+            &t!("dithering_mode_bayer4"),
             "dithering_mode_bayer4",
         ),
         (
             DitheringMode::Bayer8x8,
-            "Bayer 8x8",
+            &t!("dithering_mode_bayer8"),
             "dithering_mode_bayer8",
         ),
     ];
-    children.push(serde_json::to_value(UiText::new("Algorithm").size(14.0)).unwrap());
+    children.push(serde_json::to_value(UiText::new(&t!("dithering_algorithm_section")).size(14.0)).unwrap());
     for (mode, label, action) in modes {
         let mut button = UiButton::new(label, action).id(action);
         if mode == state.dithering_mode {
@@ -312,17 +313,17 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     let palettes = [
         (
             DitheringPalette::Monochrome,
-            "Monochrome",
+            &t!("dithering_palette_monochrome"),
             "dithering_palette_mono",
         ),
-        (DitheringPalette::Cga, "CGA", "dithering_palette_cga"),
+        (DitheringPalette::Cga, &t!("dithering_palette_cga"), "dithering_palette_cga"),
         (
             DitheringPalette::GameBoy,
-            "Game Boy",
+            &t!("dithering_palette_gameboy"),
             "dithering_palette_gb",
         ),
     ];
-    children.push(serde_json::to_value(UiText::new("Palette").size(14.0)).unwrap());
+    children.push(serde_json::to_value(UiText::new(&t!("dithering_palette_section")).size(14.0)).unwrap());
     for (palette, label, action) in palettes {
         let mut button = UiButton::new(label, action).id(action);
         if palette == state.dithering_palette {
@@ -333,13 +334,13 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
 
     if let Some(err) = &state.dithering_error {
         children
-            .push(serde_json::to_value(UiText::new(&format!("Error: {err}")).size(12.0)).unwrap());
+            .push(serde_json::to_value(UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(12.0)).unwrap());
     }
 
     if let Some(result) = &state.dithering_result_path {
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy result path", "copy_clipboard")
+                UiButton::new(&t!("dithering_copy_result_path_button"), "copy_clipboard")
                     .copy_text(result)
                     .id("copy_dithering_result"),
             )
@@ -350,7 +351,7 @@ pub fn render_dithering_screen(state: &AppState) -> Value {
     if state.dithering_source_path.is_some() {
         children.push(
             serde_json::to_value(
-                UiButton::new("Apply", "dithering_apply")
+                UiButton::new(&t!("dithering_apply_button"), "dithering_apply")
                     .id("dithering_apply")
                     .content_description("Apply dithering"),
             )

@@ -4,6 +4,7 @@ use crate::ui::{
     self, maybe_push_back, Button as UiButton, Column as UiColumn, Text as UiText,
     Warning as UiWarning,
 };
+use rust_i18n::t;
 /// Represents which sensors the user wants to capture.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -91,41 +92,41 @@ pub fn apply_status_from_bindings(
 
 pub fn render_sensor_logger_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Sensor Logger").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("sensor_logger_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Select sensors and start logging to CSV in app storage.").size(14.0),
+            UiText::new(&t!("sensor_logger_description")).size(14.0),
         )
         .unwrap(),
-        serde_json::to_value(UiText::new("Sensors").size(14.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("sensor_logger_sensors_section")).size(14.0)).unwrap(),
         serde_json::to_value(
             UiColumn::new(vec![
                 serde_json::to_value(
-                    ui::Checkbox::new("Accelerometer", "sensor_accel")
+                    ui::Checkbox::new(&t!("sensor_accelerometer"), "sensor_accel")
                         .checked(state.sensor_selection.map(|s| s.accel).unwrap_or(true)),
                 )
                 .unwrap(),
                 serde_json::to_value(
-                    ui::Checkbox::new("Gyroscope", "sensor_gyro")
+                    ui::Checkbox::new(&t!("sensor_gyroscope"), "sensor_gyro")
                         .checked(state.sensor_selection.map(|s| s.gyro).unwrap_or(true)),
                 )
                 .unwrap(),
                 serde_json::to_value(
-                    ui::Checkbox::new("Magnetometer", "sensor_mag")
+                    ui::Checkbox::new(&t!("sensor_magnetometer"), "sensor_mag")
                         .checked(state.sensor_selection.map(|s| s.mag).unwrap_or(true)),
                 )
                 .unwrap(),
                 serde_json::to_value(
-                    ui::Checkbox::new("Barometer", "sensor_pressure")
+                    ui::Checkbox::new(&t!("sensor_barometer"), "sensor_pressure")
                         .checked(state.sensor_selection.map(|s| s.pressure).unwrap_or(false)),
                 )
                 .unwrap(),
                 serde_json::to_value(
-                    ui::Checkbox::new("GPS", "sensor_gps")
+                    ui::Checkbox::new(&t!("sensor_gps"), "sensor_gps")
                         .checked(state.sensor_selection.map(|s| s.gps).unwrap_or(false)),
                 )
                 .unwrap(),
                 serde_json::to_value(
-                    ui::Checkbox::new("Battery", "sensor_battery")
+                    ui::Checkbox::new(&t!("sensor_battery"), "sensor_battery")
                         .checked(state.sensor_selection.map(|s| s.battery).unwrap_or(true)),
                 )
                 .unwrap(),
@@ -135,29 +136,29 @@ pub fn render_sensor_logger_screen(state: &AppState) -> Value {
         .unwrap(),
         serde_json::to_value(
             ui::TextInput::new("sensor_interval_ms")
-                .hint("Interval ms (50-10000)")
+                .hint(&t!("sensor_interval_ms_hint"))
                 .text(
                     &state
                         .sensor_interval_ms
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "200".into()),
                 )
-                .content_description("Sensor interval ms"),
+                .content_description(&t!("sensor_interval_ms_content_description")),
         )
         .unwrap(),
-        serde_json::to_value(UiButton::new("Start logging", "sensor_logger_start")).unwrap(),
-        serde_json::to_value(UiButton::new("Stop logging", "sensor_logger_stop")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("sensor_start_logging_button"), "sensor_logger_start")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("sensor_stop_logging_button"), "sensor_logger_stop")).unwrap(),
     ];
 
     if let Some(status) = &state.sensor_status {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Status: {}", status)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("sensor_status_prefix"), status)).size(12.0)).unwrap(),
         );
     }
     if state.sensor_status.as_deref() == Some("logging") {
         children.push(
             serde_json::to_value(
-                UiWarning::new("Logging continues in a foreground service.")
+                UiWarning::new(&t!("sensor_logging_foreground_service"))
                     .content_description("sensor_logger_foreground_status"),
             )
             .unwrap(),
@@ -165,15 +166,15 @@ pub fn render_sensor_logger_screen(state: &AppState) -> Value {
     }
     if let Some(err) = &state.last_error {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(12.0)).unwrap(),
         );
     }
     if let Some(path) = &state.last_sensor_log {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Last log: {}", path)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("sensor_last_log_prefix"), path)).size(12.0)).unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Share last log", "sensor_logger_share")).unwrap(),
+            serde_json::to_value(UiButton::new(&t!("sensor_share_last_log_button"), "sensor_logger_share")).unwrap(),
         );
     }
 

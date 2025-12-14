@@ -5,6 +5,7 @@ use crate::ui::{
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextAction {
@@ -350,18 +351,18 @@ fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
 pub fn render_text_tools_screen(state: &AppState) -> Value {
     let input = state.text_input.clone().unwrap_or_default();
     let mut children = vec![
-        serde_json::to_value(UiText::new("Text tools").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("text_tools_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Enter text, then apply a transform or count.").size(14.0),
+            UiText::new(&t!("text_tools_description")).size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
             UiGrid::new(vec![
                 json!(UiTextInput::new("text_input")
                     .text(&input)
-                    .hint("Paste or type text")
+                    .hint(&t!("text_tools_input_hint"))
                     .content_description("Input text for text tools")),
-                json!(UiButton::new("Clear", "text_tools_clear").id("text_tools_clear_inline")),
+                json!(UiButton::new(&t!("text_tools_clear_button"), "text_tools_clear").id("text_tools_clear_inline")),
             ])
             .columns(2)
             .padding(4),
@@ -369,37 +370,37 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
         .unwrap(),
         serde_json::to_value(
             UiColumn::new(vec![
-                serde_json::to_value(UiText::new("Transforms").size(14.0)).unwrap(),
-                serde_json::to_value(UiButton::new("UPPERCASE", "text_tools_upper")).unwrap(),
-                serde_json::to_value(UiButton::new("lowercase", "text_tools_lower")).unwrap(),
-                serde_json::to_value(UiButton::new("Title Case", "text_tools_title")).unwrap(),
+                serde_json::to_value(UiText::new(&t!("text_tools_transforms_section")).size(14.0)).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_uppercase"), "text_tools_upper")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_lowercase"), "text_tools_lower")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_title_case"), "text_tools_title")).unwrap(),
             ])
             .padding(8),
         )
         .unwrap(),
         serde_json::to_value(
             UiColumn::new(vec![
-                serde_json::to_value(UiText::new("Counts & cleanup").size(14.0)).unwrap(),
+                serde_json::to_value(UiText::new(&t!("text_tools_counts_cleanup_section")).size(14.0)).unwrap(),
                 serde_json::to_value(
-                    UiCheckbox::new("Aggressive trim (collapse whitespace)", "aggressive_trim")
+                    UiCheckbox::new(&t!("text_tools_aggressive_trim_checkbox"), "aggressive_trim")
                         .checked(state.text_aggressive_trim)
                         .action("text_tools_refresh"),
                 )
                 .unwrap(),
-                serde_json::to_value(UiButton::new("Word count", "text_tools_word_count")).unwrap(),
-                serde_json::to_value(UiButton::new("Character count", "text_tools_char_count"))
+                serde_json::to_value(UiButton::new(&t!("text_tools_word_count"), "text_tools_word_count")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_char_count"), "text_tools_char_count"))
                     .unwrap(),
-                serde_json::to_value(UiButton::new("Trim spacing", "text_tools_trim")).unwrap(),
-                serde_json::to_value(UiButton::new("Wrap to 72 cols", "text_tools_wrap")).unwrap(),
-                serde_json::to_value(UiButton::new("Base64 encode", "text_tools_base64_encode"))
+                serde_json::to_value(UiButton::new(&t!("text_tools_trim_spacing"), "text_tools_trim")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_wrap_72_cols"), "text_tools_wrap")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_base64_encode"), "text_tools_base64_encode"))
                     .unwrap(),
-                serde_json::to_value(UiButton::new("Base64 decode", "text_tools_base64_decode"))
+                serde_json::to_value(UiButton::new(&t!("text_tools_base64_decode"), "text_tools_base64_decode"))
                     .unwrap(),
-                serde_json::to_value(UiButton::new("URL encode", "text_tools_url_encode")).unwrap(),
-                serde_json::to_value(UiButton::new("URL decode", "text_tools_url_decode")).unwrap(),
-                serde_json::to_value(UiButton::new("Hex encode", "text_tools_hex_encode")).unwrap(),
-                serde_json::to_value(UiButton::new("Hex decode", "text_tools_hex_decode")).unwrap(),
-                serde_json::to_value(UiButton::new("Clear", "text_tools_clear")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_url_encode"), "text_tools_url_encode")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_url_decode"), "text_tools_url_decode")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_hex_encode"), "text_tools_hex_encode")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_hex_decode"), "text_tools_hex_decode")).unwrap(),
+                serde_json::to_value(UiButton::new(&t!("text_tools_clear_button"), "text_tools_clear")).unwrap(),
             ])
             .padding(8),
         )
@@ -408,7 +409,7 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
 
     if let Some(op) = &state.text_operation {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Last action: {}", op)).size(14.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("text_tools_last_action_prefix"), op)).size(14.0)).unwrap(),
         );
     }
 
@@ -416,7 +417,7 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
         children.push(
             serde_json::to_value(
                 UiColumn::new(vec![
-                    serde_json::to_value(UiText::new("Result").size(14.0)).unwrap(),
+                    serde_json::to_value(UiText::new(&t!("text_tools_result_label")).size(14.0)).unwrap(),
                     serde_json::to_value(UiText::new(result).size(16.0)).unwrap(),
                 ])
                 .padding(8),
@@ -426,13 +427,13 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
         children.push(
             serde_json::to_value(
                 UiColumn::new(vec![
-                    serde_json::to_value(UiText::new("Result actions").size(14.0)).unwrap(),
+                    serde_json::to_value(UiText::new(&t!("text_tools_result_actions")).size(14.0)).unwrap(),
                     serde_json::to_value(UiButton::new(
-                        "Copy to input",
+                        &t!("text_tools_copy_to_input"),
                         "text_tools_copy_to_input",
                     ))
                     .unwrap(),
-                    serde_json::to_value(UiButton::new("Share result", "text_tools_share_result"))
+                    serde_json::to_value(UiButton::new(&t!("text_tools_share_result"), "text_tools_share_result"))
                         .unwrap(),
                 ])
                 .padding(8),
@@ -442,7 +443,7 @@ pub fn render_text_tools_screen(state: &AppState) -> Value {
     }
 
     if state.nav_depth() > 1 {
-        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+        children.push(serde_json::to_value(UiButton::new(&t!("button_back"), "back")).unwrap());
     }
 
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()

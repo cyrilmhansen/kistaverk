@@ -4,6 +4,7 @@ use base64::Engine;
 use image::{codecs::png::PngEncoder, ColorType, ImageBuffer, ImageEncoder, Luma};
 use qrcode::{Color, QrCode};
 use serde_json::json;
+use rust_i18n::t;
 
 pub fn handle_qr_action(state: &mut AppState, input: &str) -> Result<(), String> {
     if input.is_empty() {
@@ -54,29 +55,29 @@ pub fn handle_qr_action(state: &mut AppState, input: &str) -> Result<(), String>
 
 pub fn render_qr_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("QR Code Generator").size(20.0)).unwrap(),
-        serde_json::to_value(UiText::new("Enter text to generate a QR code.").size(14.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("qr_generator_title")).size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("qr_generator_description")).size(14.0)).unwrap(),
         json!({
             "type": "TextInput",
             "bind_key": "qr_input",
-            "hint": "Text or URL",
+            "hint": t!("qr_input_hint"),
             "action_on_submit": "qr_generate"
         }),
-        serde_json::to_value(UiButton::new("Generate QR", "qr_generate")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("qr_generate_button"), "qr_generate")).unwrap(),
     ];
 
     if let Some(b64) = &state.last_qr_base64 {
-        children.push(serde_json::to_value(UiText::new("Result:").size(14.0)).unwrap());
+        children.push(serde_json::to_value(UiText::new(&t!("qr_generator_result_label")).size(14.0)).unwrap());
         children.push(
             serde_json::to_value(
-                crate::ui::ImageBase64::new(b64).content_description("Generated QR"),
+                crate::ui::ImageBase64::new(b64).content_description(&t!("qr_generated_content_description")),
             )
             .unwrap(),
         );
     }
 
     if state.nav_depth() > 1 {
-        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+        children.push(serde_json::to_value(UiButton::new(&t!("button_back"), "back")).unwrap());
     }
 
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()

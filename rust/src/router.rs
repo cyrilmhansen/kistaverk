@@ -92,7 +92,8 @@ struct GlobalState {
 }
 
 impl GlobalState {
-    const fn new() -> Self {
+    // Note: No longer const due to MIR math library initialization
+    fn new() -> Self {
         Self {
             ui: Mutex::new(AppState::new()),
             worker: OnceLock::new(),
@@ -141,7 +142,7 @@ impl WorkerRuntime {
             .spawn(move || {
                 while let Ok(job) = rx.recv() {
                     let result = run_worker_job(job);
-                    STATE.push_worker_result(result);
+                    STATE.get_or_init(GlobalState::new).push_worker_result(result);
                 }
             })
             .expect("failed to spawn worker thread");
@@ -643,7 +644,7 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
     }
 }
 
-static STATE: GlobalState = GlobalState::new();
+static STATE: OnceLock<GlobalState> = OnceLock::new();
 // TODO: reduce lock hold time or move to a channel/queue; consider parking_lot with timeouts to avoid long UI pauses.
 
 #[cfg(test)]
@@ -5466,7 +5467,7 @@ mod tests {
     use std::io::Write;
     use std::os::unix::io::IntoRawFd;
     use std::thread;
-    use std::sync::{atomic::Ordering, Mutex};
+    use std::sync::{atomic::Ordering, Mutex, OnceLock};
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
     use lopdf::dictionary;

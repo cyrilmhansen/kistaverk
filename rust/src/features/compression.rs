@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{copy, BufReader, Write};
 use std::path::{Path, PathBuf};
+use rust_i18n::t;
 
 fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
     serde_json::to_value(value).unwrap_or_else(|e| {
@@ -21,19 +22,19 @@ fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
 
 pub fn render_compression_screen(state: &AppState) -> Value {
     let mut children = vec![
-        to_value_or_text(UiText::new("GZIP Compression").size(20.0), "gzip_title"),
+        to_value_or_text(UiText::new(&t!("compression_gzip_title")).size(20.0), "gzip_title"),
         to_value_or_text(
-            UiText::new("Compress or decompress single files using .gz.").size(14.0),
+            UiText::new(&t!("compression_gzip_description")).size(14.0),
             "gzip_subtitle",
         ),
         to_value_or_text(
-            UiButton::new("Compress to .gz", "gzip_compress")
+            UiButton::new(&t!("compression_compress_button"), "gzip_compress")
                 .requires_file_picker(true)
                 .content_description("gzip_compress_btn"),
             "gzip_compress_btn",
         ),
         to_value_or_text(
-            UiButton::new("Decompress .gz", "gzip_decompress")
+            UiButton::new(&t!("compression_decompress_button"), "gzip_decompress")
                 .requires_file_picker(true)
                 .content_description("gzip_decompress_btn"),
             "gzip_decompress_btn",
@@ -54,7 +55,7 @@ pub fn render_compression_screen(state: &AppState) -> Value {
             .unwrap_or(false);
         if has_output_path && state.compression_error.is_none() {
             children.push(to_value_or_text(
-                UiButton::new("Save as…", "gzip_save_as").id("gzip_save_as_btn"),
+                UiButton::new(&t!("compression_save_as_button"), "gzip_save_as").id("gzip_save_as_btn"),
                 "gzip_save_as_btn",
             ));
         }
@@ -62,7 +63,7 @@ pub fn render_compression_screen(state: &AppState) -> Value {
 
     if let Some(err) = &state.compression_error {
         children.push(to_value_or_text(
-            UiText::new(&format!("Error: {}", err))
+            UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err))
                 .size(12.0)
                 .content_description("gzip_error"),
             "gzip_error",

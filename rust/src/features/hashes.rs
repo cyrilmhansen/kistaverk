@@ -10,6 +10,7 @@ use sha2::{digest::Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::os::unix::io::{FromRawFd, RawFd};
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HashAlgo {
@@ -290,32 +291,29 @@ pub fn compute_all_hashes(
 
 pub fn render_hash_verify_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Hash verify (SHA-256)").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("hash_verify_title")).size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("hash_verify_description")).size(14.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Paste a reference hash, then pick a file to verify.").size(14.0),
-        )
-        .unwrap(),
-        serde_json::to_value(
-            UiButton::new("Copy last hash", "noop")
+            UiButton::new(&t!("button_copy_last_hash"), "noop")
                 .id("copy_last_hash_btn")
                 .copy_text(state.last_hash.as_deref().unwrap_or("")),
         )
         .unwrap(),
         serde_json::to_value(
-            UiButton::new("Paste from clipboard", "hash_verify_paste")
+            UiButton::new(&t!("button_paste_from_clipboard"), "hash_verify_paste")
                 .id("hash_verify_paste")
                 .content_description("hash_verify_paste"),
         )
         .unwrap(),
         serde_json::to_value(
             UiTextInput::new("hash_reference")
-                .hint("Reference hash")
+                .hint(&t!("hash_reference_hint"))
                 .text(state.hash_reference.as_deref().unwrap_or_default())
                 .single_line(true),
         )
         .unwrap(),
         serde_json::to_value(
-            UiButton::new("Pick file and verify", "hash_verify")
+            UiButton::new(&t!("button_pick_file_and_verify"), "hash_verify")
                 .requires_file_picker(true)
                 .id("hash_verify_btn"),
         )
@@ -323,10 +321,10 @@ pub fn render_hash_verify_screen(state: &AppState) -> Value {
     ];
 
     if let Some(matches) = state.hash_match {
-        let status = if matches { "Match ✅" } else { "Mismatch ❌" };
+        let status = if matches { t!("hash_verify_match") } else { t!("hash_verify_mismatch") };
         children.push(
             serde_json::to_value(
-                UiText::new(status)
+                UiText::new(&status)
                     .size(14.0)
                     .content_description("hash_verify_status"),
             )
@@ -341,7 +339,7 @@ pub fn render_hash_verify_screen(state: &AppState) -> Value {
                     state
                         .last_hash_algo
                         .clone()
-                        .unwrap_or_else(|| "SHA-256".into()),
+                        .unwrap_or_else(|| t!("hash_verify_algo_sha256").into()),
                     hash
                 ))
                 .size(12.0),
@@ -350,14 +348,14 @@ pub fn render_hash_verify_screen(state: &AppState) -> Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy computed hash", "hash_verify_copy").copy_text(hash),
+                UiButton::new(&t!("hash_verify_copy_computed_hash"), "hash_verify_copy").copy_text(hash),
             )
             .unwrap(),
         );
     }
     if let Some(err) = &state.last_error {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(12.0)).unwrap(),
         );
     }
 

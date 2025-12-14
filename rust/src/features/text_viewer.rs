@@ -10,6 +10,7 @@ use std::os::fd::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
+use rust_i18n::t;
 
 const MAX_BYTES: usize = 256 * 1024; // 256 KiB cap to avoid memory bloat for generic reads
 pub const CHUNK_BYTES: usize = 128 * 1024; // chunk size for incremental loads
@@ -373,26 +374,26 @@ fn temp_dirs() -> Vec<PathBuf> {
 
 pub fn render_text_viewer_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Text viewer").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("text_viewer_title")).size(20.0)).unwrap(),
         serde_json::to_value(
             UiText::new(
-                "Open a text/CSV/log file and preview it in 128 KB chunks with syntax highlighting."
+                &t!("text_viewer_description")
             )
             .size(14.0),
         )
         .unwrap(),
         json!({
             "type": "Button",
-            "text": "Pick text file",
+            "text": t!("text_viewer_pick_text_file_button"),
             "action": "text_viewer_open",
             "requires_file_picker": true,
-            "content_description": "Pick text or CSV file"
+            "content_description": t!("text_viewer_pick_text_file_content_description")
         }),
     ];
 
     if let Some(path) = &state.text_view_path {
         children.push(
-            serde_json::to_value(UiText::new(&format!("File: {}", path)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("text_viewer_file_prefix"), path)).size(12.0)).unwrap(),
         );
     }
 
@@ -433,8 +434,8 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                     "columns": 2,
                     "padding": 4,
                     "children": [
-                        { "type": "Button", "text": "Load previous", "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
-                        { "type": "Button", "text": "Load next", "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
+                        { "type": "Button", "text": t!("text_viewer_load_previous"), "action": "text_viewer_load_prev", "id": "text_viewer_load_prev", "content_description": "text_viewer_load_prev" },
+                        { "type": "Button", "text": t!("text_viewer_load_next"), "action": "text_viewer_load_more", "id": "text_viewer_load_more", "content_description": "text_viewer_load_more" }
                     ]
                 })
             )
@@ -451,14 +452,14 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                 {
                     "type": "TextInput",
                     "bind_key": "offset_bytes",
-                    "hint": "Byte offset (0 = start)",
+                    "hint": t!("text_viewer_byte_offset_hint"),
                     "text": state.text_view_window_offset.to_string(),
                     "single_line": true,
                     "action_on_submit": "text_viewer_jump"
                 },
                 {
                     "type": "Button",
-                    "text": "Jump",
+                    "text": t!("text_viewer_jump_button"),
                     "action": "text_viewer_jump",
                     "content_description": "text_viewer_jump"
                 }
@@ -471,7 +472,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
     children.push(
         serde_json::to_value(
             UiColumn::new(vec![
-                serde_json::to_value(UiText::new("Find in text").size(14.0)).unwrap(),
+                serde_json::to_value(UiText::new(&t!("text_viewer_find_in_text")).size(14.0)).unwrap(),
                 serde_json::to_value(
                     UiColumn::new(vec![
                         json!({
@@ -481,7 +482,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                                 .text_view_find_query
                                 .as_deref()
                                 .unwrap_or(""),
-                            "hint": "Enter search term",
+                            "hint": t!("text_viewer_find_hint"),
                             "debounce_ms": 150,
                             "action_on_submit": "text_viewer_find_submit",
                             "single_line": true
@@ -490,9 +491,9 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                             "type": "Grid",
                             "columns": 3,
                             "children": [
-                                { "type": "Button", "text": "Prev", "action": "text_viewer_find_prev", "id": "find_prev", "content_description": "find_prev" },
-                                { "type": "Button", "text": "Next", "action": "text_viewer_find_next", "id": "find_next", "content_description": "find_next" },
-                                { "type": "Button", "text": "Clear", "action": "text_viewer_find_clear", "id": "find_clear", "content_description": "find_clear" }
+                                { "type": "Button", "text": t!("text_viewer_find_prev"), "action": "text_viewer_find_prev", "id": "find_prev", "content_description": "find_prev" },
+                                { "type": "Button", "text": t!("text_viewer_find_next"), "action": "text_viewer_find_next", "id": "find_next", "content_description": "find_next" },
+                                { "type": "Button", "text": t!("text_viewer_find_clear"), "action": "text_viewer_find_clear", "id": "find_clear", "content_description": "find_clear" }
                             ]
                         }),
                     ])
@@ -501,10 +502,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                 .unwrap(),
                 serde_json::to_value(
                     UiText::new(
-                        state
-                            .text_view_find_match
-                            .as_deref()
-                            .unwrap_or("Type a query and tap next/prev."),
+                        t!("text_viewer_find_instructions"),
                     )
                     .id("find_status")
                     .size(12.0),
@@ -517,25 +515,25 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
     );
 
     let theme_label = if state.text_view_dark {
-        "Switch to light"
+        t!("text_viewer_switch_to_light")
     } else {
-        "Switch to dark"
+        t!("text_viewer_switch_to_dark")
     };
     children.push(
         serde_json::to_value(
-            UiButton::new(theme_label, "text_viewer_toggle_theme")
+            UiButton::new(&theme_label, "text_viewer_toggle_theme")
                 .content_description("text_viewer_toggle_theme"),
         )
         .unwrap(),
     );
     let ln_label = if state.text_view_line_numbers {
-        "Hide line numbers"
+        t!("text_viewer_hide_line_numbers")
     } else {
-        "Show line numbers"
+        t!("text_viewer_show_line_numbers")
     };
     children.push(
         serde_json::to_value(
-            UiButton::new(ln_label, "text_viewer_toggle_line_numbers")
+            UiButton::new(&ln_label, "text_viewer_toggle_line_numbers")
                 .content_description("text_viewer_toggle_line_numbers"),
         )
         .unwrap(),
@@ -543,14 +541,14 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
 
     if let Some(err) = &state.text_view_error {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Error: {}", err)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(12.0)).unwrap(),
         );
     }
 
     if let Some(lang) = state.text_view_language.as_deref() {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Language: {}", lang))
+                UiText::new(&format!("{}{}", t!("text_viewer_language_prefix"), lang))
                     .size(12.0)
                     .content_description("text_viewer_language"),
             )
@@ -561,12 +559,12 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
     if state.text_view_total_bytes.is_some() || state.text_view_loaded_bytes > 0 {
         let total = state
             .text_view_total_bytes
-            .map(|v| format!(" / {} bytes", v))
-            .unwrap_or_else(|| " / ?".into());
+            .map(|v| format!("{}{}", t!("text_viewer_total_bytes_prefix"), format_bytes(v)))
+            .unwrap_or_else(|| t!("text_viewer_unknown_total_bytes").into());
         let loaded = state.text_view_loaded_bytes;
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Loaded: {}{}", loaded, total))
+                UiText::new(&format!("{}{}{}", t!("text_viewer_loaded_prefix"), loaded, total))
                     .size(12.0)
                     .content_description("text_viewer_progress"),
             )
@@ -578,7 +576,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
         children.push(
             serde_json::to_value(
                 crate::ui::Warning::new(
-                    "Binary or unsupported text detected. Showing hex preview (first 4KB).",
+                    &t!("text_viewer_binary_warning"),
                 )
                 .content_description("text_viewer_hex_warning"),
             )
@@ -600,7 +598,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Load anyway (may be slow)", "text_viewer_load_anyway")
+                UiButton::new(&t!("text_viewer_load_anyway_button"), "text_viewer_load_anyway")
                     .content_description("text_viewer_load_anyway"),
             )
             .unwrap(),
@@ -630,7 +628,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
         children.push(serde_json::to_value(code).unwrap());
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy visible text", "noop")
+                UiButton::new(&t!("text_viewer_copy_visible_text_button"), "noop")
                     .copy_text(content)
                     .id("copy_visible_text"),
             )
@@ -641,7 +639,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
     if state.text_view_has_more {
         children.push(
             serde_json::to_value(
-                UiButton::new("Load more", "text_viewer_load_more")
+                UiButton::new(&t!("text_viewer_load_more_button"), "text_viewer_load_more")
                     .id("text_viewer_load_more")
                     .content_description("text_viewer_load_more"),
             )

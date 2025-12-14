@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::os::unix::io::{FromRawFd, RawFd};
+use rust_i18n::t;
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -325,15 +326,15 @@ pub fn handle_pdf_operation(
 
 pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("PDF tools").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("pdf_tools_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Select a PDF, pick pages, then extract or delete them.").size(14.0),
+            UiText::new(&t!("pdf_tools_description")).size(14.0),
         )
         .unwrap(),
     ];
 
     if state.pdf.source_uri.is_none() && !state.pdf.recent_files.is_empty() {
-        children.push(serde_json::to_value(UiText::new("Recent PDFs").size(14.0)).unwrap());
+        children.push(serde_json::to_value(UiText::new(&t!("pdf_tools_recent_pdfs")).size(14.0)).unwrap());
         for (idx, uri) in state.pdf.recent_files.iter().enumerate() {
             let label = uri
                 .split('/')
@@ -342,7 +343,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 .unwrap_or(uri);
             children.push(
                 serde_json::to_value(
-                    UiButton::new(&format!("Re-open {label}"), "pdf_select_recent")
+                    UiButton::new(&format!("{}{}", t!("pdf_reopen_prefix"), label), "pdf_select_recent")
                         .id(&format!("pdf_recent_{idx}"))
                         .payload(serde_json::json!({ "path": uri })),
                 )
@@ -353,32 +354,32 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 
     children.push(
         serde_json::to_value(
-            UiButton::new("Pick PDF", "pdf_select")
+            UiButton::new(&t!("pdf_tools_pick_pdf_button"), "pdf_select")
                 .requires_file_picker(true)
-                .content_description("Pick a PDF to edit"),
+                .content_description(&t!("pdf_tools_pick_pdf_description")),
         )
         .unwrap(),
     );
     children.push(
         serde_json::to_value(
-            UiButton::new("Pick PDFs (batch merge)", "pdf_merge_pick")
+            UiButton::new(&t!("pdf_tools_pick_pdfs_batch_button"), "pdf_merge_pick")
                 .requires_file_picker(true)
                 .allow_multiple_files(true)
-                .content_description("Pick multiple PDFs to merge"),
+                .content_description(&t!("pdf_tools_pick_pdfs_batch_description")),
         )
         .unwrap(),
     );
 
     if let Some(uri) = &state.pdf.source_uri {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Selected PDF: {}", uri)).size(12.0))
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("pdf_tools_selected_pdf_prefix"), uri)).size(12.0))
                 .unwrap(),
         );
     }
 
     if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
         children.push(
-            serde_json::to_value(UiText::new(&format!("Pages: {}", count)).size(12.0)).unwrap(),
+            serde_json::to_value(UiText::new(&format!("{}{}", t!("pdf_tools_pages_prefix"), count)).size(12.0)).unwrap(),
         );
 
         // Page picker rendered in Kotlin using PdfRenderer.
@@ -387,7 +388,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 UiColumn::new(vec![serde_json::to_value(
                     UiPdfPagePicker::new(count, "pdf_selected_pages", uri)
                         .selected_pages(&state.pdf.selected_pages)
-                        .content_description("PDF page picker"),
+                        .content_description(&t!("pdf_page_picker_content_description")),
                 )
                 .unwrap()])
                 .content_description("pdf_page_picker_container"),
@@ -397,7 +398,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         let selected_len = state.pdf.selected_pages.len();
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Selected pages: {} / {}", selected_len, count))
+                UiText::new(&format!("{}{}{}{}", t!("pdf_selected_summary_prefix"), selected_len, t!("pdf_selected_summary_middle"), count))
                     .size(12.0)
                     .content_description("pdf_selected_summary"),
             )
@@ -421,7 +422,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         children.push(
             serde_json::to_value(
                 crate::ui::TextInput::new("pdf_reorder_pages")
-                    .hint("New page order (e.g., 2, 1, 3)")
+                    .hint(&t!("pdf_reorder_pages_hint"))
                     .text(&reorder_default)
                     .single_line(true),
             )
@@ -429,26 +430,26 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Reorder pages", "pdf_reorder").id("pdf_reorder_btn"),
+                UiButton::new(&t!("pdf_reorder_pages_button"), "pdf_reorder").id("pdf_reorder_btn"),
             )
             .unwrap(),
         );
 
         children.push(
             serde_json::to_value(
-                UiButton::new("Extract selected pages", "pdf_extract").id("pdf_extract_btn"),
+                UiButton::new(&t!("pdf_extract_selected_pages_button"), "pdf_extract").id("pdf_extract_btn"),
             )
             .unwrap(),
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Delete selected pages", "pdf_delete").id("pdf_delete_btn"),
+                UiButton::new(&t!("pdf_delete_selected_pages_button"), "pdf_delete").id("pdf_delete_btn"),
             )
             .unwrap(),
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Merge with another PDF", "pdf_merge")
+                UiButton::new(&t!("pdf_merge_another_pdf_button"), "pdf_merge")
                     .id("pdf_merge_btn")
                     .requires_file_picker(true),
             )
@@ -456,7 +457,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Open viewer", "pdf_preview_screen").id("pdf_preview_btn"),
+                UiButton::new(&t!("pdf_open_viewer_button"), "pdf_preview_screen").id("pdf_preview_btn"),
             )
             .unwrap(),
         );
@@ -471,7 +472,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 serde_json::to_value(UiColumn::new(vec![
                     serde_json::to_value(UiText::new(p).size(12.0)).unwrap(),
                     serde_json::to_value(
-                        UiButton::new("Remove", "pdf_merge_remove")
+                        UiButton::new(&t!("batch_remove_button"), "pdf_merge_remove")
                             .payload(json!({ "pdf_merge_path": p })),
                     )
                     .unwrap(),
@@ -484,7 +485,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Merge batch", "pdf_merge_batch").payload(json!({
+                UiButton::new(&t!("pdf_merge_batch_button"), "pdf_merge_batch").payload(json!({
                     "pdf_merge_paths": state.pdf.merge_queue
                 })),
             )
@@ -496,7 +497,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     if let Some(title) = &state.pdf.current_title {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Current title: {}", title))
+                UiText::new(&format!("{}{}", t!("pdf_current_title_prefix"), title))
                     .size(12.0)
                     .content_description("pdf_current_title"),
             )
@@ -506,13 +507,13 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_title")
-                .hint("Document title (metadata)")
+                .hint(&t!("pdf_document_title_hint"))
                 .text(state.pdf.current_title.as_deref().unwrap_or_default())
                 .single_line(true),
         )
         .unwrap(),
     );
-    children.push(serde_json::to_value(UiButton::new("Set PDF title", "pdf_set_title")).unwrap());
+    children.push(serde_json::to_value(UiButton::new(&t!("pdf_set_title_button"), "pdf_set_title")).unwrap());
     if let (Some(count), Some(uri)) = (state.pdf.page_count, state.pdf.source_uri.as_ref()) {
         let aspect = state.pdf.page_aspect_ratio;
         children.push(json!({
@@ -546,15 +547,15 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 
         // Quick placement grid (3x3 preset normalized coords)
         let grid_positions: [(&str, f64, f64); 9] = [
-            ("↖ Top-left", 0.1, 0.1),
-            ("↑ Top", 0.5, 0.1),
-            ("↗ Top-right", 0.9, 0.1),
-            ("← Left", 0.1, 0.5),
-            ("· Center", 0.5, 0.5),
-            ("→ Right", 0.9, 0.5),
-            ("↙ Bottom-left", 0.1, 0.9),
-            ("↓ Bottom", 0.5, 0.9),
-            ("↘ Bottom-right", 0.9, 0.9),
+            (&t!("pdf_sign_grid_top_left"), 0.1, 0.1),
+            (&t!("pdf_sign_grid_top"), 0.5, 0.1),
+            (&t!("pdf_sign_grid_top_right"), 0.9, 0.1),
+            (&t!("pdf_sign_grid_left"), 0.1, 0.5),
+            (&t!("pdf_sign_grid_center"), 0.5, 0.5),
+            (&t!("pdf_sign_grid_right"), 0.9, 0.5),
+            (&t!("pdf_sign_grid_bottom_left"), 0.1, 0.9),
+            (&t!("pdf_sign_grid_bottom"), 0.5, 0.9),
+            (&t!("pdf_sign_grid_bottom_right"), 0.9, 0.9),
         ];
         let mut grid_children: Vec<Value> = Vec::new();
         for (label, x, y) in grid_positions {
@@ -563,7 +564,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
                 "text": label,
                 "action": "pdf_sign_grid",
                 "id": format!("pdf_sign_grid_{}_{}", (x*100.0) as u32, (y*100.0) as u32),
-                "content_description": "pdf_sign_grid_button",
+                "content_description": t!("pdf_sign_grid_button_content_description"),
                 "requires_file_picker": false,
                 "payload": {
                     "pdf_signature_page": state.pdf.signature_target_page.unwrap_or(1),
@@ -576,7 +577,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
             serde_json::to_value(
                 UiColumn::new(vec![
                     serde_json::to_value(
-                        UiText::new("Quick placement")
+                        UiText::new(&t!("pdf_quick_placement_label"))
                             .size(13.0)
                             .content_description("pdf_sign_grid_label"),
                     )
@@ -596,16 +597,16 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 
     if state.pdf.last_output.is_some() {
         children.push(
-            serde_json::to_value(UiButton::new("Save as…", "pdf_save_as").id("pdf_save_as_btn"))
+            serde_json::to_value(UiButton::new(&t!("pdf_save_as_button"), "pdf_save_as").id("pdf_save_as_btn"))
                 .unwrap(),
         );
     }
 
     // Signature section
-    children.push(serde_json::to_value(UiText::new("Signature").size(16.0)).unwrap());
+    children.push(serde_json::to_value(UiText::new(&t!("pdf_signature_section_title")).size(16.0)).unwrap());
     children.push(
         serde_json::to_value(
-            UiText::new("Draw or load a signature, then pick page/position to stamp it.")
+            UiText::new(&t!("pdf_signature_section_description"))
                 .size(12.0),
         )
         .unwrap(),
@@ -614,24 +615,24 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         "type": "SignaturePad",
         "bind_key": "signature_base64",
         "height_dp": 200,
-        "content_description": "Signature drawing area"
+        "content_description": &t!("pdf_signature_pad_description")
     }));
     children.push(
         serde_json::to_value(
-            UiButton::new("Load signature image", "pdf_signature_load").requires_file_picker(true),
+            UiButton::new(&t!("pdf_load_signature_image_button"), "pdf_signature_load").requires_file_picker(true),
         )
         .unwrap(),
     );
     children.push(
-        serde_json::to_value(UiButton::new("Clear signature", "pdf_signature_clear")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("pdf_clear_signature_button"), "pdf_signature_clear")).unwrap(),
     );
     if state.pdf.signature_base64.is_some() {
-        children.push(serde_json::to_value(UiText::new("Signature ready").size(12.0)).unwrap());
+        children.push(serde_json::to_value(UiText::new(&t!("pdf_signature_ready")).size(12.0)).unwrap());
     }
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_signature_page")
-                .hint("Page number (1-based)")
+                .hint(&t!("pdf_signature_page_hint"))
                 .single_line(true),
         )
         .unwrap(),
@@ -639,7 +640,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_signature_x")
-                .hint("X position (points)")
+                .hint(&t!("pdf_signature_x_pos_hint"))
                 .single_line(true),
         )
         .unwrap(),
@@ -647,7 +648,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_signature_y")
-                .hint("Y position (points)")
+                .hint(&t!("pdf_signature_y_pos_hint"))
                 .single_line(true),
         )
         .unwrap(),
@@ -655,7 +656,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_signature_width")
-                .hint("Width (points)")
+                .hint(&t!("pdf_signature_width_hint"))
                 .text(
                     &state
                         .pdf
@@ -670,7 +671,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
     children.push(
         serde_json::to_value(
             crate::ui::TextInput::new("pdf_signature_height")
-                .hint("Height (points)")
+                .hint(&t!("pdf_signature_height_hint"))
                 .text(
                     &state
                         .pdf
@@ -682,14 +683,14 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
         )
         .unwrap(),
     );
-    children.push(serde_json::to_value(UiButton::new("Apply signature", "pdf_sign")).unwrap());
+    children.push(serde_json::to_value(UiButton::new(&t!("pdf_apply_signature_button"), "pdf_sign")).unwrap());
 
     if let Some(err) = &state.pdf.last_error {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Error: {}", err))
+                UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err))
                     .size(12.0)
-                    .content_description("pdf_error"),
+                    .content_description(&t!("pdf_error_content_description")),
             )
             .unwrap(),
         );
@@ -701,7 +702,7 @@ pub fn render_pdf_screen(state: &AppState) -> serde_json::Value {
 }
 
 pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
-    let mut children = vec![serde_json::to_value(UiText::new("PDF viewer").size(20.0)).unwrap()];
+    let mut children = vec![serde_json::to_value(UiText::new(&t!("pdf_viewer_title")).size(20.0)).unwrap()];
     let pdf = &state.pdf;
 
     match (&pdf.source_uri, pdf.page_count) {
@@ -715,7 +716,7 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
                 if page > 1 {
                     children.push(json!({
                         "type": "Button",
-                        "text": "Prev",
+                        "text": t!("pdf_viewer_prev_button"),
                         "action": "pdf_page_open",
                         "payload": { "page": (page - 1) }
                     }));
@@ -723,19 +724,19 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
                 if page < count {
                     children.push(json!({
                         "type": "Button",
-                        "text": "Next",
+                        "text": t!("pdf_viewer_next_button"),
                         "action": "pdf_page_open",
                         "payload": { "page": (page + 1) }
                     }));
                 }
                 children.push(json!({
                     "type": "Button",
-                    "text": "Grid",
+                    "text": t!("pdf_viewer_grid_button"),
                     "action": "pdf_page_close"
                 }));
                 children.push(json!({
                     "type": "Button",
-                    "text": "Back",
+                    "text": t!("button_back"),
                     "action": "back"
                 }));
             } else {
@@ -747,7 +748,7 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
                 }));
                 children.push(json!({
                     "type": "Button",
-                    "text": "Back",
+                    "text": t!("button_back"),
                     "action": "back"
                 }));
             }
@@ -755,14 +756,14 @@ pub fn render_pdf_preview_screen(state: &AppState) -> serde_json::Value {
         _ => {
             children.push(
                 serde_json::to_value(
-                    UiText::new("No PDF selected. Open a PDF from the PDF pages tool first.")
+                    UiText::new(&t!("pdf_viewer_no_pdf_message"))
                         .size(14.0),
                 )
                 .unwrap(),
             );
             children.push(json!({
                 "type": "Button",
-                "text": "Back",
+                "text": t!("button_back"),
                 "action": "back"
             }));
         }

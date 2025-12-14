@@ -10,6 +10,7 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::{Component, Path, PathBuf};
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveEntry {
@@ -210,30 +211,30 @@ fn rel_path(base: &Path, path: &Path) -> Result<String, String> {
 
 pub fn render_archive_screen(state: &AppState) -> Value {
     let mut children = vec![
-        to_value_or_text(UiText::new("Archive Viewer").size(20.0), "archive_title"),
+        to_value_or_text(UiText::new(&t!("archive_viewer_title")), "archive_title"),
         to_value_or_text(
-            UiText::new("View contents of .zip files and extract items.").size(14.0),
+            UiText::new(&t!("archive_viewer_description")).size(14.0),
             "archive_subtitle",
         ),
         to_value_or_text(
-            UiButton::new("Open Archive", "archive_open")
+            UiButton::new(&t!("archive_open_button"), "archive_open")
                 .requires_file_picker(true)
-                .content_description("Pick an archive to list"),
+                .content_description(&t!("archive_open_button_description")),
             "archive_open_btn",
         ),
     ];
 
     if state.archive.path.is_some() && !state.archive.entries.is_empty() {
         children.push(to_value_or_text(
-            UiButton::new("Extract All", "archive_extract_all")
-                .content_description("archive_extract_all"),
+            UiButton::new(&t!("archive_extract_all_button"), "archive_extract_all")
+                .content_description(&t!("archive_extract_all_button_description")),
             "archive_extract_all",
         ));
     }
 
     if let Some(err) = &state.archive.error {
         children.push(to_value_or_text(
-            UiText::new(&format!("Error: {}", err))
+            UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err))
                 .size(14.0)
                 .content_description("archive_error"),
             "archive_error",
@@ -242,7 +243,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
 
     if let Some(path) = &state.archive.path {
         children.push(to_value_or_text(
-            UiText::new(&format!("File: {}", path)).size(12.0),
+            UiText::new(&format!("{}{}", t!("file_inspector_file_prefix"), path)).size(12.0),
             "archive_path",
         ));
     }
@@ -264,14 +265,14 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             .unwrap_or("");
         children.push(to_value_or_text(
             UiTextInput::new("archive_filter")
-                .hint("Filter entries")
+                .hint(&t!("archive_filter_entries_hint"))
                 .text(current_filter)
                 .debounce_ms(200)
                 .action_on_submit("archive_filter"),
             "archive_filter_input",
         ));
         children.push(to_value_or_text(
-            UiText::new("Contents:").size(16.0),
+            UiText::new(&t!("archive_viewer_contents_label")).size(16.0),
             "archive_contents",
         ));
         let filter = state
@@ -292,7 +293,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
             } else {
                 format!("({})", human_bytes(entry.size))
             };
-            let label = format!("{icon} {} {size_str}", entry.name);
+            let label = format!("{} {} {}", icon, entry.name, size_str);
             let mut entry_children = Vec::new();
             if is_text_entry(entry) {
                 let action = format!("archive_open_text:{}", entry.original_index);
@@ -309,7 +310,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
                 ));
             }
             entry_children.push(to_value_or_text(
-                UiButton::new("Extract", &format!("archive_extract_entry:{}", entry.original_index))
+                UiButton::new(&t!("archive_extract_button"), &format!("archive_extract_entry:{}", entry.original_index))
                     .content_description("archive_extract_entry"),
                 "archive_extract_entry",
             ));
@@ -324,7 +325,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
         ));
         if state.archive.truncated {
             children.push(to_value_or_text(
-                UiText::new("Showing first 500 entries (truncated)")
+                UiText::new(&t!("archive_viewer_truncated_message"))
                     .size(12.0)
                     .content_description("archive_truncated"),
                 "archive_truncated",
@@ -332,7 +333,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
         }
     } else if state.archive.error.is_none() && state.archive.path.is_some() {
         children.push(to_value_or_text(
-            UiText::new("No entries found or archive empty.")
+            UiText::new(&t!("archive_viewer_no_entries"))
                 .size(12.0)
                 .content_description("archive_empty"),
             "archive_empty",
@@ -341,7 +342,7 @@ pub fn render_archive_screen(state: &AppState) -> Value {
 
     if state.nav_depth() > 1 {
         children.push(to_value_or_text(
-            UiButton::new("Back", "back"),
+            UiButton::new(&t!("button_back"), "back"),
             "archive_back",
         ));
     }

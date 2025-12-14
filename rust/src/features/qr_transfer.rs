@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::io::{FromRawFd, RawFd};
+use rust_i18n::t;
 
 const CHUNK_BYTES: usize = 512;
 const HEADER_PREFIX: &str = "QRTX";
@@ -361,13 +362,13 @@ pub fn save_received_file(state: &mut AppState) -> Result<String, String> {
 
 pub fn render_qr_slideshow_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("QR Transfer (Sender)").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("qr_transfer_sender_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Pick a file to broadcast via a sequence of QR codes.").size(14.0),
+            UiText::new(&t!("qr_transfer_sender_description")).size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
-            UiButton::new("Pick file", "qr_slideshow_pick")
+            UiButton::new(&t!("qr_transfer_pick_file_button"), "qr_slideshow_pick")
                 .requires_file_picker(true)
                 .id("qr_slideshow_pick"),
         )

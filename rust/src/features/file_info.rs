@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::{FromRawFd, RawFd};
+use rust_i18n::t;
 
 const HEX_PREVIEW_BYTES: usize = 512;
 
@@ -142,15 +143,14 @@ fn is_utf8_sample(bytes: &[u8]) -> bool {
 
 pub fn render_file_info_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("File Inspector").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("file_inspector_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Inspect size, MIME type, and a quick hex preview of the file header.")
-                .size(14.0),
+            UiText::new(&t!("file_inspector_description")).size(14.0),
         )
         .unwrap(),
         json!({
             "type": "Button",
-            "text": "Pick file",
+            "text": t!("file_inspector_pick_file_button"),
             "action": "file_info",
             "requires_file_picker": true
         }),
@@ -161,33 +161,33 @@ pub fn render_file_info_screen(state: &AppState) -> Value {
             if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
                 children.push(json!({
                     "type": "Text",
-                    "text": format!("Error: {err}"),
+                    "text": format!("{}{}", t!("multi_hash_error_prefix"), err),
                     "size": 14.0
                 }));
             } else {
                 if let Some(path) = parsed.get("path").and_then(|p| p.as_str()) {
                     children.push(json!({
                         "type": "Text",
-                        "text": format!("Path: {path}"),
+                        "text": format!("{}{}", t!("file_inspector_path_prefix"), path),
                     }));
                 }
                 if let Some(size) = parsed.get("size_bytes").and_then(|s| s.as_u64()) {
                     children.push(json!({
                         "type": "Text",
-                        "text": format!("Size: {} bytes", size),
+                        "text": format!("{}{}{}", t!("file_inspector_size_prefix"), size, t!("file_inspector_size_suffix")),
                     }));
                 }
                 if let Some(mime) = parsed.get("mime").and_then(|m| m.as_str()) {
                     children.push(json!({
                         "type": "Text",
-                        "text": format!("MIME: {mime}"),
+                        "text": format!("{}{}", t!("file_inspector_mime_prefix"), mime),
                     }));
                 }
                 if let Some(is_utf8) = parsed.get("is_utf8").and_then(|v| v.as_bool()) {
                     let status = if is_utf8 {
-                        "UTF-8 text detected (first 512 bytes)"
+                        t!("file_inspector_utf8_detected")
                     } else {
-                        "Binary / non-UTF-8 bytes detected"
+                        t!("file_inspector_binary_detected")
                     };
                     children.push(json!({
                         "type": "Text",
@@ -198,7 +198,7 @@ pub fn render_file_info_screen(state: &AppState) -> Value {
                 if let Some(hex) = parsed.get("hex_dump").and_then(|h| h.as_str()) {
                     children.push(json!({
                         "type": "Text",
-                        "text": "Hex preview (first 512 bytes):",
+                        "text": t!("file_inspector_hex_preview_label"),
                         "size": 14.0
                     }));
                     children.push(

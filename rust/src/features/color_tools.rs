@@ -3,6 +3,7 @@ use crate::ui::{
     Button as UiButton, ColorSwatch as UiColorSwatch, Column as UiColumn, Text as UiText,
     TextInput as UiTextInput,
 };
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rgb {
@@ -84,36 +85,36 @@ fn apply_color_result(state: &mut AppState, rgb: Rgb) {
 
 pub fn render_color_screen(state: &AppState) -> serde_json::Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("Color Converter").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("color_converter_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Convert Hex <-> RGB with HSL hint. Enter #RRGGBB or \"255,128,0\".")
+            UiText::new(&t!("color_converter_description"))
                 .size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
             UiTextInput::new("color_input")
-                .hint("#1A2B3C or 26,43,60")
+                .hint(&t!("color_input_hint"))
                 .action_on_submit("color_from_hex"),
         )
         .unwrap(),
-        serde_json::to_value(UiButton::new("Hex → RGB/HSL", "color_from_hex")).unwrap(),
-        serde_json::to_value(UiButton::new("RGB → Hex/HSL", "color_from_rgb")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("color_hex_to_rgb_hsl_button"), "color_from_hex")).unwrap(),
+        serde_json::to_value(UiButton::new(&t!("color_rgb_to_hex_hsl_button"), "color_from_rgb")).unwrap(),
     ];
 
     if let Some(out) = &state.text_output {
         let (hex, rgb, hsl_text) = color_strings(state, out);
         children.push(serde_json::to_value(UiText::new(out).size(14.0)).unwrap());
         children.push(
-            serde_json::to_value(UiButton::new("Copy Hex", "color_copy_hex_input").copy_text(&hex))
+            serde_json::to_value(UiButton::new(&t!("color_copy_hex_button"), "color_copy_hex_input").copy_text(&hex))
                 .unwrap(),
         );
         children.push(
-            serde_json::to_value(UiButton::new("Copy RGB", "color_copy_clipboard").copy_text(&rgb))
+            serde_json::to_value(UiButton::new(&t!("color_copy_rgb_button"), "color_copy_clipboard").copy_text(&rgb))
                 .unwrap(),
         );
         children.push(
             serde_json::to_value(
-                UiButton::new("Copy HSL", "color_copy_clipboard").copy_text(&hsl_text),
+                UiButton::new(&t!("color_copy_hsl_button"), "color_copy_clipboard").copy_text(&hsl_text),
             )
             .unwrap(),
         );
@@ -131,27 +132,27 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
                 | parts[2] as u32) as i64;
             children.push(
                 serde_json::to_value(
-                    UiColorSwatch::new(color).content_description("Color preview"),
+                    UiColorSwatch::new(color).content_description(&t!("color_preview_content_description")),
                 )
                 .unwrap(),
             );
             let swatch_hex = format!("#{:02X}{:02X}{:02X}", parts[0], parts[1], parts[2]);
             children.push(
                 serde_json::to_value(
-                    UiButton::new("Copy swatch hex", "color_copy_clipboard").copy_text(&swatch_hex),
+                    UiButton::new(&t!("color_copy_swatch_hex_button"), "color_copy_clipboard").copy_text(&swatch_hex),
                 )
                 .unwrap(),
             );
             if let Some(hsl) = &state.text_operation {
                 children.push(
-                    serde_json::to_value(UiText::new(&format!("HSL: {}", hsl)).size(12.0)).unwrap(),
+                    serde_json::to_value(UiText::new(&format!("{}{}", t!("color_hsl_prefix"), hsl)).size(12.0)).unwrap(),
                 );
             }
         }
     }
 
     if state.nav_depth() > 1 {
-        children.push(serde_json::to_value(UiButton::new("Back", "back")).unwrap());
+        children.push(serde_json::to_value(UiButton::new(&t!("button_back"), "back")).unwrap());
     }
 
     serde_json::to_value(UiColumn::new(children).padding(24)).unwrap()

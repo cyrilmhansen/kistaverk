@@ -6,6 +6,7 @@ use crate::ui::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use rust_i18n::t;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageInfo {
@@ -96,13 +97,13 @@ fn parse_u64(val: Option<&String>) -> Option<u64> {
 
 pub fn render_system_info_screen(state: &AppState) -> Value {
     let mut children = vec![
-        serde_json::to_value(UiText::new("System Panels").size(20.0)).unwrap(),
+        serde_json::to_value(UiText::new(&t!("system_panels_title")).size(20.0)).unwrap(),
         serde_json::to_value(
-            UiText::new("Device snapshot: storage, network, battery, device info.").size(14.0),
+            UiText::new(&t!("system_panels_description")).size(14.0),
         )
         .unwrap(),
         serde_json::to_value(
-            crate::ui::Button::new("Refresh", "system_info_update")
+            crate::ui::Button::new(&t!("system_info_refresh_button"), "system_info_update")
                 .content_description("system_info_refresh"),
         )
         .unwrap(),
@@ -111,7 +112,7 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(err) = &state.system_info.error {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Error: {}", err))
+                UiText::new(&format!("{}{}", t!("multi_hash_error_prefix"), err))
                     .size(12.0)
                     .content_description("system_info_error"),
             )
@@ -122,7 +123,7 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(ts) = &state.system_info.last_updated {
         children.push(
             serde_json::to_value(
-                UiText::new(&format!("Last updated: {}", ts))
+                UiText::new(&format!("{}{}", t!("system_info_last_updated_prefix"), ts))
                     .size(12.0)
                     .content_description("system_info_timestamp"),
             )
@@ -135,23 +136,23 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(storage) = &state.system_info.storage {
         let mut items = Vec::new();
         if let Some(total) = storage.total_bytes {
-            items.push(json!({"type":"Text","text":format!("Total: {}", format_bytes(total)), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_total_prefix"), format_bytes(total)), "size": 12.0}));
         }
         if let Some(free) = storage.free_bytes {
             items.push(
-                json!({"type":"Text","text":format!("Free: {}", format_bytes(free)), "size": 12.0}),
+                json!({"type":"Text","text":format!("{}{}", t!("system_info_free_prefix"), format_bytes(free)), "size": 12.0}),
             );
             if let Some(total) = storage.total_bytes {
                 if total > 0 {
                     let used_pct = 100.0 - (free as f64 / total as f64 * 100.0);
-                    items.push(json!({"type":"Text","text":format!("Used: {:.1}%", used_pct), "size": 12.0}));
+                    items.push(json!({"type":"Text","text":format!("{}{:.1}{}", t!("system_info_used_prefix"), used_pct, t!("system_info_percentage_suffix")), "size": 12.0}));
                 }
             }
         }
         cards.push(
             serde_json::to_value(
                 UiCard::new(vec![serde_json::to_value(
-                    UiSection::new(items).title("Storage"),
+                    UiSection::new(items).title(&t!("system_info_storage_section")),
                 )
                 .unwrap()])
                 .padding(12),
@@ -163,18 +164,18 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(network) = &state.system_info.network {
         let mut items = Vec::new();
         if let Some(conn) = &network.connection {
-            items.push(json!({"type":"Text","text":format!("Connection: {}", conn), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_connection_prefix"), conn), "size": 12.0}));
         }
         if let Some(ssid) = &network.ssid {
-            items.push(json!({"type":"Text","text":format!("SSID: {}", ssid), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_ssid_prefix"), ssid), "size": 12.0}));
         }
         if let Some(ip) = &network.ip {
-            items.push(json!({"type":"Text","text":format!("IP: {}", ip), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_ip_prefix"), ip), "size": 12.0}));
         }
         cards.push(
             serde_json::to_value(
                 UiCard::new(vec![serde_json::to_value(
-                    UiSection::new(items).title("Network"),
+                    UiSection::new(items).title(&t!("system_info_network_section")),
                 )
                 .unwrap()])
                 .padding(12),
@@ -186,15 +187,15 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(battery) = &state.system_info.battery {
         let mut items = Vec::new();
         if let Some(level) = battery.level_pct {
-            items.push(json!({"type":"Text","text":format!("Level: {}%", level), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}{}", t!("system_info_level_prefix"), level, t!("system_info_percentage_suffix")), "size": 12.0}));
         }
         if let Some(status) = &battery.status {
-            items.push(json!({"type":"Text","text":format!("Status: {}", status), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_status_prefix"), status), "size": 12.0}));
         }
         cards.push(
             serde_json::to_value(
                 UiCard::new(vec![serde_json::to_value(
-                    UiSection::new(items).title("Battery"),
+                    UiSection::new(items).title(&t!("system_info_battery_section")),
                 )
                 .unwrap()])
                 .padding(12),
@@ -206,18 +207,18 @@ pub fn render_system_info_screen(state: &AppState) -> Value {
     if let Some(device) = &state.system_info.device {
         let mut items = Vec::new();
         if let Some(m) = &device.manufacturer {
-            items.push(json!({"type":"Text","text":format!("Maker: {}", m), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_maker_prefix"), m), "size": 12.0}));
         }
         if let Some(model) = &device.model {
-            items.push(json!({"type":"Text","text":format!("Model: {}", model), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_model_prefix"), model), "size": 12.0}));
         }
         if let Some(os) = &device.os_version {
-            items.push(json!({"type":"Text","text":format!("OS: {}", os), "size": 12.0}));
+            items.push(json!({"type":"Text","text":format!("{}{}", t!("system_info_os_prefix"), os), "size": 12.0}));
         }
         cards.push(
             serde_json::to_value(
                 UiCard::new(vec![serde_json::to_value(
-                    UiSection::new(items).title("Device"),
+                    UiSection::new(items).title(&t!("system_info_device_section")),
                 )
                 .unwrap()])
                 .padding(12),
