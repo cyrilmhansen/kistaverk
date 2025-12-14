@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use serde::Serialize;
 use serde_json::{json, Value};
+use rust_i18n::t;
 
 #[derive(Serialize)]
 pub struct Text<'a> {
@@ -937,7 +938,7 @@ pub fn maybe_push_back(children: &mut Vec<Value>, state: &AppState) {
     if state.nav_depth() > 1 {
         children.push(json!({
             "type": "Button",
-            "text": "Back",
+            "text": t!("button_back"),
             "action": "back"
         }));
     }
@@ -958,34 +959,33 @@ pub fn format_bytes(bytes: u64) -> String {
 pub fn render_multi_hash_screen(state: &AppState) -> Value {
     let mut children = vec![
         to_value_or_text(
-            Text::new("Multi-Hash Calculator").size(20.0),
+            Text::new(&t!("multi_hash_title")).size(20.0),
             "multi_hash_title",
         ),
         to_value_or_text(
-            Text::new("Select a file to compute MD5, SHA-1, SHA-256, and BLAKE3 hashes.")
-                .size(14.0),
+            Text::new(&t!("multi_hash_subtitle")).size(14.0),
             "multi_hash_subtitle",
         ),
         json!({
             "type": "Button",
-            "text": "Pick File to Hash",
+            "text": t!("multi_hash_pick_file_button"),
             "action": "hash_all", // New action for multi-hash
             "requires_file_picker": true,
             "id": "pick_file_to_hash_btn",
-            "content_description": "Pick a file to compute multiple hashes"
+            "content_description": t!("multi_hash_pick_file_description")
         }),
     ];
 
     if let Some(err) = &state.multi_hash_error {
         children.push(to_value_or_text(
-            Text::new(&format!("Error: {}", err)).size(14.0),
+            Text::new(&format!("{}{}", t!("multi_hash_error_prefix"), err)).size(14.0),
             "multi_hash_error",
         ));
     }
 
     if let Some(results) = &state.multi_hash_results {
         children.push(to_value_or_text(
-            Text::new(&format!("Hashed File: {}", results.file_path)).size(12.0),
+            Text::new(&format!("{}{}", t!("multi_hash_hashed_file_prefix"), results.file_path)).size(12.0),
             "multi_hash_path",
         ));
 
@@ -996,15 +996,15 @@ pub fn render_multi_hash_screen(state: &AppState) -> Value {
                 "children": [
                     to_value_or_text(Text::new(label).size(12.0), "multi_hash_label"),
                     to_value_or_text(Text::new(value).size(10.0), "multi_hash_value"),
-                    to_value_or_text(Button::new("Copy", "noop").copy_text(value), "multi_hash_copy"),
+                    to_value_or_text(Button::new(&t!("button_copy"), "noop").copy_text(value), "multi_hash_copy"),
                 ]
             })
         };
 
-        children.push(hash_display("MD5", &results.md5));
-        children.push(hash_display("SHA-1", &results.sha1));
-        children.push(hash_display("SHA-256", &results.sha256));
-        children.push(hash_display("BLAKE3", &results.blake3));
+        children.push(hash_display(&t!("multi_hash_label_md5"), &results.md5));
+        children.push(hash_display(&t!("multi_hash_label_sha1"), &results.sha1));
+        children.push(hash_display(&t!("multi_hash_label_sha256"), &results.sha256));
+        children.push(hash_display(&t!("multi_hash_label_blake3"), &results.blake3));
     }
 
     to_value_or_text(Column::new(children).padding(24), "multi_hash_root")
@@ -1018,3 +1018,4 @@ fn to_value_or_text<T: Serialize>(value: T, context: &str) -> Value {
         })
     })
 }
+
