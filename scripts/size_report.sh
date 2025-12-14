@@ -31,9 +31,21 @@ ls -lh "$TARGET"
 echo
 echo "-- APK/AAB contents (dex/lib/res/other, bytes) --"
 unzip -l "$TARGET" | awk '
-  /classes[0-9]*\.dex$/ { dex += $1 }
-  /^ *[0-9]+ .*lib\/.*\.so$/ { so += $1 }
+  # APK: classes*.dex at root
+  /(^|\/)classes[0-9]*\.dex$/ { dex += $1 }
+  # AAB: base/dex/classes*.dex
+  /^ *[0-9]+ .*base\/dex\/.*\.dex$/ { dex += $1 }
+
+  # APK: lib/<abi>/*.so
+  /^ *[0-9]+ .*lib\/[^/]+\/.*\.so$/ { so += $1 }
+  # AAB: base/lib/<abi>/*.so
+  /^ *[0-9]+ .*base\/lib\/[^/]+\/.*\.so$/ { so += $1 }
+
+  # APK: res/
   /^ *[0-9]+ .*res\// { res += $1 }
+  # AAB: base/res/
+  /^ *[0-9]+ .*base\/res\// { res += $1 }
+
   { total += $1 }
   END {
     printf "dex,%d\nlib,.so,%d\nres,%d\nother,%d\n", dex, so, res, (total - dex - so - res)
@@ -41,7 +53,17 @@ unzip -l "$TARGET" | awk '
 
 echo
 echo "-- Native libs by ABI --"
-unzip -l "$TARGET" | awk '/lib\/[^/]+\/.*\.so$/ { size=$1; split($4, parts, "/"); abi=parts[2]; so=parts[3]; data[abi]+=size; printf "%10s %10d %s\n", abi, size, so } END { for (k in data) printf "%10s %10d <total>\n", k, data[k] }' | sort
+unzip -l "$TARGET" | awk '
+  # APK: lib/<abi>/<so>
+  /lib\/[^/]+\/.*\.so$/ {
+    size=$1; split($4, parts, "/");
+    # handle both APK and AAB paths
+    if (parts[1] == "base" && parts[2] == "lib") { abi=parts[3]; so=parts[4]; }
+    else if (parts[1] == "lib") { abi=parts[2]; so=parts[3]; }
+    else next;
+    data[abi]+=size; printf "%10s %10d %s\n", abi, size, so
+  }
+  END { for (k in data) printf "%10s %10d <total>\n", k, data[k] }' | sort
 
 echo
 echo "-- Checked-in JNI libs (uncompressed on disk) --"
