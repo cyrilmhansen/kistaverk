@@ -62,3 +62,4 @@ app/app/src/main/assets/deps.json
 app/.kotlin/
 rust/cargo_env_config.toml
 build_*
+.gradle-home/
