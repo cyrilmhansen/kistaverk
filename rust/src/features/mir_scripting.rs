@@ -152,34 +152,34 @@ impl MirScriptingState {
                 return None;
             }
 
-            let module = (*module_list_ptr).tail;
-            if module.is_null() {
-                self.error = Some("Failed to parse MIR module".to_string());
-                logcat("MIR: module tail is null");
-                mir_sys::MIR_gen_finish(ctx);
-                mir_sys::MIR_finish(ctx);
-                return None;
-            }
-
-            logcat(&format!("MIR: module={:p}", module));
-            logcat("MIR: MIR_load_module");
-            mir_sys::MIR_load_module(ctx, module);
-            logcat("MIR: MIR_load_module done");
-
-            let mut item = (*module).items.head;
+            // Important: scan_string can define multiple modules; load all of them before linking
+            // so imports (e.g. `ex100` importing `sieve`) resolve correctly.
             let mut found: mir_sys::MIR_item_t = ptr::null_mut();
-            while !item.is_null() {
-                if (*item).item_type == mir_sys::MIR_item_type_t_MIR_func_item {
-                    let name_ptr = mir_sys::MIR_item_name(ctx, item);
-                    if !name_ptr.is_null() {
-                        let name = CStr::from_ptr(name_ptr);
-                        if name == entry_c.as_c_str() {
+            let mut module = (*module_list_ptr).head;
+            while !module.is_null() {
+                let name = if (*module).name.is_null() {
+                    "<null>"
+                } else {
+                    CStr::from_ptr((*module).name).to_str().unwrap_or("<nonutf8>")
+                };
+                if !name.starts_with('.') {
+                    logcat(&format!("MIR: MIR_load_module {}", name));
+                    mir_sys::MIR_load_module(ctx, module);
+                }
+
+                // Find entry function while traversing.
+                let mut item = (*module).items.head;
+                while !item.is_null() {
+                    if (*item).item_type == mir_sys::MIR_item_type_t_MIR_func_item {
+                        let name_ptr = mir_sys::MIR_item_name(ctx, item);
+                        if !name_ptr.is_null() && CStr::from_ptr(name_ptr) == entry_c.as_c_str() {
                             found = item;
-                            break;
                         }
                     }
+                    item = (*item).item_link.next;
                 }
-                item = (*item).item_link.next;
+
+                module = (*module).module_link.next;
             }
 
             if found.is_null() {
