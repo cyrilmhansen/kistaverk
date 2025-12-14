@@ -8,12 +8,13 @@ use std::thread;
 use std::time::Duration;
 use std::io::Read;
 use std::os::unix::io::FromRawFd;
-use libc::{self, c_int, c_void};
+use libc::{self, c_int, c_void, c_char};
 use mir_sys::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CScriptingState {
     pub source: String,
+    pub args: String,
     pub output: String,
     pub error: Option<String>,
     pub is_running: bool,
@@ -23,6 +24,7 @@ impl CScriptingState {
     pub const fn new() -> Self {
         Self {
             source: String::new(),
+            args: String::new(),
             output: String::new(),
             error: None,
             is_running: false,
@@ -35,11 +37,12 @@ impl CScriptingState {
         self.is_running = true;
 
         let source = self.source.clone();
+        let args = self.args.clone();
         let (tx, rx) = mpsc::channel();
 
         // Spawn a thread to run the C execution
         thread::spawn(move || {
-            let result = execute_c_code_in_thread(source);
+            let result = execute_c_code_in_thread(source, args);
             let _ = tx.send(result);
         });
 
@@ -80,7 +83,7 @@ unsafe extern "C" fn getc_func(data: *mut c_void) -> c_int {
     }
 }
 
-fn execute_c_code_in_thread(source_code: String) -> Result<String, String> {
+fn execute_c_code_in_thread(source_code: String, args_str: String) -> Result<String, String> {
     unsafe {
         // 1. Setup output capturing (pipe)
         let mut pipe_fds: [c_int; 2] = [0; 2];
@@ -128,6 +131,8 @@ fn execute_c_code_in_thread(source_code: String) -> Result<String, String> {
         MIR_load_external(ctx, CString::new("puts").unwrap().as_ptr(), libc::puts as *mut c_void);
         MIR_load_external(ctx, CString::new("malloc").unwrap().as_ptr(), libc::malloc as *mut c_void);
         MIR_load_external(ctx, CString::new("free").unwrap().as_ptr(), libc::free as *mut c_void);
+        MIR_load_external(ctx, CString::new("strtol").unwrap().as_ptr(), libc::strtol as *mut c_void);
+        MIR_load_external(ctx, CString::new("atoi").unwrap().as_ptr(), libc::atoi as *mut c_void);
         // Add more as needed
 
         // 4. Compile C source
@@ -179,9 +184,30 @@ fn execute_c_code_in_thread(source_code: String) -> Result<String, String> {
                     if fun_ptr.is_null() {
                          Err("MIR generation failed".to_string())
                     } else {
-                        // Assuming main() -> int or void. MIR calls can be generic but let's assume int.
-                        let rust_func: extern "C" fn() -> c_int = std::mem::transmute(fun_ptr);
-                        let _ret = rust_func(); // Run!
+                        // Prepare argv
+                        // argv[0] = "script"
+                        let prog_name = CString::new("script").unwrap();
+                        let mut argv_cstrings: Vec<CString> = vec![prog_name];
+                        
+                        // Parse user args (simple split by whitespace)
+                        for arg in args_str.split_whitespace() {
+                            if let Ok(c_arg) = CString::new(arg) {
+                                argv_cstrings.push(c_arg);
+                            }
+                        }
+                        
+                        // Create array of pointers
+                        let mut argv_ptrs: Vec<*mut c_char> = argv_cstrings.iter()
+                            .map(|cs| cs.as_ptr() as *mut c_char)
+                            .collect();
+                        argv_ptrs.push(ptr::null_mut()); // NULL terminator
+
+                        let argc = argv_cstrings.len() as c_int;
+                        let argv = argv_ptrs.as_mut_ptr();
+
+                        // Call main(argc, argv)
+                        let rust_func: extern "C" fn(c_int, *mut *mut c_char) -> c_int = std::mem::transmute(fun_ptr);
+                        let _ret = rust_func(argc, argv);
                         Ok(())
                     }
                 }
@@ -237,9 +263,26 @@ pub fn render_c_scripting_screen(state: &AppState) -> serde_json::Value {
         "type": "TextInput",
         "bind_key": "c_scripting.source",
         "text": cs.source,
-        "hint": "int main() { printf(\"Hello World\"); return 0; }",
+        "hint": "int main(int argc, char **argv) { ... }",
         "single_line": false,
         "max_lines": 20,
+        "margin_bottom": 12.0
+    }));
+
+    components.push(json!({
+        "type": "Text",
+        "text": "Program Arguments (space separated):",
+        "size": 14.0,
+        "margin_bottom": 6.0
+    }));
+
+    components.push(json!({
+        "type": "TextInput",
+        "bind_key": "c_scripting.args",
+        "text": cs.args,
+        "hint": "e.g. 2025 12 25",
+        "single_line": true,
+        "max_lines": 1,
         "margin_bottom": 12.0
     }));
 
@@ -314,8 +357,11 @@ pub fn handle_c_scripting_actions(
             state.push_screen(crate::state::Screen::CScripting);
             Some(render_c_scripting_screen(state))
         }
-        CScriptingExecute { source } => {
+        CScriptingExecute { source, args } => {
             state.c_scripting.source = source;
+            if let Some(a) = args {
+                state.c_scripting.args = a;
+            }
             state.c_scripting.execute(10_000); // 10s default timeout
             Some(render_c_scripting_screen(state))
         }
@@ -325,32 +371,42 @@ pub fn handle_c_scripting_actions(
             Some(render_c_scripting_screen(state))
         }
         CScriptingLoadExample => {
-            state.c_scripting.source = r#"
-// This code is adapted from https://rosettacode.org/wiki/Day_of_the_week#C
+            state.c_scripting.args = "2025 12 25".to_string();
+            state.c_scripting.source = r#"// This code is adapted from https://rosettacode.org/wiki/Day_of_the_week#C
 // Licensed under GNU Free Documentation License 1.3 (https://www.gnu.org/licenses/fdl-1.3.en.html)
 #include <stdio.h>
+#include <stdlib.h>
 
-/* Calculate day of week in proleptic Gregorian calendar. Sunday == 0. */
-int wday(int year, int month, int day)
-{
-	int adjustment, mm, yy;
+const char *days[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
-	adjustment = (14 - month) / 12;
-	mm = month + 12 * adjustment - 2;
-	yy = year - adjustment;
-	return (day + (13 * mm - 1) / 5 +
-		yy + yy / 4 - yy / 100 + yy / 400) % 7;
+int wday(int year, int month, int day) {
+    int adjustment, mm, yy;
+    adjustment = (14 - month) / 12;
+    mm = month + 12 * adjustment - 2;
+    yy = year - adjustment;
+    return (day + (13 * mm - 1) / 5 + yy + yy / 4 - yy / 100 + yy / 400) % 7;
 }
 
-int main()
-{
-	int y;
+int main(int argc, char **argv) {
+    if (argc < 4) {
+        printf("Usage: %s <year> <month> <day>\n", argv[0]);
+        return 1;
+    }
 
-	for (y = 2008; y <= 2121; y++) {
-		if (wday(y, 12, 25) == 0) printf("%04d-12-25\n", y);
-	}
+    char *end;
+    long y = strtol(argv[1], &end, 10);
+    if (*end != '\0') { printf("Invalid year: %s\n", argv[1]); return 1; }
 
-	return 0;
+    long m = strtol(argv[2], &end, 10);
+    if (*end != '\0') { printf("Invalid month: %s\n", argv[2]); return 1; }
+
+    long d = strtol(argv[3], &end, 10);
+    if (*end != '\0') { printf("Invalid day: %s\n", argv[3]); return 1; }
+
+    int wd = wday((int)y, (int)m, (int)d);
+    printf("%04ld-%02ld-%02ld is a %s\n", y, m, d, days[wd]);
+
+    return 0;
 }
 "#.trim().to_string();
             state.c_scripting.output.clear();

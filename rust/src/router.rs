@@ -1121,6 +1121,7 @@ pub(crate) enum Action {
     CScriptingScreen,
     CScriptingExecute {
         source: String,
+        args: Option<String>,
     },
     CScriptingClear,
     CScriptingLoadExample,
@@ -1363,6 +1364,7 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "c_scripting_screen" => Ok(Action::CScriptingScreen),
         "c_scripting_execute" => Ok(Action::CScriptingExecute {
             source: bindings.get("c_scripting.source").cloned().unwrap_or_default(),
+            args: bindings.get("c_scripting.args").cloned(),
         }),
         "c_scripting_clear" => Ok(Action::CScriptingClear),
         "c_scripting_load_example" => Ok(Action::CScriptingLoadExample),
