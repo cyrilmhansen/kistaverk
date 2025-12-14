@@ -116,11 +116,15 @@ impl MirScriptingState {
 
         unsafe {
             let started = Instant::now();
-            #[cfg(unix)]
+            // Android: prefer MIR's built-in code allocator to avoid platform-specific issues in
+            // our custom allocator during `MIR_link`/JIT setup.
+            #[cfg(target_os = "android")]
+            let ctx = mir_sys::_MIR_init(ptr::null_mut(), ptr::null_mut());
+            #[cfg(all(unix, not(target_os = "android")))]
             let mut code_alloc = mir_sys::code_alloc::unix_mmap();
-            #[cfg(unix)]
+            #[cfg(all(unix, not(target_os = "android")))]
             let ctx = mir_sys::_MIR_init(ptr::null_mut(), &mut code_alloc);
-            #[cfg(not(unix))]
+            #[cfg(all(not(unix), not(target_os = "android")))]
             let ctx = mir_sys::_MIR_init(ptr::null_mut(), ptr::null_mut());
 
             if ctx.is_null() {
