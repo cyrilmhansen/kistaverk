@@ -22,6 +22,10 @@ fn normalize_locale(locale_str: &str) -> &str {
         "en" => "en",
         "fr" => "fr",
         "de" => "de",
+        "es" => "es", // Spanish
+        "pt" => "pt", // Portuguese
+        "zn" => "zn", // Chinese (using zn as per filename)
+        "la" => "la", // Latin
         _ => "en",
     }
 }

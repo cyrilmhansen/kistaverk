@@ -213,6 +213,10 @@ pub fn render_settings_screen(state: &AppState) -> Value {
     let french = t!("locale_french");
     let german = t!("locale_german");
     let icelandic = t!("locale_icelandic");
+    let spanish = t!("locale_spanish");
+    let portuguese = t!("locale_portuguese");
+    let chinese = t!("locale_chinese");
+    let latin = t!("locale_latin");
     
     let current_locale = state.locale.clone();
     let preferred_locale = state.preferred_locale.clone();
@@ -262,6 +266,42 @@ pub fn render_settings_screen(state: &AppState) -> Value {
                 .payload(json!({"locale": "is"}))
             ;
             if current_locale == "is" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&spanish, "set_locale")
+                .payload(json!({"locale": "es"}))
+            ;
+            if current_locale == "es" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&portuguese, "set_locale")
+                .payload(json!({"locale": "pt"}))
+            ;
+            if current_locale == "pt" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&chinese, "set_locale")
+                .payload(json!({"locale": "zn"})) // Using 'zn' as the locale code for Chinese
+            ;
+            if current_locale == "zn" && !is_using_system {
+                button = button.content_description("selected_locale");
+            }
+            serde_json::to_value(button).unwrap()
+        },
+        {
+            let mut button = UiButton::new(&latin, "set_locale")
+                .payload(json!({"locale": "la"}))
+            ;
+            if current_locale == "la" && !is_using_system {
                 button = button.content_description("selected_locale");
             }
             serde_json::to_value(button).unwrap()
