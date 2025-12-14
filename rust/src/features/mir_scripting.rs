@@ -419,10 +419,8 @@ m_ex100:  module
           import sieve
 p_sieve:  proto i32, i32:iter
 ex100:    func i64
-          local i32:r32
           local i64:r
-          call p_sieve, sieve, r32, 100
-          mov r, r32
+          call p_sieve, sieve, r, 100
           ret r
           endfunc
           endmodule
