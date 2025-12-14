@@ -387,11 +387,42 @@ pub fn handle_mir_scripting_actions(
         MirScriptingLoadExample => {
             state.mir_scripting.entry = "main".to_string();
             state.mir_scripting.source = r#"
-m_calc:   module
+m_sieve:  module
+          export sieve
+sieve:    func i32, i32:N
+          local i64:iter, i64:count, i64:i, i64:k, i64:prime, i64:temp, i64:flags
+          alloca flags, 819000
+          mov iter, 0
+loop:     bge fin, iter, N
+          mov count, 0;  mov i, 0
+loop2:    bge fin2, i, 819000
+          mov u8:(flags, i), 1;  add i, i, 1
+          jmp loop2
+fin2:     mov i, 0
+loop3:    bge fin3, i, 819000
+          beq cont3, u8:(flags,i), 0
+          add temp, i, i;  add prime, temp, 3;  add k, i, prime
+loop4:    bge fin4, k, 819000
+          mov u8:(flags, k), 0;  add k, k, prime
+          jmp loop4
+fin4:     add count, count, 1
+cont3:    add i, i, 1
+          jmp loop3
+fin3:     add iter, iter, 1
+          jmp loop
+fin:      ret count
+          endfunc
+          endmodule
+
+m_ex100:  module
           export main
+          import sieve
+p_sieve:  proto i32, i32:iter
 main:     func i64
+          local i32:r32
           local i64:r
-          mov r, 150
+          call p_sieve, sieve, r32, 100
+          mov r, r32
           ret r
           endfunc
           endmodule
