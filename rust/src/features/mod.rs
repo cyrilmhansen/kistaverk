@@ -29,6 +29,7 @@ pub mod hex_editor;
 pub mod plotting;
 pub mod sql_engine;
 pub mod mir_scripting;
+pub mod c_scripting;
 pub mod scheduler;
 pub mod unit_converter;
 pub mod math_tool_test;

@@ -40,6 +40,7 @@ use crate::features::qr_transfer::{
 use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
 use crate::features::mir_scripting::handle_mir_scripting_actions;
+use crate::features::c_scripting::handle_c_scripting_actions;
 use crate::features::scheduler::{
     apply_scheduler_result, drain_events as drain_scheduler_events, render_scheduler_screen,
     runtime as scheduler_runtime,
@@ -1117,6 +1118,12 @@ pub(crate) enum Action {
     MirScriptingClearOutput,
     MirScriptingClearSource,
     MirScriptingLoadExample,
+    CScriptingScreen,
+    CScriptingExecute {
+        source: String,
+    },
+    CScriptingClear,
+    CScriptingLoadExample,
 }
 
 struct FdHandle(Option<i32>);
@@ -1353,6 +1360,12 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "mir_scripting_clear_output" => Ok(Action::MirScriptingClearOutput),
         "mir_scripting_clear_source" => Ok(Action::MirScriptingClearSource),
         "mir_scripting_load_example" => Ok(Action::MirScriptingLoadExample),
+        "c_scripting_screen" => Ok(Action::CScriptingScreen),
+        "c_scripting_execute" => Ok(Action::CScriptingExecute {
+            source: bindings.get("c_scripting.source").cloned().unwrap_or_default(),
+        }),
+        "c_scripting_clear" => Ok(Action::CScriptingClear),
+        "c_scripting_load_example" => Ok(Action::CScriptingLoadExample),
         "settings_screen" => Ok(Action::SettingsScreen),
         "about" => Ok(Action::About),
         "scheduler_screen" => Ok(Action::SchedulerScreen),
@@ -2403,6 +2416,14 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::MirScriptingClearSource
         | a @ Action::MirScriptingLoadExample => {
             if let Some(ui) = handle_mir_scripting_actions(&mut state, a) {
+                return Ok(inject_root_extras(ui, &mut state));
+            }
+        }
+        a @ Action::CScriptingScreen
+        | a @ Action::CScriptingExecute { .. }
+        | a @ Action::CScriptingClear
+        | a @ Action::CScriptingLoadExample => {
+            if let Some(ui) = handle_c_scripting_actions(&mut state, a) {
                 return Ok(inject_root_extras(ui, &mut state));
             }
         }
@@ -4685,6 +4706,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::Plotting => render_plotting_screen(state),
         Screen::SqlQuery => render_sql_screen(state),
         Screen::MirScripting => features::mir_scripting::render_mir_scripting_screen(state),
+        Screen::CScripting => features::c_scripting::render_c_scripting_screen(state),
         Screen::Scheduler => render_scheduler_screen(state),
     }
 }
@@ -5344,6 +5366,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "scheduler_screen",
             requires_file_picker: false,
             description: "cron-style recurring actions",
+        },
+        Feature {
+            id: "c_scripting",
+            name: "🧪 C Scripting Lab",
+            category: "🧰 Utilities",
+            action: "c_scripting_screen",
+            requires_file_picker: false,
+            description: "Run C code (JIT)",
         },
     ]
 }

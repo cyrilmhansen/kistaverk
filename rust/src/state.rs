@@ -7,6 +7,7 @@ use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
 use crate::features::mir_scripting::MirScriptingState;
+use crate::features::c_scripting::CScriptingState;
 use crate::features::sensor_logger::SensorSelection;
 use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
 use crate::features::system_info::SystemInfoState;
@@ -54,6 +55,7 @@ pub enum Screen {
     Plotting,
     SqlQuery,
     MirScripting,
+    CScripting,
     Scheduler,
     UnitConverter,
     Settings,
@@ -420,6 +422,7 @@ pub struct AppState {
     pub plotting: PlottingState,
     pub sql_query: SqlQueryState,
     pub mir_scripting: MirScriptingState,
+    pub c_scripting: CScriptingState,
     pub scheduler: SchedulerState,
     pub unit_converter: UnitConverterState,
     #[serde(skip)]
@@ -522,6 +525,7 @@ impl AppState {
             plotting: PlottingState::new(),
             sql_query: SqlQueryState::new(),
             mir_scripting: MirScriptingState::new(),
+            c_scripting: CScriptingState::new(),
             scheduler: SchedulerState::new(),
             unit_converter: UnitConverterState::new(),
             sql_engine: None,
