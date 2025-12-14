@@ -32,6 +32,7 @@ Capturing `stdout` and `stderr` from the executed C code relies on `libc::dup2` 
 **Critical Warning:** `dup2` modifies the file descriptor table for the **entire process**.
 
 - **Concurrency Risk:** If multiple threads attempt to redirect or use `stdout`/`stderr` simultaneously (e.g., running parallel tests or multiple script executions at once), they will interfere with each other, leading to race conditions where output is lost, intermingled, or sent to the wrong destination.
+- **Pipe Deadlock Prevention:** To prevent deadlocks where the C code blocks writing to a full pipe and the Rust side blocks waiting for the C code to finish, a dedicated reader thread is spawned to continuously drain the pipe's output during C code execution. This addresses buffer filling issues for a single execution.
 - **Testing:** Unit tests that verify output capture **must** run sequentially. Use `cargo test -- --test-threads=1` to avoid failures.
 - **Production:** The application ensures that only one C script execution captures output at a time, or accepts that global stdout redirection affects all threads. Background execution runs in a dedicated worker, but global fd changes still apply process-wide.
 

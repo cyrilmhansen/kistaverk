@@ -2467,6 +2467,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.c_scripting.output.clear();
                 state.c_scripting.compilation_time_us = None;
                 state.c_scripting.avg_execution_time_us = None;
+                state.loading_message = Some("Running C script in background...".to_string());
+                state.loading_with_spinner = true;
 
                 let job = WorkerJob::CScriptingExecute {
                     source,
@@ -2478,6 +2480,8 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 if let Err(e) = STATE.worker().enqueue(job) {
                     state.c_scripting.error = Some(e);
                     state.c_scripting.is_running = false;
+                    state.loading_message = None;
+                    state.loading_with_spinner = false;
                 }
 
                 return Ok(features::c_scripting::render_c_scripting_screen(&state));
@@ -7018,6 +7022,8 @@ fn apply_worker_results(state: &mut AppState) {
                     }
                 }
                 state.c_scripting.is_running = false;
+                state.loading_message = None;
+                state.loading_with_spinner = false;
                 if matches!(state.current_screen(), Screen::CScripting) {
                     state.replace_current(Screen::CScripting);
                 }
