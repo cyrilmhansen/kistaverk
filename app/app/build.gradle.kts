@@ -136,6 +136,8 @@ android {
             rustDir.resolve("Cargo.lock"),
             rustDir.resolve("build.rs")
         )
+        // Ensure Gradle reruns this task when the selected Cargo profile changes.
+        inputs.property("cargoProfileName", cargoProfileName)
         inputs.dir(rustDir.resolve("locales")).optional()
         outputs.dir(jniLibsDir)
 
