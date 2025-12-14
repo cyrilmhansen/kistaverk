@@ -68,6 +68,12 @@ opt-level = 1
 debug = 0
 strip = "symbols"
 
+[profile.android-release-size]
+inherits = "release"
+# Keep enough debug info for bloaty/attribution.
+debug = 1
+strip = "none"
+
 [dev-dependencies]
 criterion = "0.5"
 

@@ -103,9 +103,9 @@ TASK="${1:-assembleDebug}"
 
 cd "$PROJECT_ROOT/app"
 if [ -n "$ABI_PROP" ]; then
-    ./gradlew -PuseUpx="$USE_UPX" -Pabi="$ABI_PROP" -PenablePrecision="$ENABLE_PRECISION" "app:$TASK"
+    ./gradlew -PuseUpx="$USE_UPX" -Pabi="$ABI_PROP" -PenablePrecision="$ENABLE_PRECISION" ${CARGO_RELEASE_PROFILE:+-PcargoReleaseProfile="$CARGO_RELEASE_PROFILE"} "app:$TASK"
 else
-    ./gradlew -PuseUpx="$USE_UPX" -PenablePrecision="$ENABLE_PRECISION" "app:$TASK"
+    ./gradlew -PuseUpx="$USE_UPX" -PenablePrecision="$ENABLE_PRECISION" ${CARGO_RELEASE_PROFILE:+-PcargoReleaseProfile="$CARGO_RELEASE_PROFILE"} "app:$TASK"
 fi
 
 echo ""

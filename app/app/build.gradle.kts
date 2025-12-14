@@ -64,6 +64,9 @@ android {
         jniLibs {
             // We strip before UPX; avoid a second strip pass that breaks packed libs.
             keepDebugSymbols += "**/libkistaverk_core.so"
+            // Ensure modern packaging so Android can load JNI libs directly from APK/AAB when
+            // `android:extractNativeLibs="false"` (reduces installed size).
+            useLegacyPackaging = false
         }
     }
 
@@ -117,7 +120,12 @@ android {
         // Heuristic: Android Studio's normal "Run" / "Debug" builds should be fast *and* small.
         // Use Cargo release for Release builds, and a slim custom profile for Debug builds.
         val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
-        val cargoProfileName = if (isReleaseBuild) "release" else "android-debug"
+        val cargoReleaseProfileOverride = (findProperty("cargoReleaseProfile") as String?)?.trim().orEmpty()
+        val cargoProfileName = when {
+            isReleaseBuild && cargoReleaseProfileOverride.isNotEmpty() -> cargoReleaseProfileOverride
+            isReleaseBuild -> "release"
+            else -> "android-debug"
+        }
         val cargoProfileDir = cargoProfileName
 
         // Make the task incremental in Gradle (Cargo is incremental too, but this prevents
@@ -176,7 +184,12 @@ android {
                 )
 
                 if (isReleaseBuild) {
-                    baseArgs.add("--release")
+                    if (cargoProfileName == "release") {
+                        baseArgs.add("--release")
+                    } else {
+                        baseArgs.add("--profile")
+                        baseArgs.add(cargoProfileName)
+                    }
                 } else {
                     baseArgs.add("--profile")
                     baseArgs.add(cargoProfileName)

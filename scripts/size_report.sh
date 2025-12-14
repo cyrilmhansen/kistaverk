@@ -77,3 +77,15 @@ if [[ -d "$ROOT/rust/target" ]]; then
 else
   echo "rust target: (not built yet)"
 fi
+
+if command -v bloaty >/dev/null 2>&1; then
+  echo
+  echo "-- bloaty (unstripped .so, if present) --"
+  SIZE_SO="${BLOATY_SO:-$ROOT/rust/target/aarch64-linux-android/android-release-size/libkistaverk_core.so}"
+  if [[ -f "$SIZE_SO" ]]; then
+    echo "bloaty so: $SIZE_SO"
+    bloaty -d compileunits,symbols -n 30 "$SIZE_SO" || true
+  else
+    echo "bloaty so: (not found; set BLOATY_SO=... or build with CARGO_RELEASE_PROFILE=android-release-size)"
+  fi
+fi
