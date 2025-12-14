@@ -408,7 +408,7 @@ pub fn handle_mir_scripting_actions(
 m_sieve:  module
           export sieve
 sieve:    func i64, i64:N
-          local i64:iter, i64:count, i64:i, i64:k, i64:prime, i64:temp, p:flags
+          local i64:iter, i64:count, i64:i, i64:k, i64:prime, i64:temp, i64:flags
           alloca flags, 819000
           mov iter, 0
 loop:     bge fin, iter, N
