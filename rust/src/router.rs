@@ -2422,7 +2422,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::ScriptingClearScript
         | a @ Action::ScriptingLoadExample { .. } => {
             if let Some(ui) = handle_scripting_actions(&mut state, a) {
-                return Ok(ui);
+                return Ok(inject_root_extras(ui, &mut state));
             }
         }
         a @ Action::MirScriptingScreen
@@ -2432,7 +2432,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::MirScriptingClearSource
         | a @ Action::MirScriptingLoadExample => {
             if let Some(ui) = handle_mir_scripting_actions(&mut state, a) {
-                return Ok(ui);
+                return Ok(inject_root_extras(ui, &mut state));
             }
         }
         a @ Action::PlottingScreen
@@ -2578,6 +2578,22 @@ fn handle_command(command: Command) -> Result<Value, String> {
 
 fn render_root(state: &mut AppState) -> Value {
     let mut ui = render_ui(state);
+    if state.haptic {
+        if let Some(obj) = ui.as_object_mut() {
+            obj.insert("haptic".into(), Value::Bool(true));
+        }
+        state.haptic = false;
+    }
+    if let Some(toast) = state.toast.take() {
+        if let Some(obj) = ui.as_object_mut() {
+            obj.insert("toast".into(), Value::String(toast));
+        }
+    }
+    ui
+}
+
+fn inject_root_extras(ui: Value, state: &mut AppState) -> Value {
+    let mut ui = ui;
     if state.haptic {
         if let Some(obj) = ui.as_object_mut() {
             obj.insert("haptic".into(), Value::Bool(true));
