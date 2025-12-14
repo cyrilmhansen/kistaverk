@@ -17,6 +17,10 @@ ABI_PROP="${abi:-}"
 # Precision feature (default: false)
 ENABLE_PRECISION="${enablePrecision:-false}"
 
+# Gradle wrapper uses lockfiles in GRADLE_USER_HOME; ensure it is writable in CI/sandbox.
+export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$PROJECT_ROOT/.gradle-home}"
+mkdir -p "$GRADLE_USER_HOME"
+
 # --- Setup Environment from local.properties ---
 LOCAL_PROPS="$PROJECT_ROOT/app/local.properties"
 if [ -f "$LOCAL_PROPS" ]; then
