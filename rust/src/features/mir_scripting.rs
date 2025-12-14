@@ -80,6 +80,24 @@ impl MirScriptingState {
             cr_count
         ));
 
+        if matches!(mode, MirExecMode::Interp) {
+            // MIR's interpreter can abort (assert) on some constructs (notably memory operands and
+            // stack allocations) in certain configurations. Avoid crashing the whole app by
+            // rejecting obviously unsupported code patterns up-front.
+            let src = normalized_source.as_str();
+            let has_memory_operands = src.contains("u8:(") || src.contains("i8:(") || src.contains("i32:(")
+                || src.contains("i64:(") || src.contains("p:(") || src.contains(":(flags");
+            let has_alloca = src.contains("\nalloca ") || src.contains(";  alloca ") || src.contains("; alloca ");
+            if has_memory_operands || has_alloca {
+                self.error = Some(
+                    "Interpreter mode unsupported for this MIR (uses memory operands/alloca). Use Run (JIT)."
+                        .to_string(),
+                );
+                logcat("MIR: interpreter rejected source (memory/alloca detected)");
+                return None;
+            }
+        }
+
         let source = match CString::new(normalized_source) {
             Ok(v) => v,
             Err(_) => {
