@@ -193,6 +193,47 @@ impl<'a> Column<'a> {
 }
 
 #[derive(Serialize)]
+pub struct Row<'a> {
+    #[serde(rename = "type")]
+    pub kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub padding: Option<u32>,
+    pub children: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_description: Option<&'a str>,
+}
+
+#[allow(dead_code)]
+impl<'a> Row<'a> {
+    pub fn new(children: Vec<serde_json::Value>) -> Self {
+        Self {
+            kind: "Row",
+            padding: None,
+            children,
+            id: None,
+            content_description: None,
+        }
+    }
+
+    pub fn padding(mut self, padding: u32) -> Self {
+        self.padding = Some(padding);
+        self
+    }
+
+    pub fn id(mut self, id: &'a str) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    pub fn content_description(mut self, cd: &'a str) -> Self {
+        self.content_description = Some(cd);
+        self
+    }
+}
+
+#[derive(Serialize)]
 pub struct VirtualList<'a> {
     #[serde(rename = "type")]
     pub kind: &'static str,

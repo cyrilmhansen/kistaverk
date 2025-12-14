@@ -66,6 +66,7 @@ class UiRenderer(
     private val dataTag = R.id.data_tag
     private val creators: Map<String, (JSONObject, View?) -> View> = mapOf(
         "Column" to { data, matched -> createColumn(data, matched as? LinearLayout) },
+        "Row" to { data, matched -> createRow(data, matched as? LinearLayout) },
         "Section" to { data, matched -> createSection(data, matched as? LinearLayout) },
         "Card" to { data, matched -> createCard(data, matched as? LinearLayout) },
         "Text" to { data, matched -> createText(data, matched as? TextView) },
@@ -106,6 +107,7 @@ class UiRenderer(
     private val pendingBindingUpdates = mutableMapOf<String, Runnable>()
     private val allowedTypes = setOf(
         "Column",
+        "Row",
         "Section",
         "Card",
         "Text",
@@ -241,7 +243,7 @@ class UiRenderer(
         val type = node.optString("type", "")
         if (type.isBlank()) return "Missing type"
         if (!allowedTypes.contains(type)) return "Unknown widget: $type"
-        if ((type == "Column" || type == "Grid" || type == "Section" || type == "Card") && !node.has("children")) {
+        if ((type == "Column" || type == "Row" || type == "Grid" || type == "Section" || type == "Card") && !node.has("children")) {
             return "$type missing children"
         }
         if (type == "ImageBase64" && !node.has("base64")) {
@@ -305,7 +307,7 @@ class UiRenderer(
         if (type == "Magnetometer" && !node.has("magnitude_ut")) {
             return "Magnetometer missing magnitude_ut"
         }
-        if (type == "Grid" || type == "Column" || type == "Section" || type == "Card" || type == "VirtualList") {
+        if (type == "Grid" || type == "Column" || type == "Row" || type == "Section" || type == "Card" || type == "VirtualList") {
             val children = node.optJSONArray("children") ?: return "$type missing children"
             for (i in 0 until children.length()) {
                 val childErr = validate(children.getJSONObject(i))
@@ -350,6 +352,57 @@ class UiRenderer(
             }
         }
         setMeta(layout, "Column", resolveNodeId(data))
+        return layout
+    }
+
+    private fun createRow(data: JSONObject, existing: LinearLayout?): View {
+        val layout = existing ?: LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        layout.orientation = LinearLayout.HORIZONTAL
+        val padding = dpToPx(context, data.optInt("padding", 0).toFloat())
+        layout.setPadding(padding, padding, padding, padding)
+        val contentDescription = data.optString("content_description", "")
+        layout.contentDescription = contentDescription.takeIf { it.isNotEmpty() }
+
+        val children = data.optJSONArray("children")
+        val newChildren = mutableListOf<Pair<View, JSONObject>>()
+        if (children != null) {
+            for (i in 0 until children.length()) {
+                val childJson = children.getJSONObject(i)
+                val reuse = existing?.let { findReusableChild(it, childJson) }
+                val childView = createView(childJson, reuse)
+                detachFromParent(childView, layout)
+                newChildren.add(childView to childJson)
+            }
+        }
+
+        layout.removeAllViews()
+        newChildren.forEach { (view, json) ->
+            val lp = if (view.layoutParams is LinearLayout.LayoutParams) {
+                view.layoutParams as LinearLayout.LayoutParams
+            } else {
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+
+            val mr = json.optDouble("margin_right", 0.0)
+            val ml = json.optDouble("margin_left", 0.0)
+            val mt = json.optDouble("margin_top", 0.0)
+            val mb = json.optDouble("margin_bottom", 0.0)
+
+            if (mr > 0) lp.rightMargin = dpToPx(context, mr.toFloat())
+            if (ml > 0) lp.leftMargin = dpToPx(context, ml.toFloat())
+            if (mt > 0) lp.topMargin = dpToPx(context, mt.toFloat())
+            if (mb > 0) lp.bottomMargin = dpToPx(context, mb.toFloat())
+
+            val weight = json.optDouble("weight", 0.0)
+            if (weight > 0) {
+                lp.weight = weight.toFloat()
+                lp.width = 0
+            }
+
+            view.layoutParams = lp
+            layout.addView(view)
+        }
+        setMeta(layout, "Row", resolveNodeId(data))
         return layout
     }
 

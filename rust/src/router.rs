@@ -318,6 +318,12 @@ enum WorkerJob {
         img_height_px: Option<f64>,
         img_dpi: Option<f64>,
     },
+    CScriptingExecute {
+        source: String,
+        args: String,
+        use_jit: bool,
+        benchmark: bool,
+    },
 }
 
 enum WorkerResult {
@@ -372,6 +378,9 @@ enum WorkerResult {
     },
     PdfMergeMany {
         value: Result<PdfWorkerResult, String>,
+    },
+    CScriptingExecuteResult {
+        value: Result<features::c_scripting::ExecutionResult, String>,
     },
 }
 
@@ -620,6 +629,16 @@ fn run_worker_job(job: WorkerJob) -> WorkerResult {
                 source_uri: uris.first().cloned(),
             });
             WorkerResult::PdfMergeMany { value }
+        }
+        WorkerJob::CScriptingExecute {
+            source,
+            args,
+            use_jit,
+            benchmark,
+        } => {
+            test_worker_delay();
+            let value = features::c_scripting::execute_c_code(source, args, use_jit, benchmark);
+            WorkerResult::CScriptingExecuteResult { value }
         }
     }
 }
@@ -1125,6 +1144,9 @@ pub(crate) enum Action {
     },
     CScriptingClear,
     CScriptingLoadExample,
+    CScriptingToggleJit { enabled: bool },
+    CScriptingToggleBenchmark { enabled: bool },
+    CScriptingToggleThread { enabled: bool },
 }
 
 struct FdHandle(Option<i32>);
@@ -1368,6 +1390,18 @@ fn parse_action(command: Command) -> Result<Action, String> {
         }),
         "c_scripting_clear" => Ok(Action::CScriptingClear),
         "c_scripting_load_example" => Ok(Action::CScriptingLoadExample),
+        "c_scripting_toggle_jit" => {
+            let enabled = bindings.get("c_scripting_use_jit").map(|v| v == "true").unwrap_or(false);
+            Ok(Action::CScriptingToggleJit { enabled })
+        }
+        "c_scripting_toggle_benchmark" => {
+            let enabled = bindings.get("c_scripting_benchmark").map(|v| v == "true").unwrap_or(false);
+            Ok(Action::CScriptingToggleBenchmark { enabled })
+        }
+        "c_scripting_toggle_thread" => {
+            let enabled = bindings.get("c_scripting_run_in_thread").map(|v| v == "true").unwrap_or(false);
+            Ok(Action::CScriptingToggleThread { enabled })
+        }
         "settings_screen" => Ok(Action::SettingsScreen),
         "about" => Ok(Action::About),
         "scheduler_screen" => Ok(Action::SchedulerScreen),
@@ -2421,14 +2455,49 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 return Ok(inject_root_extras(ui, &mut state));
             }
         }
-        a @ Action::CScriptingScreen
-        | a @ Action::CScriptingExecute { .. }
-        | a @ Action::CScriptingClear
-        | a @ Action::CScriptingLoadExample => {
-            if let Some(ui) = handle_c_scripting_actions(&mut state, a) {
-                return Ok(inject_root_extras(ui, &mut state));
+        Action::CScriptingExecute { source, args } => {
+            state.c_scripting.source = source.clone();
+            if let Some(a) = &args {
+                state.c_scripting.args = a.clone();
+            }
+
+            if state.c_scripting.run_in_thread {
+                state.c_scripting.is_running = true;
+                state.c_scripting.error = None;
+                state.c_scripting.output.clear();
+                state.c_scripting.compilation_time_us = None;
+                state.c_scripting.avg_execution_time_us = None;
+
+                let job = WorkerJob::CScriptingExecute {
+                    source,
+                    args: args.unwrap_or_default(),
+                    use_jit: state.c_scripting.use_jit,
+                    benchmark: state.c_scripting.benchmark,
+                };
+
+                if let Err(e) = STATE.worker().enqueue(job) {
+                    state.c_scripting.error = Some(e);
+                    state.c_scripting.is_running = false;
+                }
+
+                return Ok(features::c_scripting::render_c_scripting_screen(&state));
+            } else {
+                if let Some(ui) = handle_c_scripting_actions(&mut state, Action::CScriptingExecute { source, args }) {
+                    return Ok(ui);
+                }
             }
         }
+        a @ Action::CScriptingScreen
+        | a @ Action::CScriptingClear
+        | a @ Action::CScriptingLoadExample
+        | a @ Action::CScriptingToggleJit { .. }
+        | a @ Action::CScriptingToggleBenchmark { .. }
+        | a @ Action::CScriptingToggleThread { .. } => {
+            if let Some(ui) = handle_c_scripting_actions(&mut state, a) {
+                return Ok(ui);
+            }
+        }
+
         a @ Action::PlottingScreen
         | a @ Action::PlottingPick { .. }
         | a @ Action::PlottingSetX { .. }
@@ -6934,6 +7003,25 @@ fn apply_worker_results(state: &mut AppState) {
                     state.replace_current(Screen::PdfTools);
                 }
             },
+            WorkerResult::CScriptingExecuteResult { value } => {
+                match value {
+                    Ok(exec_res) => {
+                        state.c_scripting.output = exec_res.output;
+                        if state.c_scripting.benchmark {
+                            state.c_scripting.compilation_time_us = Some(exec_res.compilation_time_us);
+                            state.c_scripting.avg_execution_time_us = Some(exec_res.avg_execution_time_us);
+                            state.c_scripting.execution_count = exec_res.runs;
+                        }
+                    }
+                    Err(err) => {
+                        state.c_scripting.error = Some(err);
+                    }
+                }
+                state.c_scripting.is_running = false;
+                if matches!(state.current_screen(), Screen::CScripting) {
+                    state.replace_current(Screen::CScripting);
+                }
+            }
         }
     }
     state.loading_message = None;
