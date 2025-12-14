@@ -326,6 +326,8 @@ pub fn handle_c_scripting_actions(
         }
         CScriptingLoadExample => {
             state.c_scripting.source = r#"
+// This code is adapted from https://rosettacode.org/wiki/Day_of_the_week#C
+// Licensed under GNU Free Documentation License 1.3 (https://www.gnu.org/licenses/fdl-1.3.en.html)
 #include <stdio.h>
 
 /* Calculate day of week in proleptic Gregorian calendar. Sunday == 0. */
