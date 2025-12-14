@@ -1,4 +1,4 @@
-locale_spanish: "Español"
-locale_portuguese: "Português"
-locale_chinese: "中文" # Using common name, locale code zn
-locale_latin: "Latina"
+locale_spanish: "Spanish"
+locale_portuguese: "Portuguese"
+locale_chinese: "Chinese" # Using standard locale code zh
+locale_latin: "Latin"

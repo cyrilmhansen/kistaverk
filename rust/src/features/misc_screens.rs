@@ -290,9 +290,9 @@ pub fn render_settings_screen(state: &AppState) -> Value {
         },
         {
             let mut button = UiButton::new(&chinese, "set_locale")
-                .payload(json!({"locale": "zn"})) // Using 'zn' as the locale code for Chinese
+                .payload(json!({"locale": "zh"})) // Using 'zh' as the standard locale code for Chinese
             ;
-            if current_locale == "zn" && !is_using_system {
+            if current_locale == "zh" && !is_using_system {
                 button = button.content_description("selected_locale");
             }
             serde_json::to_value(button).unwrap()

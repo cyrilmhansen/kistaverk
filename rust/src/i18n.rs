@@ -24,7 +24,7 @@ fn normalize_locale(locale_str: &str) -> &str {
         "de" => "de",
         "es" => "es", // Spanish
         "pt" => "pt", // Portuguese
-        "zn" => "zn", // Chinese (using zn as per filename)
+        "zh" => "zh", // Chinese (using zh as standard code)
         "la" => "la", // Latin
         _ => "en",
     }
