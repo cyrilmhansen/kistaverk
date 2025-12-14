@@ -15,7 +15,7 @@ fn test_mir_load_from_string_and_exec() {
         let ctx = _MIR_init(ptr::null_mut(), ptr::null_mut());
 
         MIR_gen_init(ctx);
-        MIR_gen_set_optimize_level(ctx, 0);
+        MIR_gen_set_optimize_level(ctx, 2);
 
         let mir_source = CString::new(
             r#"

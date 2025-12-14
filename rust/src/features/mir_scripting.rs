@@ -131,8 +131,8 @@ impl MirScriptingState {
             logcat(&format!("MIR: ctx={:p}", ctx));
             logcat("MIR: MIR_gen_init");
             mir_sys::MIR_gen_init(ctx);
-            logcat("MIR: MIR_gen_set_optimize_level(0)");
-            mir_sys::MIR_gen_set_optimize_level(ctx, 0);
+            logcat("MIR: MIR_gen_set_optimize_level(2)");
+            mir_sys::MIR_gen_set_optimize_level(ctx, 2);
 
             logcat("MIR: MIR_scan_string");
             mir_sys::MIR_scan_string(ctx, source.as_ptr());
