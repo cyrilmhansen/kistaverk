@@ -162,16 +162,23 @@ mod tests {
 
     #[test]
     fn process_keeps_dimensions() {
+        let prev_temp = std::env::var("KISTAVERK_TEMP_DIR").ok();
         let mut img = RgbaImage::new(8, 8);
         for (x, y, p) in img.enumerate_pixels_mut() {
             *p = Rgba([(x * 10) as u8, (y * 10) as u8, 0, 255]);
         }
         let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("KISTAVERK_TEMP_DIR", dir.path());
         let path = dir.path().join("input.png");
         img.save(&path).unwrap();
 
         let out = process_pixel_art(path.to_str().unwrap(), 4).expect("process ok");
         let out_img = image::open(out).unwrap();
         assert_eq!(out_img.dimensions(), (8, 8));
+
+        match prev_temp {
+            Some(v) => std::env::set_var("KISTAVERK_TEMP_DIR", v),
+            None => std::env::remove_var("KISTAVERK_TEMP_DIR"),
+        }
     }
 }
