@@ -6,7 +6,6 @@ use crate::features::pdf::PdfState;
 use crate::features::jwt::JwtState;
 use crate::features::presets::PresetState;
 use crate::features::qr_transfer::{QrReceiveState, QrSlideshowState};
-use crate::features::scripting::ScriptingState;
 use crate::features::mir_scripting::MirScriptingState;
 use crate::features::sensor_logger::SensorSelection;
 use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
@@ -54,7 +53,6 @@ pub enum Screen {
     HexEditor,
     Plotting,
     SqlQuery,
-    Scripting,
     MirScripting,
     Scheduler,
     UnitConverter,
@@ -421,7 +419,6 @@ pub struct AppState {
     pub hex_editor: HexEditorState,
     pub plotting: PlottingState,
     pub sql_query: SqlQueryState,
-    pub scripting: ScriptingState,
     pub mir_scripting: MirScriptingState,
     pub scheduler: SchedulerState,
     pub unit_converter: UnitConverterState,
@@ -524,7 +521,6 @@ impl AppState {
             hex_editor: HexEditorState::new(),
             plotting: PlottingState::new(),
             sql_query: SqlQueryState::new(),
-            scripting: ScriptingState::new(),
             mir_scripting: MirScriptingState::new(),
             scheduler: SchedulerState::new(),
             unit_converter: UnitConverterState::new(),

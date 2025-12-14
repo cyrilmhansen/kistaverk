@@ -28,7 +28,6 @@ pub mod jwt;
 pub mod hex_editor;
 pub mod plotting;
 pub mod sql_engine;
-pub mod scripting;
 pub mod mir_scripting;
 pub mod scheduler;
 pub mod unit_converter;
