@@ -85,7 +85,7 @@ impl CScriptingState {
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.error = Some(format!("Execution timed out after {}ms", effective_timeout));
+                self.error = Some("Error. 10 seconds timeout over".to_string());
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 self.error = Some("Worker thread disconnected unexpectedly".to_string());
@@ -120,12 +120,19 @@ unsafe extern "C" fn getc_func(data: *mut c_void) -> c_int {
 }
 
 /// Generates a new UUID v4 and returns a pointer to a C-string.
-/// The caller is responsible for freeing the string using `free()`.
+/// The caller is responsible for freeing the string using `free_rust_string()`.
 unsafe extern "C" fn uuid_v4_gen() -> *mut c_char {
     let id = Uuid::new_v4();
     match CString::new(id.to_string()) {
         Ok(s) => s.into_raw(),
         Err(_) => ptr::null_mut(),
+    }
+}
+
+/// Frees a C-string that was allocated by Rust (e.g. via `uuid_v4_gen`).
+unsafe extern "C" fn free_rust_string(s: *mut c_char) {
+    if !s.is_null() {
+        let _ = CString::from_raw(s);
     }
 }
 
@@ -137,6 +144,15 @@ pub fn execute_c_code(source_code: String, args_str: String, use_jit: bool, benc
             return Err("Failed to create pipe".to_string());
         }
         let (read_fd, write_fd) = (pipe_fds[0], pipe_fds[1]);
+
+        // Start a thread to read from the pipe immediately to prevent buffer filling and deadlock
+        let (out_tx, out_rx) = mpsc::channel();
+        let mut reader_file = std::fs::File::from_raw_fd(read_fd);
+        thread::spawn(move || {
+            let mut buf = String::new();
+            let _ = reader_file.read_to_string(&mut buf);
+            let _ = out_tx.send(buf);
+        });
 
         // Save original stdout/stderr
         let original_stdout = libc::dup(libc::STDOUT_FILENO);
@@ -159,7 +175,6 @@ pub fn execute_c_code(source_code: String, args_str: String, use_jit: bool, benc
             libc::close(original_stdout);
             libc::close(original_stderr);
             libc::close(write_fd);
-            libc::close(read_fd);
             return Err("Failed to initialize MIR context".to_string());
         }
 
@@ -178,6 +193,7 @@ pub fn execute_c_code(source_code: String, args_str: String, use_jit: bool, benc
         
         // Register custom functions
         MIR_load_external(ctx, CString::new("uuid_v4_gen").unwrap().as_ptr(), uuid_v4_gen as *mut c_void);
+        MIR_load_external(ctx, CString::new("free_rust_string").unwrap().as_ptr(), free_rust_string as *mut c_void);
 
         // 4. Compile C source
         let mut reader = StringReader {
@@ -310,9 +326,7 @@ pub fn execute_c_code(source_code: String, args_str: String, use_jit: bool, benc
         libc::close(write_fd);
 
         // 8. Read captured output
-        let mut output = String::new();
-        let mut file = std::fs::File::from_raw_fd(read_fd);
-        let _ = file.read_to_string(&mut output);
+        let output = out_rx.recv().unwrap_or_default();
 
         match execution_result {
             Ok(_) => Ok(ExecutionResult {
@@ -508,6 +522,7 @@ pub fn handle_c_scripting_actions(
             state.c_scripting.source = r#"
 // Prototype for the Rust-exported function
 char* uuid_v4_gen();
+void free_rust_string(char* s);
 
 int main(int argc, char **argv) {
     printf("Invoking 'uuid' crate from C...\n");
@@ -516,7 +531,7 @@ int main(int argc, char **argv) {
     if (id) {
         printf("Generated UUID: %s\n", id);
         // Important: Free the memory allocated by Rust
-        free(id);
+        free_rust_string(id);
     } else {
         printf("Failed to generate UUID.\n");
     }
