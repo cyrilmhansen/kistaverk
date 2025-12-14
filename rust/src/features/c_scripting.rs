@@ -372,8 +372,7 @@ pub fn handle_c_scripting_actions(
         }
         CScriptingLoadExample => {
             state.c_scripting.args = "2025 12 25".to_string();
-            state.c_scripting.source = r#"// This code is adapted from https://rosettacode.org/wiki/Day_of_the_week#C
-// Licensed under GNU Free Documentation License 1.3 (https://www.gnu.org/licenses/fdl-1.3.en.html)
+            state.c_scripting.source = r#"
 #include <stdio.h>
 #include <stdlib.h>
 
