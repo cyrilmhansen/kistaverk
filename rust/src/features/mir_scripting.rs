@@ -385,7 +385,7 @@ pub fn handle_mir_scripting_actions(
             Some(render_mir_scripting_screen(state))
         }
         MirScriptingLoadExample => {
-            state.mir_scripting.entry = "main".to_string();
+            state.mir_scripting.entry = "ex100".to_string();
             state.mir_scripting.source = r#"
 m_sieve:  module
           export sieve
@@ -415,10 +415,10 @@ fin:      ret count
           endmodule
 
 m_ex100:  module
-          export main
+          export ex100
           import sieve
 p_sieve:  proto i32, i32:iter
-main:     func i64
+ex100:    func i64
           local i32:r32
           local i64:r
           call p_sieve, sieve, r32, 100
