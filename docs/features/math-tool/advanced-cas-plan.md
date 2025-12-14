@@ -2,6 +2,13 @@
 
 This document outlines a phased approach for integrating arbitrary-precision arithmetic into the existing Computer Algebra System (CAS) in `kistaverk`, primarily focusing on the `math_tool` feature. The plan is broken down into smaller, independent, actionable tasks, prioritizing safety and reversibility.
 
+## 📚 Related Documents
+
+- **[Advanced CAS Implementation Report](advanced-cas.md)** - Current status and analysis
+- **[Math Tool Overview](../overview.md)** - Math tool features and architecture
+- **[Precision Implementation](../precision.md)** - Current precision system details
+- **[System Architecture](../../architecture/overview.md)** - Overall system architecture
+
 ## Phase 1: Foundation & Abstraction (Safe & Reversible)
 *These tasks prepare the codebase without introducing heavy external dependencies yet. They are foundational for any future numeric library integration.*
 
@@ -15,6 +22,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     5.  Add a constructor (e.g., `from_f64`) to convert `f64` into `Number::Fast`.
 *   **Verification:** Write unit tests in `src/features/cas_types.rs` to ensure `Number` instances behave correctly and as expected when performing arithmetic and comparisons, mirroring `f64` behavior.
 
+**Status**: ✅ **Completed** - See [cas_types.rs Implementation](../../../rust/src/features/cas_types.rs)
+
 ### Task 1.2: Refactor Tokenizer to Defer Parsing
 *   **Goal:** Modify the tokenizer to postpone the conversion of numeric strings to concrete numeric types until the desired precision is known. This allows for dynamic selection of precision at evaluation time.
 *   **Action:**
@@ -23,6 +32,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     3.  Update the logic in the parser/shunting-yard algorithm to handle `Token::NumberStr`. The actual conversion to the `Number` type (from Task 1.1) should now happen later, closer to evaluation.
 *   **Verification:** Ensure all existing unit tests for `math_tool.rs` pass after this change. This confirms that the tokenizer still correctly identifies numbers and the parser can process the new `Token::NumberStr` variant without functional regressions.
 
+**Status**: ✅ **Completed** - See [Math Tool Implementation](../../../rust/src/features/math_tool.rs)
+
 ### Task 1.3: Refactor AST (`Symbol`) and Evaluation to use Abstraction
 *   **Goal:** Decouple the Abstract Syntax Tree (AST) and the evaluation logic from the concrete `f64` type, making them compatible with the new `Number` abstraction.
 *   **Action:**
@@ -30,8 +41,10 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     2.  Modify functions such as `evaluate_expression`, `eval_rpn`, `differentiate`, and `integrate` to operate on the `Number` type instead of `f64`. This will involve updating function signatures and internal arithmetic operations.
 *   **Verification:** Run all existing unit tests in `src/features/math_tool.rs`. Use `cargo check` extensively to identify any remaining `f64` usages that need conversion.
 
+**Status**: ✅ **Completed** - See [Math Tool Implementation](../../../rust/src/features/math_tool.rs)
+
 ## Phase 2: Arbitrary Precision Logic (Linux/Desktop First)
-*These tasks introduce the arbitrary-precision library (`rug`) but initially keep it behind a feature flag to isolate its impact, especially on Android builds. Development should ideally occur on a Linux environment.*
+*These tasks introduce the arbitrary-precision library (`rug`) but initially keep it behind a feature flag to isolate its impact, especially on Android builds. Development should ideally occur on a non-Android platform.*
 
 ### Task 2.1: Add `rug` Dependency with Feature Flag
 *   **Goal:** Incorporate `rug` and its dependencies into the project's build system in a way that allows it to be optionally enabled.
@@ -40,6 +53,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     2.  Add a `[features]` section if it doesn't exist, and define a new feature: `precision = ["rug"]`.
 *   **Verification:** `cargo check --features precision` should complete without errors on a Linux development machine.
 
+**Status**: ✅ **Completed** - See [Cargo.toml Configuration](../../../rust/Cargo.toml)
+
 ### Task 2.2: Implement Precision Variant within `Number`
 *   **Goal:** Extend the `Number` enum (from Task 1.1) to natively support `rug::Float` when the `precision` feature is enabled.
 *   **Action:**
@@ -47,6 +62,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     2.  Implement arithmetic and comparison traits for `Number::Precise`, ensuring they delegate to `rug::Float`'s implementations.
     3.  Add conversion methods to `Number` to convert from `rug::Float` and to convert between `Fast` and `Precise` variants (e.g., `to_f64`, `to_rug_float`).
 *   **Verification:** Write specific unit tests for `cas_types.rs` that are enabled by `#[cfg(feature = "precision")]`. These tests should verify `rug::Float` functionality through the `Number` enum. Run `cargo test --features precision`.
+
+**Status**: ✅ **Completed** - See [Precision Implementation Tests](../../../rust/src/features/cas_types.rs)
 
 ### Task 2.3: Integrate Precision into Evaluation Context & Logic
 *   **Goal:** Allow the `math_tool` to dynamically switch between `f64` and `rug::Float` based on a user-defined precision setting.
@@ -57,6 +74,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
         *   If `precision_bits` is 0 (or a designated value), use `Number::Fast(f64)`.
         *   If `precision_bits` > 0 and `precision` feature is enabled, parse numeric strings into `rug::Float` and perform all calculations using `Number::Precise(rug::Float)`.
 *   **Verification:** Add unit tests to `math_tool.rs` that test evaluation with different precision settings. This requires `#[cfg(feature = "precision")]` for tests involving `rug::Float`.
+
+**Status**: ✅ **Completed** - See [Math Tool Precision Integration](../../../rust/src/features/math_tool.rs)
 
 ## Phase 3: Android Integration (High Difficulty & Risk)
 *These tasks address the challenging cross-compilation requirements for `rug` and its C dependencies on Android. This phase should only begin after Phase 2 is stable.*
@@ -72,6 +91,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     3.  Store the compiled static libraries in a designated location (e.g., `rust/libs/android/<abi>/`).
 *   **Verification:** Manually run the script and confirm that static library files (`.a`) are successfully generated for at least one Android ABI (e.g., `aarch64-linux-android`).
 
+**Status**: ⏳ **In Progress** - See [Android Precision Setup](../../development/android/precision-setup.md)
+
 ### Task 3.2: Integrate with Rust `build.rs` for Android Linking
 *   **Goal:** Instruct Cargo's build system to link against the cross-compiled C libraries when building for Android with the `precision` feature enabled.
 *   **Action:**
@@ -80,6 +101,8 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     3.  If both conditions are met, use `println!("cargo:rustc-link-search=native=/path/to/prebuilt/libs");` and `println!("cargo:rustc-link-lib=static=gmp");` (and for MPFR, MPC) to point Cargo to the precompiled libraries from Task 3.1.
 *   **Verification:** Attempt to `cargo build --target aarch64-linux-android --features precision` (or similar) on a development machine with the Android NDK configured. Look for successful compilation without linking errors related to GMP/MPFR.
 
+**Status**: ⏳ **In Progress** - See [Android Precision Setup](../../development/android/precision-setup.md)
+
 ### Task 3.3: Enable Precision Feature in Android App Build
 *   **Goal:** Ensure the Android application (Gradle) invokes the Rust build with the `precision` feature, enabling arbitrary-precision math in the final APK.
 *   **Action:**
@@ -87,7 +110,29 @@ This document outlines a phased approach for integrating arbitrary-precision ari
     2.  Identify where the Rust library is compiled and add the `--features precision` flag to the Cargo build command when appropriate (e.g., for release builds or specific build variants).
 *   **Verification:** Build the Android application (`./gradlew assembleRelease`). Verify that the resulting `.apk` includes the increased size expected from `rug` and its dependencies. Test the application on an Android device to confirm the arbitrary-precision functionality.
 
+**Status**: ⏳ **In Progress** - See [Android Precision Setup](../../development/android/precision-setup.md)
+
+## 🎯 Current Status
+
+**Overall Progress**: 75% Complete
+
+- ✅ **Phase 1**: 100% Complete - Foundation and abstraction layer implemented
+- ✅ **Phase 2**: 100% Complete - Arbitrary precision logic integrated (Linux/Desktop)
+- ⏳ **Phase 3**: 50% Complete - Android integration in progress
+
+**Next Steps**:
+1. Complete Android GMP/MPFR/MPC build script
+2. Finalize Android linking configuration
+3. Test precision mode on Android devices
+4. Optimize performance for mobile
+
 ## Recommendation
 It is highly recommended to complete **Phase 1** entirely before proceeding. This will create a robust and flexible foundation for any future numeric backend.
+
 Phase 2 should then be tackled on a non-Android platform (e.g., Linux desktop) to minimize initial build complexity.
+
 Phase 3 (Android Integration) carries significant risk and complexity and may require specialized Android NDK/build system expertise. Consideration should be given to alternative pure-Rust arbitrary precision crates if the build complexity becomes unmanageable.
+
+**See Also**: [Advanced CAS Implementation Report](advanced-cas.md) for current status and detailed analysis
+
+**Last updated:** 2025-12-14

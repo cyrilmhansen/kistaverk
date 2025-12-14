@@ -4,7 +4,18 @@
 **Status:** Investigation Phase
 **Objective:** Determine refactoring steps to upgrade `math_tool` from `f64` to arbitrary precision using `rug` or `numerica`.
 
+## 📚 Related Documents
+
+- **[Math Tool Overview](../overview.md)** - Math tool features and architecture
+- **[Precision Implementation](../precision.md)** - Current precision system details
+- **[Symbolic Math](../symbolic.md)** - Symbolic computation capabilities
+- **[System Architecture](../../architecture/overview.md)** - Overall system architecture
+
 ## 1. Current Implementation Analysis
+
+The current CAS (Computer Algebra System) in `src/features/math_tool.rs` is tightly coupled to the `f64` primitive type.
+
+**See Also**: [Current Math Tool Implementation](../../../rust/src/features/math_tool.rs)
 
 The current CAS (Computer Algebra System) in `src/features/math_tool.rs` is tightly coupled to the `f64` primitive type.
 
@@ -106,3 +117,29 @@ If strictly arbitrary precision floats are needed and pure Rust crates (`dashu`,
 
 **Immediate Action:**
 Start by defining the `Number` abstraction to prepare the codebase, regardless of the backend chosen.
+
+**Current Status**: ✅ Phase 1-3 completed, Phase 4 in progress
+
+## 🚀 Future Work
+
+### Short-term (3-6 months)
+
+1. **Complete Android Precision Setup**: Finalize GMP/MPFR/MPC integration for Android
+2. **Performance Optimization**: Optimize precision operations for mobile
+3. **Error Handling**: Improve precision error reporting and recovery
+
+### Medium-term (6-12 months)
+
+1. **Advanced Symbolic Math**: Extend symbolic capabilities
+2. **Mixed Precision**: Implement adaptive precision strategies
+3. **Benchmarking**: Add comprehensive performance benchmarks
+
+### Long-term (12+ months)
+
+1. **Full CAS System**: Complete computer algebra system
+2. **Hardware Acceleration**: Utilize hardware for precision math
+3. **Cloud Offloading**: Offload complex calculations to cloud services
+
+**See Also**: [Advanced CAS Plan](advanced-cas-plan.md) for detailed roadmap
+
+**Last updated:** 2025-12-14
