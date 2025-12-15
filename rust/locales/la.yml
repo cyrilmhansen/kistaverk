@@ -29,6 +29,10 @@ locale_english: "Anglica"
 locale_french: "Gallica"
 locale_german: "Theodisca"
 locale_icelandic: "Islandica"
+locale_spanish: "Hispanice"
+locale_portuguese: "Lusitane"
+locale_chinese: "Sinaice"
+locale_latin: "Latine"
 
 # UI strings from rust/src/ui.rs
 button_back: "Redi"
@@ -274,4 +278,10 @@ regex_ipv4: r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
 regex_ipv6: r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"
 regex_date_ymd: r"\b\d{4}-\d{2}-\d{2}\b"
 regex_time_hms: r"\b\d{2}:\d{2}:\d{2}\b"
-regex_url: r"\b(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*\b"
+regex_url: r"\b(?:https?|ftp):\/\/[^\s\/$.?#].[^\s]*\b"
+
+
+locale_spanish: "Hispanice"
+locale_portuguese: "Lusitane"
+locale_chinese: "Sinaice"
+locale_latin: "Latine"

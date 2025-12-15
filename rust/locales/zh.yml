@@ -29,6 +29,10 @@ locale_english: "English"
 locale_french: "Français"
 locale_german: "Deutsch"
 locale_icelandic: "Íslenska"
+locale_spanish: "西班牙语"
+locale_portuguese: "葡萄牙语"
+locale_chinese: "中文"
+locale_latin: "拉丁语"
 
 # UI strings from rust/src/ui.rs
 button_back: "返回"
@@ -275,3 +279,9 @@ regex_ipv6: r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"
 regex_date_ymd: r"\b\d{4}-\d{2}-\d{2}\b"
 regex_time_hms: r"\b\d{2}:\d{2}:\d{2}\b"
 regex_url: r"\b(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*\b"
+
+
+locale_spanish: "西班牙语"
+locale_portuguese: "葡萄牙语"
+locale_chinese: "中文"
+locale_latin: "拉丁语"
