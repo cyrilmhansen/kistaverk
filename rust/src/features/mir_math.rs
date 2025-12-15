@@ -36,7 +36,7 @@ impl MirMathLibrary {
     }
 
     /// Execute a MIR math function
-    pub fn execute(&mut self, name: &str, args: Vec<Number>) -> Result<Number, String> {
+    pub fn execute(&mut self, name: &str, _args: Vec<Number>) -> Result<Number, String> {
         // Get or compile the function
         let state = self.get_or_compile(name)?;
         
@@ -45,7 +45,7 @@ impl MirMathLibrary {
         let mut execution_state = state.clone();
         
         // Execute the function
-        if let Some(runtime) = execution_state.execute_jit() {
+        if let Some(_runtime) = execution_state.execute_jit() {
             // Parse result from output
             self.parse_mir_result(&execution_state.output)
         } else {
@@ -232,14 +232,14 @@ fn convert_to_mir_expression(expr: &str) -> String {
 /// Execute MIR expression
 fn execute_mir_expression(
     mir_code: &str,
-    mir_library: &mut MirMathLibrary,
+    _mir_library: &mut MirMathLibrary,
 ) -> Result<Number, String> {
     // For now, use a temporary function
     let mut temp_state = MirScriptingState::new();
     temp_state.source = mir_code.to_string();
     temp_state.entry = "main".to_string();
     
-    if let Some(runtime) = temp_state.execute_jit() {
+    if let Some(_runtime) = temp_state.execute_jit() {
         // Parse result
         if temp_state.output.starts_with("Result: ") {
             let num_str = &temp_state.output[8..];

@@ -47,7 +47,7 @@ impl CBasedAutomaticDifferentiator {
     /// Generate C code for automatic differentiation
     fn generate_ad_c_code(&self, expr: &str, var: &str, func_name: &str) -> Result<String, String> {
         // Parse the expression to understand its structure
-        let (base_expr, ops) = self.parse_expression(expr)?;
+        let (_base_expr, _ops) = self.parse_expression(expr)?;
         
         // Generate C code using forward-mode AD
         let mut c_code = String::new();

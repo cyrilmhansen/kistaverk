@@ -103,7 +103,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Benchmark MIR evaluation
-    fn benchmark_mir(&mut self, expr: &str) -> PerformanceMetrics {
+    fn benchmark_mir(&mut self, _expr: &str) -> PerformanceMetrics {
         let mut compilation_time = Duration::default();
         let mut execution_time = Duration::default();
         
@@ -149,7 +149,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Test basic evaluation
-    fn test_basic_evaluation(&mut self, expr: &str) -> StabilityTestResult {
+    fn test_basic_evaluation(&mut self, _expr: &str) -> StabilityTestResult {
         let start_time = Instant::now();
         let result = self.mir_library.execute("eval", vec![Number::from_f64(1.0)]);
         let execution_time = start_time.elapsed();
@@ -163,7 +163,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Test edge case
-    fn test_edge_case(&mut self, test_name: &str, test_expr: &str) -> StabilityTestResult {
+    fn test_edge_case(&mut self, test_name: &str, _test_expr: &str) -> StabilityTestResult {
         let start_time = Instant::now();
         let result = self.mir_library.execute("eval", vec![Number::from_f64(1.0)]);
         let execution_time = start_time.elapsed();
@@ -180,7 +180,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Test complex expression
-    fn test_complex_expression(&mut self, test_name: &str, test_expr: &str) -> StabilityTestResult {
+    fn test_complex_expression(&mut self, test_name: &str, _test_expr: &str) -> StabilityTestResult {
         let start_time = Instant::now();
         let result = self.mir_library.execute("eval", vec![Number::from_f64(1.0)]);
         let execution_time = start_time.elapsed();
@@ -194,7 +194,7 @@ impl PerformanceAnalyzer {
     }
 
     /// Generate recommendation based on analysis
-    fn generate_recommendation(&self, standard: &PerformanceMetrics, mir: &PerformanceMetrics, speedup: Option<f64>) -> String {
+    fn generate_recommendation(&self, _standard: &PerformanceMetrics, _mir: &PerformanceMetrics, speedup: Option<f64>) -> String {
         if let Some(speedup) = speedup {
             if speedup > 2.0 {
                 format!("Recommend MIR JIT: {:.1}x speedup detected", speedup)
@@ -249,7 +249,7 @@ impl FunctionPlotter {
     /// Evaluate function at a specific point
     fn evaluate_at_point(&self, expr: &str, x: f64, mir_library: &mut MirMathLibrary) -> Result<f64, String> {
         // Replace variable with value (simplified approach)
-        let expr_with_value = expr.replace("x", &x.to_string());
+        let _expr_with_value = expr.replace("x", &x.to_string());
         
         // Evaluate using MIR
         let result = mir_library.execute("eval", vec![Number::from_f64(x)]);
