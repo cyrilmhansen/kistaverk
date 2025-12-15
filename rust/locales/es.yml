@@ -275,3 +275,9 @@ regex_ipv6: r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"
 regex_date_ymd: r"\b\d{4}-\d{2}-\d{2}\b"
 regex_time_hms: r"\b\d{2}:\d{2}:\d{2}\b"
 regex_url: r"\b(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*\b"
+
+
+locale_spanish: "Español"
+locale_portuguese: "Portugués"
+locale_chinese: "Chino"
+locale_latin: "Latín"

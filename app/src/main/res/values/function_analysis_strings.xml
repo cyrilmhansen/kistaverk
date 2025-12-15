@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Function Analysis Screen -->
+    <string name="function_analysis_title">Function Analysis</string>
+    <string name="function_expression">Function Expression</string>
+    <string name="function_expression_hint">e.g., sin(x^2) + cos(x)</string>
+    <string name="iterations_hint">Iterations (default: 100)</string>
+    <string name="evaluation_mode">Evaluation Mode</string>
+    <string name="standard_mode">Standard</string>
+    <string name="mir_mode">MIR JIT</string>
+    <string name="hybrid_mode">Hybrid</string>
+    
+    <!-- Performance Metrics -->
+    <string name="performance_metrics">Performance Metrics</string>
+    <string name="execution_time">Execution Time</string>
+    <string name="memory_usage">Memory Usage</string>
+    <string name="speedup">Speedup</string>
+    <string name="recommendation_placeholder">Recommendation will appear here</string>
+    
+    <!-- Visualization -->
+    <string name="visualization">Visualization</string>
+    <string name="stability_test_results">Stability Test Results</string>
+    
+    <!-- Actions -->
+    <string name="analyze">Analyze</string>
+    <string name="export">Export</string>
+    
+    <!-- Error Messages -->
+    <string name="error_empty_expression">Please enter a function expression</string>
+    <string name="error_analysis_failed">Analysis failed: %s</string>
+    <string name="error_export_failed">Export failed: %s</string>
+    <string name="error_no_results">No analysis results to export</string>
+    
+    <!-- Success Messages -->
+    <string name="success_export">Plot exported successfully</string>
+</resources>

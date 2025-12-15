@@ -29,6 +29,10 @@ locale_english: "Inglês"
 locale_french: "Francês"
 locale_german: "Alemão"
 locale_icelandic: "Islandês"
+locale_spanish: "Espanhol"
+locale_portuguese: "Português"
+locale_chinese: "Chinês"
+locale_latin: "Latim"
 
 # UI strings from rust/src/ui.rs
 button_back: "Voltar"
