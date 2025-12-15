@@ -278,3 +278,8 @@ regex_ipv6: r"\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"
 regex_date_ymd: r"\b\d{4}-\d{2}-\d{2}\b"
 regex_time_hms: r"\b\d{2}:\d{2}:\d{2}\b"
 regex_url: r"\b(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*\b"
+
+locale_spanish: "Spanisch"
+locale_portuguese: "Portugiesisch"
+locale_chinese: "Chinesisch" # Using standard locale code zh
+locale_latin: "Latein"
