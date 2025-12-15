@@ -15,6 +15,7 @@ use crate::features::system_info::SystemInfoState;
 use crate::features::vault::VaultState;
 use crate::features::automatic_differentiation::{AutomaticDifferentiator, ADMode};
 use crate::features::visualization::{VisualizationManager, PerformanceVisualizer};
+use crate::features::cas_types::Number;
 use serde::{Deserialize, Serialize};
 use rust_i18n::t;
 
@@ -52,6 +53,7 @@ pub enum Screen {
     QrSlideshow,
     QrReceive,
     MathTool,
+    FunctionAnalysis,
     Vault,
     Logic,
     Jwt,
@@ -374,13 +376,12 @@ impl MathToolState {
     
     /// Set AD mode (forward or reverse)
     pub fn set_ad_mode(&mut self, mode: ADMode) {
-        self.automatic_differentiator = AutomaticDifferentiator::new(mode);
-        self.automatic_differentiator.register_basic_ad_functions();
+        self.automatic_differentiator.set_ad_mode(mode);
     }
     
     /// Get current AD mode
     pub fn get_ad_mode(&self) -> ADMode {
-        self.automatic_differentiator.ad_mode
+        self.automatic_differentiator.get_ad_mode()
     }
     
     /// Plot the current expression

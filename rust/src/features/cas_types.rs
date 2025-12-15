@@ -156,6 +156,18 @@ impl std::ops::Neg for Number {
     }
 }
 
+// Implement is_finite method for Number
+impl Number {
+    /// Check if the number is finite (not NaN or infinity)
+    pub fn is_finite(&self) -> bool {
+        match self {
+            Number::Fast(value) => value.is_finite(),
+            #[cfg(feature = "precision")]
+            Number::Precise(value) => value.is_finite(),
+        }
+    }
+}
+
 // Implement comparison operations
 impl PartialOrd for Number {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

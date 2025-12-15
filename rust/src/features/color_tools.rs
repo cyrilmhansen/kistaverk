@@ -132,7 +132,7 @@ pub fn render_color_screen(state: &AppState) -> serde_json::Value {
                 | parts[2] as u32) as i64;
             children.push(
                 serde_json::to_value(
-                    UiColorSwatch::new(color).content_description(&t!("color_preview_content_description")),
+                    UiColorSwatch::new(color).content_description(Box::leak(t!("color_preview_content_description").into_owned().into_boxed_str())),
                 )
                 .unwrap(),
             );

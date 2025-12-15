@@ -19,6 +19,7 @@ use crate::features::misc_screens::{
     render_magnetometer_screen, render_progress_demo_screen, render_settings_screen, render_shader_screen,
 };
 use crate::features::math_tool::{handle_math_action, render_math_tool_screen};
+use crate::features::function_analysis::handle_function_analysis_action;
 use crate::features::unit_converter::{handle_unit_converter_action, render_unit_converter_screen};
 use crate::features::pdf::{
     perform_pdf_operation, perform_pdf_set_title, perform_pdf_sign, render_pdf_preview_screen,
@@ -165,7 +166,7 @@ impl WorkerRuntime {
                 .map_err(|e| format!("worker_send_failed:{e}"))
         } else {
             let result = run_worker_job(job);
-            STATE.push_worker_result(result);
+            STATE.get_or_init(GlobalState::new).push_worker_result(result);
             Ok(())
         }
     }
@@ -1063,6 +1064,9 @@ pub(crate) enum Action {
         bindings: HashMap<String, String>,
     },
     MathClearHistory,
+    FunctionAnalysisAction {
+        action: String,
+    },
     UnitConverterScreen,
     UnitConverterAction {
         action: String,
@@ -1312,6 +1316,10 @@ fn parse_action(command: Command) -> Result<Action, String> {
         "math_tool_screen" => Ok(Action::MathToolScreen),
         "math_calculate" => Ok(Action::MathCalculate { bindings }),
         "math_clear_history" => Ok(Action::MathClearHistory),
+        "function_analysis_screen" => Ok(Action::FunctionAnalysisAction { action: "screen".to_string() }),
+        other if other.starts_with("function_analysis_") => Ok(Action::FunctionAnalysisAction {
+            action: other.to_string(),
+        }),
         "unit_converter_screen" => Ok(Action::UnitConverterScreen),
         other if other.starts_with("unit_converter_") => Ok(Action::UnitConverterAction {
             action: other.to_string(),
@@ -1947,7 +1955,7 @@ pub extern "system" fn Java_aeska_kistaverk_MainActivity_getMathBackendInfo(
 
 fn handle_command(command: Command) -> Result<Value, String> {
     let mut lock_poisoned = false;
-    let mut state = match STATE.ui.lock() {
+    let mut state = match STATE.get_or_init(GlobalState::new).ui.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {
             lock_poisoned = true;
@@ -2327,6 +2335,13 @@ fn handle_command(command: Command) -> Result<Value, String> {
                 state.replace_current(Screen::MathTool);
             }
         }
+        Action::FunctionAnalysisAction { action } => {
+            state.push_screen(Screen::FunctionAnalysis);
+            handle_function_analysis_action(&mut state, &action);
+            if matches!(state.current_screen(), Screen::FunctionAnalysis) {
+                state.replace_current(Screen::FunctionAnalysis);
+            }
+        }
         Action::UnitConverterScreen => {
             state.push_screen(Screen::UnitConverter);
             // reset or keep state? Usually keep unless explicit reset needed.
@@ -2478,7 +2493,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
                     benchmark: state.c_scripting.benchmark,
                 };
 
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.c_scripting.error = Some(e);
                     state.c_scripting.is_running = false;
                     state.loading_message = None;
@@ -2612,7 +2627,7 @@ fn handle_command(command: Command) -> Result<Value, String> {
             state.loading_message = Some("Reading file info...".into());
             state.loading_with_spinner = true;
             let job = WorkerJob::FileInfo { path, fd, error };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.last_error = Some(e);
                 state.loading_message = None;
                 state.loading_with_spinner = false;
@@ -2799,7 +2814,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                 state.loading_message = Some("Opening archive...".into());
                 state.replace_current(Screen::Loading);
                 let job = WorkerJob::ArchiveOpen { fd: raw_fd, path };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.archive.error = Some(e);
                 }
                 #[cfg(test)]
@@ -2828,7 +2843,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                     state.loading_message = Some("Compressing...".into());
                     state.replace_current(Screen::Loading);
                     let job = WorkerJob::ArchiveCompress { source_path: path };
-                    if let Err(e) = STATE.worker().enqueue(job) {
+                    if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                         state.archive.error = Some(e);
                     }
                     #[cfg(test)]
@@ -2883,7 +2898,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                 let job = WorkerJob::ArchiveExtractAll {
                     archive_path: path,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.archive.error = Some(e);
                 }
                 #[cfg(test)]
@@ -2907,7 +2922,7 @@ fn handle_archive_actions(state: &mut AppState, action: Action) -> Option<Value>
                     archive_path: path,
                     index,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.archive.error = Some(e);
                 }
                 #[cfg(test)]
@@ -2946,7 +2961,7 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
                         op: CompressionOp::Compress,
                         path: p,
                     };
-                    if let Err(e) = STATE.worker().enqueue(job) {
+                    if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                         state.compression_error = Some(e);
                     }
                     #[cfg(test)]
@@ -2976,7 +2991,7 @@ fn handle_compression_actions(state: &mut AppState, action: Action) {
                         op: CompressionOp::Decompress,
                         path: p,
                     };
-                    if let Err(e) = STATE.worker().enqueue(job) {
+                    if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                         state.compression_error = Some(e);
                     }
                     #[cfg(test)]
@@ -3065,7 +3080,7 @@ fn handle_vault_actions(state: &mut AppState, action: Action) {
                 path: src_path,
                 password: pwd,
             };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.vault.error = Some(e);
                 state.vault.is_processing = false;
                 state.loading_with_spinner = false;
@@ -3112,7 +3127,7 @@ fn handle_vault_actions(state: &mut AppState, action: Action) {
                 path: src_path,
                 password: pwd,
             };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.vault.error = Some(e);
                 state.vault.is_processing = false;
                 state.loading_with_spinner = false;
@@ -3324,7 +3339,7 @@ fn handle_hash_actions(state: &mut AppState, action: Action) -> Option<Value> {
                         state.loading_with_spinner = true;
                         state.loading_message = Some(hash_loading_message(algo).into());
                         state.replace_current(Screen::Loading);
-                        if let Err(e) = STATE.worker().enqueue(job) {
+                        if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                             state.last_error = Some(e);
                         }
                         #[cfg(test)]
@@ -3422,7 +3437,7 @@ fn handle_hash_job(
         source: source.unwrap(),
         algo,
     };
-    if let Err(e) = STATE.worker().enqueue(job) {
+    if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
         state.last_error = Some(e);
         state.last_hash = None;
     }
@@ -3464,7 +3479,7 @@ fn handle_multi_hash_job(
                 source: src,
                 display_path: display,
             };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.multi_hash_error = Some(e);
                 state.multi_hash_results = None;
             }
@@ -3603,7 +3618,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     fd: raw_fd,
                     uri: uri.clone(),
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3632,7 +3647,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     secondary_uri: None,
                     selected_pages: selection.clone(),
                 });
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3661,7 +3676,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     secondary_uri: None,
                     selected_pages: selection.clone(),
                 });
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3690,7 +3705,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     secondary_uri: None,
                     selected_pages: order.clone(),
                 });
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3723,7 +3738,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     secondary_uri: secondary_uri.clone(),
                     selected_pages: Vec::new(),
                 });
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3758,7 +3773,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                 state.loading_message = Some("Merging PDFs...".into());
                 state.replace_current(Screen::Loading);
                 let job = WorkerJob::PdfMergeMany { fds: raw_fds, uris: paths };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                     state.loading_with_spinner = false;
                     state.loading_message = None;
@@ -3779,7 +3794,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                     uri: uri.clone(),
                     title,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pdf.last_error = Some(e);
                 }
                 #[cfg(test)]
@@ -3855,7 +3870,7 @@ fn handle_pdf_actions(state: &mut AppState, action: Action) {
                         img_height_px,
                         img_dpi,
                     };
-                    if let Err(e) = STATE.worker().enqueue(job) {
+                    if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                         state.pdf.last_error = Some(e);
                     }
                     #[cfg(test)]
@@ -3937,7 +3952,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                     force_text: false,
                     can_page: true,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.text_view_error = Some(e);
                     state.replace_current(Screen::TextViewer);
                 }
@@ -3959,7 +3974,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                     force_text: false,
                     can_page: true,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.text_view_error = Some(e);
                     state.replace_current(Screen::TextViewer);
                 }
@@ -3999,7 +4014,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                     force_text: true,
                     can_page: true,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.text_view_error = Some(e);
                     state.replace_current(Screen::TextViewer);
                 }
@@ -4039,7 +4054,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                 force_text: true,
                 can_page: true,
             };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.text_view_error = Some(e);
                 state.replace_current(Screen::TextViewer);
             }
@@ -4074,7 +4089,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                 force_text: true,
                 can_page: true,
             };
-            if let Err(e) = STATE.worker().enqueue(job) {
+            if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                 state.text_view_error = Some(e);
                 state.replace_current(Screen::TextViewer);
             }
@@ -4108,7 +4123,7 @@ fn handle_text_viewer_actions(state: &mut AppState, action: Action) {
                     force_text: true,
                     can_page: true,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.text_view_error = Some(e);
                     state.replace_current(Screen::TextViewer);
                 }
@@ -4546,7 +4561,7 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                     source_path: path,
                     scale: state.pixel_art.scale_factor,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.pixel_art.error = Some(e);
                 }
                 #[cfg(test)]
@@ -4700,7 +4715,7 @@ fn handle_media_actions(state: &mut AppState, action: Action) -> Option<Value> {
                     palette: state.dithering_palette,
                     output_dir,
                 };
-                if let Err(e) = STATE.worker().enqueue(job) {
+                if let Err(e) = STATE.get_or_init(GlobalState::new).worker().enqueue(job) {
                     state.dithering_error = Some(e);
                 }
                 #[cfg(test)]
@@ -4769,6 +4784,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::PixelArt => render_pixel_art_screen(state),
         Screen::RegexTester => render_regex_tester_screen(state),
         Screen::MathTool => render_math_tool_screen(state),
+        Screen::FunctionAnalysis => features::function_analysis::render_function_analysis_screen(state),
         Screen::UnitConverter => render_unit_converter_screen(state),
         Screen::UuidGenerator => render_uuid_screen(state),
         Screen::PresetManager => render_preset_manager(state),
@@ -5162,6 +5178,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "math_tool_screen",
             requires_file_picker: false,
             description: "evaluate expressions & functions",
+        },
+        Feature {
+            id: "function_analysis",
+            name: "📊 Function Analysis",
+            category: "🧰 Utilities",
+            action: "function_analysis_screen",
+            requires_file_picker: false,
+            description: "MIR-based function analysis & AD",
         },
         Feature {
             id: "unit_converter",
@@ -5583,7 +5607,7 @@ mod tests {
 
         assert_contains_text(&ui, &format!("SHA-256: {SHA256_ABC}"));
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
         assert!(state.last_error.is_none());
@@ -5610,7 +5634,7 @@ mod tests {
 
         assert_contains_text(&ui, &format!("SHA-256: {SHA256_ABC}"));
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-256"));
         assert!(state.last_error.is_none());
@@ -5644,7 +5668,7 @@ mod tests {
         );
         assert_contains_text(&ui, "Computing SHA-256");
         assert!(
-            STATE.ui_try_lock().is_some(),
+            STATE.get_or_init(GlobalState::new).ui_try_lock().is_some(),
             "state mutex should be free while worker runs"
         );
 
@@ -5653,7 +5677,7 @@ mod tests {
             handle_command(make_command("init")).expect("refresh after worker should succeed");
         assert_contains_text(&refreshed, SHA256_ABC);
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert_eq!(state.hash_match, Some(true));
 
@@ -5686,13 +5710,13 @@ mod tests {
         );
         assert_contains_text(&inc_ui, "Tool menu");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.counter, 1);
         drop(state);
 
         std::thread::sleep(Duration::from_millis(350));
         handle_command(make_command("init")).expect("refresh should apply worker result");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash.as_deref(), Some(SHA256_ABC));
         assert!(state.last_error.is_none());
 
@@ -5731,13 +5755,13 @@ mod tests {
         );
         assert_contains_text(&ui, "Opening archive");
         assert!(
-            STATE.ui_try_lock().is_some(),
+            STATE.get_or_init(GlobalState::new).ui_try_lock().is_some(),
             "state mutex should be free while archive worker runs"
         );
 
         std::thread::sleep(Duration::from_millis(250));
         handle_command(make_command("init")).expect("refresh after worker should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state
             .archive
             .entries
@@ -5767,7 +5791,7 @@ mod tests {
 
         assert_contains_text(&ui, &format!("SHA-1: {SHA1_ABC}"));
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash.as_deref(), Some(SHA1_ABC));
         assert_eq!(state.last_hash_algo.as_deref(), Some("SHA-1"));
         assert!(state.last_error.is_none());
@@ -5785,7 +5809,7 @@ mod tests {
 
         assert_contains_text(&ui, "HELLO RUST");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_input.as_deref(), Some("Hello rust"));
         assert_eq!(state.text_output.as_deref(), Some("HELLO RUST"));
         assert!(matches!(state.current_screen(), Screen::TextTools));
@@ -5806,7 +5830,7 @@ mod tests {
 
         assert_contains_text(&ui, "Word count: 3");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_output.as_deref(), Some("Word count: 3"));
     }
 
@@ -5826,7 +5850,7 @@ mod tests {
             .find(|t| t == "Result")
             .and_then(|_| {
                 // result text is next entry after label in traversal
-                STATE.ui_try_lock().and_then(|s| s.text_output.clone())
+                STATE.get_or_init(GlobalState::new).ui_try_lock().and_then(|s| s.text_output.clone())
             })
             .unwrap_or_default();
 
@@ -5834,7 +5858,7 @@ mod tests {
             result.contains('\n'),
             "expected wrapped text to contain newline, got {result:?}"
         );
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state
             .text_output
             .as_deref()
@@ -5856,7 +5880,7 @@ mod tests {
         let ui = handle_command(command).expect("trim command should succeed");
         assert_contains_text(&ui, "Trim spacing (collapse)");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_output.as_deref(), Some("a b"));
 
         drop(state);
@@ -5870,7 +5894,7 @@ mod tests {
 
         let ui2 = handle_command(command2).expect("trim command should succeed");
         assert_contains_text(&ui2, "Trim edges");
-        let state2 = STATE.ui_lock();
+        let state2 = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state2.text_output.as_deref(), Some("a   b"));
     }
 
@@ -5882,7 +5906,7 @@ mod tests {
         let ui = handle_command(make_command("back")).expect("back should succeed");
         assert_contains_text(&ui, "Tool menu");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.nav_depth(), 1);
         assert!(matches!(state.current_screen(), Screen::Home));
     }
@@ -5894,13 +5918,13 @@ mod tests {
 
         handle_command(make_command("text_tools_screen")).expect("screen switch should work");
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.nav_depth(), 2);
             assert!(matches!(state.current_screen(), Screen::TextTools));
         }
 
         handle_command(make_command("back")).expect("back should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.nav_depth(), 1);
         assert!(matches!(state.current_screen(), Screen::Home));
     }
@@ -5924,7 +5948,7 @@ mod tests {
         // Reset state and ensure we go back to home
         reset_state();
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert!(matches!(state.current_screen(), Screen::Home));
             assert!(state.text_output.is_none());
         }
@@ -5935,7 +5959,7 @@ mod tests {
             handle_command(restore_cmd).expect("restore should succeed and return UI");
         assert_contains_text(&ui_after_restore, "Result");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(matches!(state.current_screen(), Screen::TextTools));
         assert_eq!(state.text_output.as_deref(), Some("HI"));
         assert_eq!(state.text_input.as_deref(), Some("hi"));
@@ -5950,7 +5974,7 @@ mod tests {
         enc.bindings = Some(HashMap::from([("text_input".into(), "hi".into())]));
         handle_command(enc).expect("encode should work");
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.text_output.as_deref(), Some("aGk="));
         }
 
@@ -5958,7 +5982,7 @@ mod tests {
         dec.bindings = Some(HashMap::from([("text_input".into(), "aGk=".into())]));
         let ui = handle_command(dec).expect("decode should work");
         assert_contains_text(&ui, "hi");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_output.as_deref(), Some("hi"));
     }
 
@@ -5971,7 +5995,7 @@ mod tests {
         enc.bindings = Some(HashMap::from([("text_input".into(), "hi".into())]));
         handle_command(enc).expect("encode should work");
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.text_output.as_deref(), Some("6869"));
         }
 
@@ -5979,7 +6003,7 @@ mod tests {
         dec.bindings = Some(HashMap::from([("text_input".into(), "6869".into())]));
         let ui = handle_command(dec).expect("decode should work");
         assert_contains_text(&ui, "hi");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_output.as_deref(), Some("hi"));
     }
 
@@ -6025,7 +6049,7 @@ mod tests {
 
         let ui = handle_command(cmd).expect("status command should succeed");
         assert_contains_text(&ui, "Share last log");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_sensor_log.as_deref(), Some("/tmp/sensors.csv"));
         assert_eq!(state.sensor_status.as_deref(), Some("logging"));
     }
@@ -6062,7 +6086,7 @@ mod tests {
         let ui = handle_command(cmd).expect("text viewer should succeed");
         assert_contains_text(&ui, "hello from csv");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(
             state.text_view_path.as_deref(),
             Some(file.path().to_string_lossy().as_ref())
@@ -6087,7 +6111,7 @@ mod tests {
         cmd.path = Some(file.path().to_string_lossy().into_owned());
 
         handle_command(cmd).expect("text viewer should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         let initial_loaded_end = state.text_view_loaded_bytes;
         let initial_offset = state.text_view_window_offset;
         let total = state.text_view_total_bytes.unwrap();
@@ -6102,7 +6126,7 @@ mod tests {
         drop(state);
 
         handle_command(make_command("text_viewer_load_more")).expect("load more should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         let after_len = state
             .text_view_content
             .as_ref()
@@ -6126,13 +6150,13 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
         {
-            let mut state = STATE.ui_lock();
+            let mut state = STATE.get_or_init(GlobalState::new).ui_lock();
             state.pdf.source_uri = Some("file://dummy.pdf".into());
             state.pdf.page_count = Some(3);
         }
         let ui = handle_command(make_command("pdf_preview_screen")).expect("preview screen");
         assert_contains_text(&ui, "PDF viewer");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(matches!(state.current_screen(), Screen::PdfPreview));
         assert!(state.pdf.preview_page.is_none());
     }
@@ -6142,7 +6166,7 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
         {
-            let mut state = STATE.ui_lock();
+            let mut state = STATE.get_or_init(GlobalState::new).ui_lock();
             state.pdf.source_uri = Some("file://dummy.pdf".into());
             state.pdf.page_count = Some(5);
         }
@@ -6152,7 +6176,7 @@ mod tests {
         cmd.bindings = Some(bindings);
         handle_command(cmd).expect("open page");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.pdf.preview_page, Some(2));
         assert!(matches!(state.current_screen(), Screen::PdfPreview));
     }
@@ -6172,7 +6196,7 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
         handle_command(make_command("pixel_art_screen")).expect("screen");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(matches!(state.current_screen(), Screen::PixelArt));
         assert_eq!(state.pixel_art.scale_factor, 4);
     }
@@ -6191,7 +6215,7 @@ mod tests {
         apply.loading_only = Some(false);
         let ui = handle_command(apply).expect("apply");
         assert_contains_text(&ui, "Result:");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state.pixel_art.result_path.is_some());
         assert!(state.pixel_art.error.is_none());
     }
@@ -6204,7 +6228,7 @@ mod tests {
         let mut cmd = make_command("pixel_art_set_scale");
         cmd.bindings = Some(HashMap::from([("scale".into(), "1".into())]));
         handle_command(cmd).unwrap();
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.pixel_art.scale_factor, 2);
     }
 
@@ -6228,7 +6252,7 @@ mod tests {
         jump.bindings = Some(HashMap::from([("offset_bytes".into(), "64000".into())]));
         handle_command(jump).expect("jump should succeed");
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             // If the file is smaller than a window, jump clamps to 0.
             assert!(state.text_view_window_offset <= 64_000);
             assert!(
@@ -6240,7 +6264,7 @@ mod tests {
 
         // Load previous should move window back toward start
         handle_command(make_command("text_viewer_load_prev")).expect("prev should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_view_window_offset, 0);
         assert!(state.text_view_content.as_ref().unwrap().starts_with('a'));
     }
@@ -6271,7 +6295,7 @@ mod tests {
             .expect("text entry open should succeed");
         assert_contains_text(&ui, "hello from zip");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state
             .text_view_path
             .as_deref()
@@ -6292,7 +6316,7 @@ mod tests {
         let ui = handle_command(cmd).expect("qr generate should succeed");
 
         assert_contains_text(&ui, "Back");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(matches!(state.current_screen(), Screen::Qr));
         assert!(state.nav_depth() > 1);
     }
@@ -6304,7 +6328,7 @@ mod tests {
 
         handle_command(make_command("sensor_logger_screen")).unwrap();
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.nav_depth(), 2);
             assert!(matches!(state.current_screen(), Screen::SensorLogger));
         }
@@ -6313,13 +6337,13 @@ mod tests {
         start.bindings = Some(HashMap::from([("sensor_accel".into(), "true".into())]));
         handle_command(start).unwrap();
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.nav_depth(), 2);
             assert!(matches!(state.current_screen(), Screen::SensorLogger));
         }
 
         handle_command(make_command("back")).unwrap();
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.nav_depth(), 1);
         assert!(matches!(state.current_screen(), Screen::Home));
     }
@@ -6331,7 +6355,7 @@ mod tests {
 
         let ui = handle_command(make_command("text_viewer_open")).expect("should return UI");
         assert_contains_text(&ui, "missing_source");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.text_view_error.as_deref(), Some("missing_source"));
         assert!(state.text_view_content.is_none());
     }
@@ -6351,7 +6375,7 @@ mod tests {
         handle_command(initial).expect("initial hash should succeed");
 
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.last_hash.as_deref(), Some(MD5_ABC));
             assert_eq!(state.last_hash_algo.as_deref(), Some("MD5"));
         }
@@ -6361,7 +6385,7 @@ mod tests {
 
         assert_contains_text(&ui, "missing_path");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.last_hash, None);
         assert_eq!(state.last_error.as_deref(), Some("missing_path"));
         assert_eq!(state.last_hash_algo.as_deref(), Some("MD4"));
@@ -6385,7 +6409,7 @@ mod tests {
         thread::sleep(Duration::from_millis(10));
         let _ = handle_command(make_command("snapshot")).unwrap();
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(matches!(state.current_screen(), Screen::TextViewer));
         let content = state.text_view_content.as_deref().unwrap_or("");
         assert!(content.contains(SAMPLE_CONTENT));
@@ -6411,7 +6435,7 @@ mod tests {
         thread::sleep(Duration::from_millis(10));
         let _ = handle_command(make_command("snapshot")).unwrap();
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.current_screen(), Screen::FileInfo);
         assert!(state.last_file_info.is_some());
         assert!(state.last_error.is_none());
@@ -6434,7 +6458,7 @@ mod tests {
         clear_cmd.bindings = Some(HashMap::from_iter([("find_query".into(), "".into())]));
         let ui = handle_command(clear_cmd).expect("clear find query");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state.text_view_find_query.is_none());
         assert_eq!(
             state.text_view_find_match.as_deref(),
@@ -6486,7 +6510,7 @@ mod tests {
         thread::sleep(Duration::from_millis(10));
         let _ = handle_command(make_command("snapshot")).unwrap();
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.pdf.page_count, Some(1));
         assert_eq!(state.pdf.page_aspect_ratio, Some(2.0));
 
@@ -6554,7 +6578,7 @@ mod tests {
 
         let _ = handle_command(make_command("snapshot")).unwrap();
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         if let Some(err) = &state.pdf.last_error {
             panic!("pdf_sign worker returned error: {err}");
         }
@@ -6569,7 +6593,7 @@ mod tests {
         let _guard = TEST_MUTEX.lock().unwrap();
         reset_state();
         {
-            let mut state = STATE.ui_lock();
+            let mut state = STATE.get_or_init(GlobalState::new).ui_lock();
             state.pdf.page_count = Some(3);
             state.pdf.source_uri = Some("file://dummy.pdf".into());
         }
@@ -6582,7 +6606,7 @@ mod tests {
         ]));
         handle_command(cmd).expect("grid action should succeed");
 
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.pdf.signature_target_page, Some(2));
         assert_eq!(state.pdf.signature_x_pct, Some(0.8));
         assert_eq!(state.pdf.signature_y_pct, Some(0.3));
@@ -6626,7 +6650,7 @@ mod tests {
         let mut cmd = make_command("pdf_merge_pick");
         cmd.path_list = Some(vec!["a.pdf".into(), "b.pdf".into()]);
         handle_command(cmd).expect("merge pick should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.pdf.merge_queue, vec!["a.pdf", "b.pdf"]);
     }
 
@@ -6637,7 +6661,7 @@ mod tests {
         let mut cmd = make_command("kotlin_image_batch_pick");
         cmd.path_list = Some(vec!["/tmp/1.png".into(), "/tmp/2.png".into()]);
         handle_command(cmd).expect("batch pick should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.image.batch_queue, vec!["/tmp/1.png", "/tmp/2.png"]);
     }
 
@@ -6651,7 +6675,7 @@ mod tests {
             "log".into(),
         )]));
         handle_command(cmd).expect("filter action should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert_eq!(state.archive.filter_query, Some("log".into()));
     }
 
@@ -6670,7 +6694,7 @@ mod tests {
         ]));
         handle_command(add_cmd).expect("scheduler add should succeed");
         {
-            let state = STATE.ui_lock();
+            let state = STATE.get_or_init(GlobalState::new).ui_lock();
             assert_eq!(state.scheduler.tasks.len(), 1);
             let task = &state.scheduler.tasks[0];
             assert_eq!(task.id, 1);
@@ -6685,7 +6709,7 @@ mod tests {
 
         handle_command(make_command("scheduler_delete:1"))
             .expect("scheduler delete should succeed");
-        let state = STATE.ui_lock();
+        let state = STATE.get_or_init(GlobalState::new).ui_lock();
         assert!(state.scheduler.tasks.is_empty());
     }
 }
@@ -6693,7 +6717,7 @@ fn apply_worker_results(state: &mut AppState) {
     for (task_id, action, fired_at) in drain_scheduler_events() {
         apply_scheduler_result(state, task_id, action, fired_at);
     }
-    let results = STATE.drain_worker_results();
+    let results = STATE.get_or_init(GlobalState::new).drain_worker_results();
     if results.is_empty() {
         return;
     }

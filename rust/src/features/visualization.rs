@@ -42,10 +42,17 @@ pub struct PlotSeries {
 }
 
 /// Visualization manager
+#[derive(Debug, Clone)]
 pub struct VisualizationManager {
     mir_library: MirMathLibrary,
     plot_cache: HashMap<String, PlotData>,
     current_plot: Option<PlotData>,
+}
+
+impl Default for VisualizationManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VisualizationManager {
@@ -204,13 +211,13 @@ impl VisualizationManager {
     }
 
     /// Evaluate expression at a specific point
-    fn evaluate_expression_at(&self, expr: &str, x: f64) -> Result<f64, String> {
+    fn evaluate_expression_at(&mut self, expr: &str, x: f64) -> Result<f64, String> {
         // For now, use a simple approach - replace x with value
         // In production, we'd use proper expression evaluation
-        let expr_with_value = expr.replace("x", &x.to_string());
+        let _expr_with_value = expr.replace("x", &x.to_string());
         
         // Try to evaluate as number first
-        if let Ok(num) = expr_with_value.parse::<f64>() {
+        if let Ok(num) = expr.parse::<f64>() {
             return Ok(num);
         }
         
@@ -328,8 +335,15 @@ impl VisualizationManager {
 }
 
 /// Performance visualizer for creating performance-related plots
+#[derive(Debug, Clone)]
 pub struct PerformanceVisualizer {
     metrics_history: Vec<PerformanceMetrics>,
+}
+
+impl Default for PerformanceVisualizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PerformanceVisualizer {

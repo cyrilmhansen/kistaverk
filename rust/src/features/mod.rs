@@ -34,6 +34,8 @@ pub mod c_scripting;
 pub mod performance_analysis;
 pub mod automatic_differentiation;
 pub mod visualization;
+pub mod function_analysis;
+pub mod c_based_ad;
 pub mod scheduler;
 pub mod unit_converter;
 pub mod math_tool_test;

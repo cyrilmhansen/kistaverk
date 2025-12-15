@@ -19,7 +19,7 @@ pub struct PerformanceMetrics {
 }
 
 /// Function analysis result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FunctionAnalysisResult {
     pub function_name: String,
     pub standard_metrics: PerformanceMetrics,
@@ -29,7 +29,7 @@ pub struct FunctionAnalysisResult {
 }
 
 /// Stability test result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct StabilityTestResult {
     pub test_name: String,
     pub passed: bool,
@@ -169,12 +169,12 @@ impl PerformanceAnalyzer {
         let execution_time = start_time.elapsed();
         
         // Edge cases may fail, but should fail gracefully
-        let passed = result.is_err() || result.unwrap().is_finite();
+        let passed = result.is_err() || result.as_ref().map_or(false, |n| n.is_finite());
         
         StabilityTestResult {
             test_name: test_name.to_string(),
             passed,
-            error_message: result.err(),
+            error_message: result.err().map(|e| e.to_string()),
             execution_time_ms: execution_time.as_secs_f64() * 1000.0,
         }
     }

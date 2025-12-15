@@ -15,10 +15,17 @@ pub enum ADMode {
 }
 
 /// Automatic differentiator using MIR
+#[derive(Debug, Clone)]
 pub struct AutomaticDifferentiator {
     mir_library: MirMathLibrary,
     ad_mode: ADMode,
     ad_functions: HashMap<String, String>,  // Cache of generated AD functions
+}
+
+impl Default for AutomaticDifferentiator {
+    fn default() -> Self {
+        Self::new(ADMode::Forward)
+    }
 }
 
 impl AutomaticDifferentiator {
@@ -257,27 +264,31 @@ impl AutomaticDifferentiator {
         } else if instruction.starts_with("mul r, r, ") {
             // mul r, r, y -> mul r, r, y; add dr, dr*y, r*dy (product rule)
             let other_var = instruction.trim_start_matches("mul r, r, ");
+            // Declare temporary variables first
             format!(
-                "{}\n// Product rule: d(r*y) = dr*y + r*dy\nmul temp1, dr, {}\nmul temp2, r, d{}\nadd dr, temp1, temp2",
+                "{}\n// Product rule: d(r*y) = dr*y + r*dy\nmov temp1, 0\nmul temp1, dr, {}\nmov temp2, 0\nmul temp2, r, d{}\nadd dr, temp1, temp2",
                 instruction, other_var, other_var
             )
         } else if instruction.starts_with("div r, r, ") {
             // div r, r, y -> div r, r, y; (dr*y - r*dy)/y^2 (quotient rule)
             let other_var = instruction.trim_start_matches("div r, r, ");
+            // Declare temporary variables first
             format!(
-                "{}\n// Quotient rule: d(r/y) = (dr*y - r*dy)/y^2\nmul temp1, dr, {}\nmul temp2, r, d{}\nsub temp1, temp1, temp2\nmul temp2, {}, {}\ndiv dr, temp1, temp2",
+                "{}\n// Quotient rule: d(r/y) = (dr*y - r*dy)/y^2\nmov temp1, 0\nmul temp1, dr, {}\nmov temp2, 0\nmul temp2, r, d{}\nsub temp1, temp1, temp2\nmul temp2, {}, {}\ndiv dr, temp1, temp2",
                 instruction, other_var, other_var, other_var, other_var
             )
         } else if instruction.starts_with("call sin, r, r") {
             // d(sin(x))/dx = cos(x) * dx
+            // Store original r value before calling sin (which modifies r)
             format!(
-                "{}\n// Chain rule: d(sin(r)) = cos(r) * dr\nmov temp1, r\ncall cos, r, r\nmul dr, r, dr",
+                "{}\n// Chain rule: d(sin(r)) = cos(r) * dr\nmov temp1, r\ncall cos, r, temp1\nmul dr, r, dr",
                 instruction
             )
         } else if instruction.starts_with("call cos, r, r") {
             // d(cos(x))/dx = -sin(x) * dx
+            // Store original r value before calling cos (which modifies r)
             format!(
-                "{}\n// Chain rule: d(cos(r)) = -sin(r) * dr\nmov temp1, r\ncall sin, r, r\nmul r, r, -1\nmul dr, r, dr",
+                "{}\n// Chain rule: d(cos(r)) = -sin(r) * dr\nmov temp1, r\ncall sin, r, temp1\nmul r, r, -1\nmul dr, r, dr",
                 instruction
             )
         } else if instruction.starts_with("call exp, r, r") {
@@ -496,6 +507,18 @@ impl AutomaticDifferentiator {
               endmodule
         "#.to_string());
     }
+
+    /// Get current AD mode
+    pub fn get_ad_mode(&self) -> ADMode {
+        self.ad_mode
+    }
+
+    /// Set AD mode (forward or reverse)
+    pub fn set_ad_mode(&mut self, mode: ADMode) {
+        self.ad_mode = mode;
+        // Clear cache when mode changes
+        self.ad_functions.clear();
+    }
 }
 
 /// Expression AST for AD
@@ -654,5 +677,90 @@ mod tests {
         assert!(result.is_ok());
         let ad_function = result.unwrap();
         assert!(ad_function.contains("ad_"));
+    }
+
+    #[test]
+    fn test_crash_expression_x_squared_minus_cos_x() {
+        let mut ad = AutomaticDifferentiator::new(ADMode::Forward);
+        
+        // This is the expression that was causing the crash: x^2 - cos(x)
+        let result = ad.differentiate("x^2 - cos(x)", "x");
+        assert!(result.is_ok());
+        let ad_function = result.unwrap();
+        
+        // Debug: Print the generated MIR code
+        if let Some(mir_code) = ad.ad_functions.get("x^2 - cos(x)") {
+            println!("Generated MIR code for x^2 - cos(x):");
+            println!("{}", mir_code);
+            println!("End of MIR code");
+        }
+        
+        // The generated MIR should not contain invalid instructions
+        let mir_code = ad.ad_functions.get("x^2 - cos(x)").unwrap();
+        
+        // Check that the MIR doesn't contain invalid instructions that would crash the MIR interpreter
+        assert!(!mir_code.contains("derivative"), "Generated MIR should not contain 'derivative' instruction");
+        assert!(!mir_code.contains("result"), "Generated MIR should not contain 'result' instruction");
+        assert!(!mir_code.contains("Chain"), "Generated MIR should not contain 'Chain' instruction");
+        assert!(!mir_code.contains("dmov"), "Generated MIR should not contain 'dmov' instruction");
+        
+        // The derivative of x^2 - cos(x) should be 2x + sin(x)
+        // Let's test the actual derivative computation
+        if let Ok(derivative_value) = ad.evaluate_derivative(&ad_function, 1.0) {
+            // At x=1: derivative = 2*1 + sin(1) ≈ 2 + 0.8415 ≈ 2.8415
+            let expected = 2.0 + 1.0f64.sin();
+            let actual = derivative_value.to_f64();
+            assert!((actual - expected).abs() < 0.01, "Derivative value should be approximately {expected}, got {actual}");
+        } else {
+            panic!("Failed to evaluate derivative");
+        }
+    }
+
+    #[test]
+    fn test_mir_code_validation() {
+        let mut ad = AutomaticDifferentiator::new(ADMode::Forward);
+        
+        // Test several expressions to ensure they generate valid MIR
+        let test_cases = vec![
+            ("x^2", "x"),
+            ("sin(x)", "x"),
+            ("cos(x)", "x"),
+            ("x^2 - cos(x)", "x"),
+            ("x^2 + sin(x)", "x"),
+            ("exp(x)", "x"),
+            ("log(x)", "x"),
+        ];
+        
+        for (expr, var) in test_cases {
+            let result = ad.differentiate(expr, var);
+            assert!(result.is_ok(), "Failed to differentiate: {expr}");
+            
+            let ad_function = result.unwrap();
+            let mir_code = ad.ad_functions.get(expr).unwrap();
+            
+            // Validate that the MIR code only contains known MIR instructions
+            let valid_instructions = vec!["mov", "add", "sub", "mul", "div", "call", "ret", "bge", "jmp", "loop", "done"];
+            
+            // Check each line of the MIR code
+            for line in mir_code.lines() {
+                if line.trim().is_empty() || line.trim().starts_with("//") {
+                    continue;
+                }
+                
+                // Extract the instruction part
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if !parts.is_empty() {
+                    let instruction = parts[0];
+                    
+                    // Check if it's a valid MIR instruction or a label
+                    if !instruction.starts_with("m_") && 
+                       !instruction.starts_with("ad_") &&
+                       !valid_instructions.contains(&instruction) &&
+                       !instruction.ends_with(":") {
+                        panic!("Invalid MIR instruction '{}' in expression: {}", instruction, expr);
+                    }
+                }
+            }
+        }
     }
 }

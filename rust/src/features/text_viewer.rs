@@ -502,7 +502,7 @@ pub fn render_text_viewer_screen(state: &AppState) -> Value {
                 .unwrap(),
                 serde_json::to_value(
                     UiText::new(
-                        t!("text_viewer_find_instructions"),
+                        Box::leak(t!("text_viewer_find_instructions").into_owned().into_boxed_str()),
                     )
                     .id("find_status")
                     .size(12.0),

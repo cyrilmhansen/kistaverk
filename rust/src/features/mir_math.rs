@@ -13,7 +13,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct MirMathLibrary {
     functions: HashMap<String, String>, // name -> MIR source code
-    cache: Option<HashMap<String, MirScriptingState>>, // name -> compiled state (lazy initialized)
+    cache: Option<HashMap<String, &'static MirScriptingState>>, // name -> compiled state (lazy initialized)
 }
 
 impl MirMathLibrary {
@@ -60,6 +60,7 @@ impl MirMathLibrary {
             self.cache = Some(HashMap::new());
         }
 
+        // Check cache first
         if let Some(cache) = &self.cache {
             if let Some(state) = cache.get(name) {
                 return Ok(state);
@@ -82,16 +83,15 @@ impl MirMathLibrary {
             return Err(format!("MIR compilation failed: {}", error));
         }
 
-        // Cache the compiled function
+        // Cache the compiled function and return it
         if let Some(cache) = &mut self.cache {
-            cache.insert(name.to_string(), state);
+            let boxed_state = Box::new(state);
+            let state_ref = Box::leak(boxed_state); // Leak to get a reference
+            cache.insert(name.to_string(), state_ref);
+            return Ok(state_ref);
         }
         
-        if let Some(cache) = &self.cache {
-            Ok(cache.get(name).unwrap())
-        } else {
-            Err("Cache initialization failed".to_string())
-        }
+        Err("Cache not available".to_string())
     }
 
     /// Parse MIR result from output
@@ -263,7 +263,7 @@ mod tests {
     fn test_mir_library_creation() {
         let library = MirMathLibrary::new();
         assert!(library.functions.is_empty());
-        assert!(library.cache.is_empty());
+        assert!(library.cache.as_ref().map_or(true, |c| c.is_empty()));
     }
 
     #[test]
