@@ -169,91 +169,6 @@ impl Default for MirMathLibrary {
     }
 }
 
-/// Expression complexity analyzer
-pub fn is_complex_expression(expr: &str) -> bool {
-    // Simple heuristic for now
-    let tokens = expr.split_whitespace().collect::<Vec<_>>();
-    
-    // Consider complex if:
-    // - Has many operations
-    // - Contains advanced functions
-    // - Has nested parentheses
-    let op_count = tokens.iter()
-        .filter(|&t| ["+", "-", "*", "/", "^"].contains(&t))
-        .count();
-    
-    let has_advanced_func = tokens.iter()
-        .any(|&t| ["sin", "cos", "exp", "log", "sqrt"].contains(&t));
-    
-    let paren_depth = expr.chars().filter(|&c| c == '(').count();
-    
-    // Complex if: many operations, advanced functions, or deep nesting
-    op_count > 5 || has_advanced_func || paren_depth > 2
-}
-
-/// Hybrid expression evaluator
-pub fn evaluate_with_mir_fallback(
-    expr: &str,
-    precision_bits: u32,
-    mir_library: &mut MirMathLibrary,
-) -> Result<Number, String> {
-    // First try standard evaluation
-    match crate::features::math_tool::evaluate_expression(expr, precision_bits) {
-        Ok(result) => Ok(result),
-        Err(_) => {
-            // Fall back to MIR for complex expressions
-            if is_complex_expression(expr) {
-                // Convert expression to MIR (simplified for now)
-                let mir_expr = convert_to_mir_expression(expr);
-                
-                // Execute via MIR
-                execute_mir_expression(&mir_expr, mir_library)
-            } else {
-                // Re-throw original error for simple expressions
-                crate::features::math_tool::evaluate_expression(expr, precision_bits)
-            }
-        }
-    }
-}
-
-/// Convert expression to MIR (simplified placeholder)
-fn convert_to_mir_expression(expr: &str) -> String {
-    // This is a placeholder - real implementation would:
-    // 1. Parse expression to AST
-    // 2. Generate MIR code from AST
-    // 3. Handle variables, functions, etc.
-    
-    format!(
-        "m_expr: module\n          export main\nmain: func i64\n          local i64:r\n          {} \n          ret r\n          endfunc\n          endmodule",
-        expr.replace("+", "add r, r,")
-    )
-}
-
-/// Execute MIR expression
-fn execute_mir_expression(
-    mir_code: &str,
-    _mir_library: &mut MirMathLibrary,
-) -> Result<Number, String> {
-    // For now, use a temporary function
-    let mut temp_state = MirScriptingState::new();
-    temp_state.source = mir_code.to_string();
-    temp_state.entry = "main".to_string();
-    
-    if let Some(_runtime) = temp_state.execute_jit() {
-        // Parse result
-        if temp_state.output.starts_with("Result: ") {
-            let num_str = &temp_state.output[8..];
-            num_str.parse::<f64>()
-                .map(Number::from_f64)
-                .map_err(|e| format!("Failed to parse MIR result: {}", e))
-        } else {
-            Err(format!("Unexpected MIR output: {}", temp_state.output))
-        }
-    } else {
-        Err(temp_state.error.unwrap_or("MIR execution failed".to_string()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,13 +188,6 @@ mod tests {
         assert!(library.functions.contains_key("sub"));
         assert!(library.functions.contains_key("mul"));
         assert!(library.functions.contains_key("div"));
-    }
-
-    #[test]
-    fn test_expression_complexity() {
-        assert!(!is_complex_expression("2 + 3"));
-        assert!(is_complex_expression("sin(x) + cos(y) * exp(z)"));
-        assert!(is_complex_expression("((2 + 3) * (4 + 5)) / (6 + 7)"));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 
 // Function Analysis UI for MIR advanced features
 
-use crate::state::AppState;
+use crate::state::{AppState, Screen, PlotType};
 use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInput as UiTextInput};
 use serde_json::Value;
 use crate::features::automatic_differentiation::ADMode;
@@ -132,16 +132,31 @@ pub fn handle_function_analysis_action(state: &mut AppState, action: &str) {
             match c_ad.differentiate(&expr, "x") {
                 Ok(func_name) => {
                     let mut csv = String::from("x,derivative\n");
-                    // Generate 20 points from -5 to 5
-                    for i in 0..21 {
-                        let x = -5.0 + (i as f64) * 0.5;
+                    // Generate 100 points from -5 to 5 for smoother plot
+                    for i in 0..101 {
+                        let x = -5.0 + (i as f64) * 0.1;
                         if let Ok(val) = c_ad.evaluate_derivative(&func_name, x) {
                             csv.push_str(&format!("{},{}\n", x, val.to_f64()));
                         }
                     }
                     let path = "/tmp/kistaverk_plot.csv";
                     match std::fs::write(path, csv) {
-                        Ok(_) => state.math_tool.error = Some(format!("Plot data saved to {}", path)),
+                        Ok(_) => {
+                            state.plotting = crate::state::PlottingState::new();
+                            state.plotting.file_path = Some(path.to_string());
+                            state.plotting.display_path = Some("Function Derivative".to_string());
+                            state.plotting.headers = vec!["x".to_string(), "derivative".to_string()];
+                            state.plotting.x_col = Some("x".to_string());
+                            state.plotting.y_col = Some("derivative".to_string());
+                            state.plotting.plot_type = PlotType::Line;
+                            
+                            // Try to generate the plot immediately
+                            if let Err(e) = crate::features::plotting::generate_plot(&mut state.plotting) {
+                                state.math_tool.error = Some(format!("Plot generation failed: {}", e));
+                            } else {
+                                state.push_screen(Screen::Plotting);
+                            }
+                        },
                         Err(e) => state.math_tool.error = Some(format!("Failed to write plot: {}", e)),
                     }
                 }

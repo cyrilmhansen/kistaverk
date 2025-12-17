@@ -378,11 +378,6 @@ impl CBasedAutomaticDifferentiator {
             None
         }
     }
-
-    /// Parse expression to identify components (deprecated/legacy)
-    fn parse_expression(&self, expr: &str) -> Result<(String, Vec<String>), String> {
-        Ok((expr.to_string(), vec![]))
-    }
 }
 
 /// AST for C-based AD
@@ -469,6 +464,24 @@ mod tests {
         // x^2 - cos(x)
         assert!(c_code.contains("dual_sub("));
     }
+
+    #[test]
+    fn test_complex_nested_expression() {
+        let ad = CBasedAutomaticDifferentiator::new();
+        let expr = "sin(x*x + 1)";
+        
+        let result = ad.generate_ad_c_code(expr, "x", "test_complex");
+        assert!(result.is_ok(), "Failed to generate C code for: {}", expr);
+        
+        let c_code = result.unwrap();
+        
+        // Verify operations are present
+        assert!(c_code.contains("dual_mul"), "Should contain multiplication");
+        assert!(c_code.contains("dual_add"), "Should contain addition");
+        assert!(c_code.contains("dual_sin"), "Should contain sine");
+        assert!(c_code.contains("dual_const"), "Should contain constant handling");
+    }
+}
 
     #[test]
     fn test_c_code_syntax_correctness() {
@@ -735,4 +748,3 @@ mod tests {
         let last_func = c_code.rfind("double test_func").unwrap();
         assert!(last_func > c_code.len() - 200, "Wrapper function should be near the end");
     }
-}
