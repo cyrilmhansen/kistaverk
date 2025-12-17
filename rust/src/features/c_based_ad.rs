@@ -47,7 +47,7 @@ impl CBasedAutomaticDifferentiator {
     /// Generate C code for automatic differentiation
     fn generate_ad_c_code(&self, expr: &str, var: &str, func_name: &str) -> Result<String, String> {
         // Parse the expression to understand its structure
-        let (_base_expr, _ops) = self.parse_expression(expr)?;
+        let ast = self.parse_expression_ast(expr)?;
         
         // Generate C code using forward-mode AD
         let mut c_code = String::new();
@@ -129,6 +129,15 @@ impl CBasedAutomaticDifferentiator {
         c_code.push_str("    return result;\n");
         c_code.push_str("}\n");
         c_code.push_str("\n");
+
+        // Helper for constant creation
+        c_code.push_str("DualNumber dual_const(double val) {\n");
+        c_code.push_str("    DualNumber result;\n");
+        c_code.push_str("    result.value = val;\n");
+        c_code.push_str("    result.derivative = 0.0;\n");
+        c_code.push_str("    return result;\n");
+        c_code.push_str("}\n");
+        c_code.push_str("\n");
         
         // The AD function that computes both f(x) and f'(x)
         c_code.push_str(&format!("DualNumber {}_dual(double x_val) {{\n", func_name));
@@ -138,9 +147,10 @@ impl CBasedAutomaticDifferentiator {
         c_code.push_str("    x.derivative = 1.0; // dx/dx = 1\n");
         c_code.push_str("\n");
         
-        // Generate the computation graph
-        let computation = self.generate_computation_graph(expr, var);
+        // Generate the computation graph recursively
+        let (computation, result_var) = self.generate_computation_recursive(&ast, var, 0)?;
         c_code.push_str(&computation);
+        c_code.push_str(&format!("    return {};\n", result_var));
         
         c_code.push_str("}\n");
         c_code.push_str("\n");
@@ -152,29 +162,6 @@ impl CBasedAutomaticDifferentiator {
         c_code.push_str("}\n");
         
         Ok(c_code)
-    }
-
-    /// Parse expression and generate computation graph
-    fn generate_computation_graph(&self, expr: &str, var: &str) -> String {
-        // This is a simplified parser - in production you'd want a proper parser
-        // For now, handle basic cases
-        
-        if expr == var {
-            return "    return x;".to_string();
-        }
-        
-        // Handle x^2 - cos(x) specifically
-        if expr == "x^2 - cos(x)" {
-            return "    DualNumber x_squared = dual_mul(x, x);\n    DualNumber cos_x = dual_cos(x);\n    DualNumber result = dual_sub(x_squared, cos_x);\n    return result;".to_string();
-        }
-        
-        // Handle sin(x^2)
-        if expr == "sin(x^2)" {
-            return "    DualNumber x_squared = dual_mul(x, x);\n    DualNumber result = dual_sin(x_squared);\n    return result;".to_string();
-        }
-        
-        // Default: assume it's a simple variable or constant
-        "    // TODO: implement parsing for: ".to_string() + expr
     }
 
     /// Evaluate derivative at a point using the compiled C function
@@ -203,12 +190,217 @@ impl CBasedAutomaticDifferentiator {
         }
     }
 
-    /// Parse expression to identify components (simplified)
+    /// Recursively generate C code for the AST
+    fn generate_computation_recursive(&self, ast: &ExpressionAST, var: &str, id_counter: usize) -> Result<(String, String), String> {
+        match ast {
+            ExpressionAST::Number(n) => {
+                let var_name = format!("t_{}", id_counter);
+                let code = format!("    DualNumber {} = dual_const({});\n", var_name, n);
+                Ok((code, var_name))
+            }
+            ExpressionAST::Variable(v) => {
+                if v == var {
+                    Ok(("".to_string(), "x".to_string()))
+                } else {
+                    // Treat other variables as constants (partial derivative is 0)
+                    let var_name = format!("t_{}", id_counter);
+                    // For now, we don't support external variables, assume they are 0 or error
+                    // But to be safe let's treat as 0-constant
+                    let code = format!("    DualNumber {} = dual_const(0.0); // Unknown var {}\n", var_name, v);
+                    Ok((code, var_name))
+                }
+            }
+            ExpressionAST::BinaryOp { op, left, right } => {
+                let (left_code, left_var) = self.generate_computation_recursive(left, var, id_counter * 2 + 1)?;
+                let (right_code, right_var) = self.generate_computation_recursive(right, var, id_counter * 2 + 2)?;
+                
+                let result_var = format!("t_{}", id_counter);
+                let op_func = match op.as_str() {
+                    "+" => "dual_add",
+                    "-" => "dual_sub",
+                    "*" => "dual_mul",
+                    "/" => "dual_div",
+                    "^" => return Err("Power operator ^ not yet supported in C generation (use pow(x,y))".to_string()),
+                    _ => return Err(format!("Unsupported operator: {}", op)),
+                };
+                
+                let mut code = String::new();
+                code.push_str(&left_code);
+                code.push_str(&right_code);
+                code.push_str(&format!("    DualNumber {} = {}({}, {});\n", result_var, op_func, left_var, right_var));
+                
+                Ok((code, result_var))
+            }
+            ExpressionAST::FunctionCall { name, args } => {
+                if args.len() != 1 {
+                    return Err(format!("Function {} expects 1 argument", name));
+                }
+                
+                let (arg_code, arg_var) = self.generate_computation_recursive(&args[0], var, id_counter + 1)?;
+                let result_var = format!("t_{}", id_counter);
+                
+                let func_name = match name.as_str() {
+                    "sin" => "dual_sin",
+                    "cos" => "dual_cos",
+                    "exp" => "dual_exp",
+                    "log" => "dual_log",
+                    _ => return Err(format!("Unsupported function: {}", name)),
+                };
+                
+                let mut code = String::new();
+                code.push_str(&arg_code);
+                code.push_str(&format!("    DualNumber {} = {}({});\n", result_var, func_name, arg_var));
+                
+                Ok((code, result_var))
+            }
+        }
+    }
+
+    /// Parse expression to AST
+    fn parse_expression_ast(&self, expr: &str) -> Result<ExpressionAST, String> {
+        let clean_expr = expr.replace(" ", "");
+        
+        // Simple recursive descent parser or just handle the basics
+        // For simplicity, reusing the logic from automatic_differentiation.rs but implementing it here
+        // to keep this file self-contained as requested.
+        
+        if clean_expr == "x" {
+            return Ok(ExpressionAST::Variable("x".to_string()));
+        }
+        
+        if let Ok(num) = clean_expr.parse::<f64>() {
+            return Ok(ExpressionAST::Number(num));
+        }
+        
+        // Handle binary ops (split by lowest precedence)
+        // +, -
+        for op in ["+", "-"] {
+            if let Some((left, right)) = self.split_around_operator(&clean_expr, op) {
+                let left_ast = self.parse_expression_ast(&left)?;
+                let right_ast = self.parse_expression_ast(&right)?;
+                return Ok(ExpressionAST::BinaryOp {
+                    op: op.to_string(),
+                    left: Box::new(left_ast),
+                    right: Box::new(right_ast),
+                });
+            }
+        }
+        
+        // *, /
+        for op in ["*", "/"] {
+            if let Some((left, right)) = self.split_around_operator(&clean_expr, op) {
+                let left_ast = self.parse_expression_ast(&left)?;
+                let right_ast = self.parse_expression_ast(&right)?;
+                return Ok(ExpressionAST::BinaryOp {
+                    op: op.to_string(),
+                    left: Box::new(left_ast),
+                    right: Box::new(right_ast),
+                });
+            }
+        }
+
+        // ^ (Power) - higher precedence
+        if let Some((left, right)) = self.split_around_operator(&clean_expr, "^") {
+             // For now, map x^2 to x*x if possible or just fail if not simple
+             // But let's actually parse it as an op, and let generator handle it or error
+             let left_ast = self.parse_expression_ast(&left)?;
+             let right_ast = self.parse_expression_ast(&right)?;
+             
+             // Special case for integer powers if needed, but for now just AST
+             // Wait, our generator doesn't support ^ yet.
+             // Let's special case x^2 -> x*x
+             if let ExpressionAST::Number(2.0) = right_ast {
+                 return Ok(ExpressionAST::BinaryOp {
+                     op: "*".to_string(),
+                     left: Box::new(left_ast.clone()),
+                     right: Box::new(left_ast),
+                 });
+             }
+             
+             return Ok(ExpressionAST::BinaryOp {
+                 op: "^".to_string(),
+                 left: Box::new(left_ast),
+                 right: Box::new(right_ast),
+             });
+        }
+        
+        // Function calls
+        if clean_expr.contains('(') && clean_expr.ends_with(')') {
+            if let Some((func_name, arg_expr)) = self.parse_function_call(&clean_expr) {
+                let arg_ast = self.parse_expression_ast(&arg_expr)?;
+                return Ok(ExpressionAST::FunctionCall {
+                    name: func_name,
+                    args: vec![arg_ast],
+                });
+            }
+        }
+        
+        Ok(ExpressionAST::Variable(clean_expr))
+    }
+
+    fn split_around_operator(&self, expr: &str, op: &str) -> Option<(String, String)> {
+        let mut depth = 0;
+        // Search from right to left for correct associativity/precedence
+        // Actually for +,-,*,/ left-to-right is standard but usually we split at the *last* occurrence 
+        // to build the tree correctly (top of tree is last operation performed).
+        // e.g. a + b + c -> (a+b) + c
+        
+        let mut split_pos = None;
+        
+        for (i, c) in expr.char_indices().rev() {
+            if c == ')' {
+                depth += 1;
+            } else if c == '(' {
+                depth -= 1;
+            } else if depth == 0 {
+                // Check if op matches here
+                // Note: iterating backwards, so be careful with multi-char ops if any
+                if expr[i..].starts_with(op) {
+                     split_pos = Some(i);
+                     break;
+                }
+            }
+        }
+        
+        split_pos.map(|pos| {
+            let left = expr[..pos].to_string();
+            let right = expr[pos + op.len()..].to_string();
+            (left, right)
+        })
+    }
+
+    fn parse_function_call(&self, expr: &str) -> Option<(String, String)> {
+        if let Some(open_paren) = expr.find('(') {
+            let func_name = expr[..open_paren].to_string();
+            let arg_expr = expr[open_paren + 1..expr.len() - 1].to_string();
+            Some((func_name, arg_expr))
+        } else {
+            None
+        }
+    }
+
+    /// Parse expression to identify components (deprecated/legacy)
     fn parse_expression(&self, expr: &str) -> Result<(String, Vec<String>), String> {
-        // This is a placeholder - in production you'd use a proper parser
         Ok((expr.to_string(), vec![]))
     }
 }
+
+/// AST for C-based AD
+#[derive(Debug, Clone)]
+enum ExpressionAST {
+    Number(f64),
+    Variable(String),
+    BinaryOp {
+        op: String,
+        left: Box<ExpressionAST>,
+        right: Box<ExpressionAST>,
+    },
+    FunctionCall {
+        name: String,
+        args: Vec<ExpressionAST>,
+    },
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -269,10 +461,13 @@ mod tests {
         assert!(c_code.contains("dual_mul(DualNumber a, DualNumber b)"));
         assert!(c_code.contains("dual_div(DualNumber a, DualNumber b)"));
         
-        // Verify computation graph for x^2 - cos(x)
-        assert!(c_code.contains("DualNumber x_squared = dual_mul(x, x);"));
-        assert!(c_code.contains("DualNumber cos_x = dual_cos(x);"));
-        assert!(c_code.contains("DualNumber result = dual_sub(x_squared, cos_x);"));
+        // Verify computation graph elements are present (recursive generator uses generic names like t_0)
+        // x^2 -> x*x
+        assert!(c_code.contains("dual_mul("));
+        // cos(x)
+        assert!(c_code.contains("dual_cos("));
+        // x^2 - cos(x)
+        assert!(c_code.contains("dual_sub("));
     }
 
     #[test]
@@ -406,22 +601,26 @@ mod tests {
         let ad = CBasedAutomaticDifferentiator::new();
         
         // Test computation graph generation for various expressions
+        // Using generate_ad_c_code since generate_computation_graph was removed
         let test_cases = vec![
             ("x", "return x;"),
-            ("x^2", "TODO: implement parsing for:"),  // x^2 falls through to default case
-            ("sin(x^2)", "x_squared = dual_mul(x, x);"),
-            ("x^2 - cos(x)", "x_squared = dual_mul(x, x);"),
+            ("x^2", "dual_mul"),  // x^2 becomes x*x -> dual_mul
+            ("sin(x^2)", "dual_sin"),
+            ("x^2 - cos(x)", "dual_sub"),
         ];
         
         for (expr, expected_pattern) in test_cases {
-            let computation = ad.generate_computation_graph(expr, "x");
+            // We use generate_ad_c_code which calls the recursive generator
+            let result = ad.generate_ad_c_code(expr, "x", "test_func");
+            assert!(result.is_ok(), "Failed to generate C code for: {}", expr);
+            let c_code = result.unwrap();
             
             // Should generate some computation
-            assert!(!computation.is_empty(), "Empty computation graph for: {}", expr);
+            assert!(!c_code.is_empty(), "Empty C code for: {}", expr);
             
             // Should contain expected patterns
-            assert!(computation.contains(expected_pattern), 
-                "Computation graph should contain expected pattern for: {}", expr);
+            assert!(c_code.contains(expected_pattern), 
+                "C code should contain expected pattern '{}' for: {}", expected_pattern, expr);
         }
     }
 

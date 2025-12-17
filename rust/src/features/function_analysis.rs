@@ -8,6 +8,7 @@ use crate::ui::{Button as UiButton, Column as UiColumn, Text as UiText, TextInpu
 use serde_json::Value;
 use crate::features::automatic_differentiation::ADMode;
 use crate::features::c_based_ad::CBasedAutomaticDifferentiator;
+use std::time::Instant;
 
 pub fn render_function_analysis_screen(state: &AppState) -> Value {
     let title = "Function Analysis";
@@ -43,7 +44,7 @@ pub fn render_function_analysis_screen(state: &AppState) -> Value {
 
     // Show analysis results if available
     if let Some(error) = &state.math_tool.error {
-        let error_msg = format!("Error: {}", error);
+        let error_msg = format!("Result: {}", error);
         children.push(
             serde_json::to_value(UiText::new(&error_msg).size(12.0)).unwrap(),
         );
@@ -69,8 +70,27 @@ pub fn handle_function_analysis_action(state: &mut AppState, action: &str) {
             state.math_tool.set_ad_mode(ADMode::Reverse);
         }
         "function_analysis_performance" => {
-            // TODO: Implement performance analysis
-            state.math_tool.error = Some("Performance analysis not yet implemented".to_string());
+            let mut c_ad = CBasedAutomaticDifferentiator::new();
+            let expr = if state.math_tool.expression.is_empty() {
+                "x^2 - cos(x)".to_string()
+            } else {
+                state.math_tool.expression.clone()
+            };
+            
+            let start = Instant::now();
+            match c_ad.differentiate(&expr, "x") {
+                Ok(func_name) => {
+                    // Run 50 iterations (C compilation takes time, so keep it low for demo)
+                    for _ in 0..50 {
+                         let _ = c_ad.evaluate_derivative(&func_name, 1.0);
+                    }
+                    let duration = start.elapsed();
+                    state.math_tool.error = Some(format!("Benchmark: 50 ops in {:.2?}", duration));
+                }
+                Err(e) => {
+                    state.math_tool.error = Some(format!("AD failed: {}", e));
+                }
+            }
         }
         "function_analysis_derivative" => {
             // Use C-based automatic differentiation
@@ -102,12 +122,63 @@ pub fn handle_function_analysis_action(state: &mut AppState, action: &str) {
             }
         }
         "function_analysis_plot" => {
-            // TODO: Implement plotting
-            state.math_tool.error = Some("Plotting not yet implemented".to_string());
+             let mut c_ad = CBasedAutomaticDifferentiator::new();
+             let expr = if state.math_tool.expression.is_empty() {
+                "x^2 - cos(x)".to_string()
+            } else {
+                state.math_tool.expression.clone()
+            };
+            
+            match c_ad.differentiate(&expr, "x") {
+                Ok(func_name) => {
+                    let mut csv = String::from("x,derivative\n");
+                    // Generate 20 points from -5 to 5
+                    for i in 0..21 {
+                        let x = -5.0 + (i as f64) * 0.5;
+                        if let Ok(val) = c_ad.evaluate_derivative(&func_name, x) {
+                            csv.push_str(&format!("{},{}\n", x, val.to_f64()));
+                        }
+                    }
+                    let path = "/tmp/kistaverk_plot.csv";
+                    match std::fs::write(path, csv) {
+                        Ok(_) => state.math_tool.error = Some(format!("Plot data saved to {}", path)),
+                        Err(e) => state.math_tool.error = Some(format!("Failed to write plot: {}", e)),
+                    }
+                }
+                Err(e) => state.math_tool.error = Some(format!("AD failed: {}", e)),
+            }
         }
         "function_analysis_stability" => {
-            // TODO: Implement stability test
-            state.math_tool.error = Some("Stability test not yet implemented".to_string());
+             let mut c_ad = CBasedAutomaticDifferentiator::new();
+             let expr = if state.math_tool.expression.is_empty() {
+                "x^2 - cos(x)".to_string()
+            } else {
+                state.math_tool.expression.clone()
+            };
+            
+            match c_ad.differentiate(&expr, "x") {
+                Ok(func_name) => {
+                    let points = [0.0, 1.0, -1.0, 100.0];
+                    let mut stable = true;
+                    for p in points {
+                        if let Ok(val) = c_ad.evaluate_derivative(&func_name, p) {
+                            if val.to_f64().is_nan() || val.to_f64().is_infinite() {
+                                stable = false;
+                                state.math_tool.error = Some(format!("Unstable at x={}", p));
+                                break;
+                            }
+                        } else {
+                             stable = false;
+                             state.math_tool.error = Some(format!("Eval failed at x={}", p));
+                             break;
+                        }
+                    }
+                    if stable {
+                        state.math_tool.error = Some("Stability Test Passed".to_string());
+                    }
+                }
+                Err(e) => state.math_tool.error = Some(format!("AD failed: {}", e)),
+            }
         }
         _ => {}
     }

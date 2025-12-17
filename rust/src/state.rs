@@ -14,7 +14,6 @@ use crate::features::sql_engine::{QueryResult, SqlEngine, TableInfo};
 use crate::features::system_info::SystemInfoState;
 use crate::features::vault::VaultState;
 use crate::features::automatic_differentiation::{AutomaticDifferentiator, ADMode};
-use crate::features::visualization::{VisualizationManager, PerformanceVisualizer};
 use crate::features::cas_types::Number;
 use serde::{Deserialize, Serialize};
 use rust_i18n::t;
@@ -336,12 +335,6 @@ pub struct MathToolState {
     /// Automatic differentiator for MIR-based AD
     #[serde(skip)] // Don't serialize the AD function cache
     pub automatic_differentiator: AutomaticDifferentiator,
-    /// Visualization manager for function plotting
-    #[serde(skip)] // Don't serialize plot cache
-    pub visualization_manager: VisualizationManager,
-    /// Performance visualizer for metrics
-    #[serde(skip)] // Don't serialize metrics history
-    pub performance_visualizer: PerformanceVisualizer,
 }
 
 impl MathToolState {
@@ -359,8 +352,6 @@ impl MathToolState {
             cumulative_error: 0.0, // Start with zero error
             mir_math_library: MirMathLibrary::default(), // Initialize with default functions
             automatic_differentiator: differentiator,
-            visualization_manager: VisualizationManager::new(),
-            performance_visualizer: PerformanceVisualizer::new(),
         }
     }
     
@@ -382,81 +373,6 @@ impl MathToolState {
     /// Get current AD mode
     pub fn get_ad_mode(&self) -> ADMode {
         self.automatic_differentiator.get_ad_mode()
-    }
-    
-    /// Plot the current expression
-    pub fn plot_expression(
-        &mut self,
-        x_range: (f64, f64),
-        resolution: usize,
-        name: &str,
-        color: &str,
-    ) -> Result<crate::features::visualization::PlotData, String> {
-        self.visualization_manager.plot_function(
-            &self.expression,
-            x_range,
-            resolution,
-            name,
-            color,
-        )
-    }
-    
-    /// Plot expression with its derivative
-    pub fn plot_expression_with_derivative(
-        &mut self,
-        var: &str,
-        x_range: (f64, f64),
-        resolution: usize,
-    ) -> Result<crate::features::visualization::PlotData, String> {
-        self.visualization_manager.plot_function_with_derivative(
-            &self.expression,
-            var,
-            x_range,
-            resolution,
-        )
-    }
-    
-    /// Create performance comparison visualization
-    pub fn create_performance_comparison(
-        &self,
-        analysis_results: &[crate::features::performance_analysis::FunctionAnalysisResult],
-    ) -> crate::features::visualization::PlotData {
-        self.visualization_manager.create_performance_comparison(analysis_results)
-    }
-    
-    /// Create performance trend visualization
-    pub fn create_performance_trend(&self) -> crate::features::visualization::PlotData {
-        self.performance_visualizer.create_performance_trend()
-    }
-    
-    /// Add performance metrics to visualizer
-    pub fn add_performance_metrics(&mut self, metrics: crate::features::performance_analysis::PerformanceMetrics) {
-        self.performance_visualizer.add_metrics(metrics);
-    }
-    
-    /// Create speedup comparison visualization
-    pub fn create_speedup_comparison(&self) -> crate::features::visualization::PlotData {
-        self.performance_visualizer.create_speedup_comparison()
-    }
-    
-    /// Create memory usage visualization
-    pub fn create_memory_usage_plot(&self) -> crate::features::visualization::PlotData {
-        self.performance_visualizer.create_memory_usage_plot()
-    }
-    
-    /// Clear visualization cache
-    pub fn clear_visualization_cache(&mut self) {
-        self.visualization_manager.clear_cache();
-    }
-    
-    /// Export plot data to JSON
-    pub fn export_plot_data(&self, plot_data: &crate::features::visualization::PlotData) -> Result<String, String> {
-        self.visualization_manager.export_plot_data(plot_data)
-    }
-    
-    /// Import plot data from JSON
-    pub fn import_plot_data(&mut self, json_data: &str) -> Result<crate::features::visualization::PlotData, String> {
-        self.visualization_manager.import_plot_data(json_data)
     }
 
     pub fn clear_history(&mut self) {
