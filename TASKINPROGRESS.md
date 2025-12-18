@@ -37,6 +37,12 @@ All AI agents contributing to this repository must specify their name and versio
 6.  **Preset Filtering** (`features/presets.rs`)
     *   ✅ Filter UI & Logic
     *   ✅ Unit Tests (Implemented)
+7.  **Algorithmic Audio Synthesizer** (`features/synthesizer.rs`)
+    *   ✅ `cpal` integration for real-time audio
+    *   ✅ Mir JIT compilation of C audio kernels
+    *   ✅ Hot-swapping logic (AtomicPtr)
+    *   ✅ UI with code editor and parameters
+    *   ✅ Documentation: `docs/features/synthesizer/overview.md`
 
 ## Feature Completed: Cron/Task Scheduler
 *   **Status:** ✅ IMPLEMENTED
