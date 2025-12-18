@@ -561,9 +561,16 @@ int main(int argc, char **argv) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // We need to serialize tests that hijack stdout/stderr to avoid race conditions
+    // and interfering with the test runner itself.
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_c_script_execution() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        
         let source = r#"
             int main(int argc, char **argv) {
                 printf("Hello from C!\n");
@@ -596,6 +603,8 @@ mod tests {
 
     #[test]
     fn test_c_script_jit_execution() {
+        let _guard = TEST_LOCK.lock().unwrap();
+
         let source = r#"
             int printf(const char *format, ...);
             int fflush(void *stream);

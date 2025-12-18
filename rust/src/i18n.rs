@@ -55,11 +55,17 @@ mod tests {
         assert_eq!(normalize_locale("is"), "is");
         assert_eq!(normalize_locale("is-IS"), "is");
         assert_eq!(normalize_locale("is_IS"), "is");
+
+        // Test other supported locales
+        assert_eq!(normalize_locale("es"), "es");
+        assert_eq!(normalize_locale("pt"), "pt");
+        assert_eq!(normalize_locale("zh"), "zh");
+        assert_eq!(normalize_locale("zh-CN"), "zh");
+        assert_eq!(normalize_locale("la"), "la");
         
         // Test unknown locales fallback to English
-        assert_eq!(normalize_locale("es"), "en");
         assert_eq!(normalize_locale("it"), "en");
-        assert_eq!(normalize_locale("zh-CN"), "en");
+        assert_eq!(normalize_locale("ru"), "en");
         
         // Test edge cases
         assert_eq!(normalize_locale(""), "en");

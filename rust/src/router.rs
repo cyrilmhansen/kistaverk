@@ -5525,7 +5525,7 @@ mod tests {
     use std::io::Write;
     use std::os::unix::io::IntoRawFd;
     use std::thread;
-    use std::sync::{atomic::Ordering, Mutex, OnceLock};
+    use std::sync::{atomic::Ordering, Mutex};
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
     use lopdf::dictionary;

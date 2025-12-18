@@ -418,7 +418,7 @@ mod tests {
         
         // The derivative of x^2 - cos(x) should be 2x + sin(x)
         // At x=1: derivative = 2*1 + sin(1) ≈ 2 + 0.8415 ≈ 2.8415
-        let expected = 2.0 + 1.0f64.sin();
+        let _expected = 2.0 + 1.0f64.sin();
         
         // Note: This test would actually call the C compiler if we had the full infrastructure
         // For now, we just verify that the function name was generated correctly
@@ -538,7 +538,7 @@ mod tests {
             ("x^2 - cos(x)", "x", 2.0 + 1.0f64.sin()), // d/dx [x^2 - cos(x)] = 2x + sin(x)
         ];
         
-        for (expr, var, expected_derivative) in test_cases {
+        for (expr, var, _expected_derivative) in test_cases {
             // Generate the AD function
             let result = ad.differentiate(expr, var);
             assert!(result.is_ok(), "Failed to differentiate: {}", expr);

@@ -619,7 +619,7 @@ mod tests {
         // This is the expression that was causing the crash: x^2 - cos(x)
         let result = ad.differentiate("x^2 - cos(x)", "x");
         assert!(result.is_ok());
-        let ad_function = result.unwrap();
+        let _ad_function = result.unwrap();
         
         // Debug: Print the generated MIR code
         let ad_function_name = ad.ad_functions.get("x^2 - cos(x)").unwrap();
