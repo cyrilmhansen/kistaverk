@@ -212,7 +212,7 @@ android {
                     environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
                     environment(
                         "RUSTFLAGS",
-                        "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init"
+                        "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init -C link-arg=-lc++_static"
                     )
                     environment("CARGO_INCREMENTAL", "1")
                     environment("CFLAGS", "-Os")
