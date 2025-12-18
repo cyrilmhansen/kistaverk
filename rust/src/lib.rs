@@ -21,7 +21,9 @@ i18n!("locales");
 // Dummy init function to satisfy UPX compression requirements
 #[cfg(target_os = "android")]
 #[export_name = "_init"]
-pub extern "C" fn init_for_upx() {}
+pub extern "C" fn init_for_upx() {
+    // Intentionally empty; exists to keep init hooks in the binary.
+}
 
 // Keep _init referenced so the linker emits init hooks even with LTO/optimizations
 #[cfg(target_os = "android")]

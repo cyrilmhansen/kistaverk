@@ -16,12 +16,12 @@ This guide provides solutions to common issues encountered when building and run
 
 1. **Set environment variable**:
    ```bash
-   export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/25.2.9519653
+   export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/29.0.14206865
    ```
 
 2. **Set in local.properties**:
    ```bash
-   echo "ndk.dir=$HOME/Android/Sdk/ndk/25.2.9519653" > app/local.properties
+   echo "ndk.dir=$HOME/Android/Sdk/ndk/29.0.14206865" > app/local.properties
    ```
 
 3. **Install NDK via Android Studio**:
@@ -76,7 +76,7 @@ cargo build --target aarch64-linux-android --release
 1. **Install NDK toolchain**:
    ```bash
    $ANDROID_NDK_HOME/build/tools/make_standalone_toolchain.py \
-       --arch arm64 --api 24 --install-dir /tmp/android-toolchain
+       --arch arm64 --api 26 --install-dir /tmp/android-toolchain
    ```
 
 2. **Set linker path**:
@@ -88,7 +88,7 @@ cargo build --target aarch64-linux-android --release
    ```toml
    # .cargo/config
    [target.aarch64-linux-android]
-   linker = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+   linker = "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang"
    ```
 
 **Verification**:
@@ -97,39 +97,30 @@ which aarch64-linux-android-clang
 # Should show path to NDK clang
 ```
 
-### Issue: Missing C++ libraries
+### Issue: AAudio not found at link time
 
-**Error**: `c++_shared not found`
+**Error**: `ld.lld: error: unable to find library -laaudio`
 
 **Symptoms**:
-- C++ linking fails
-- Missing STL libraries
+- Native build fails during linking
+- cargo-ndk uses the default API 21 toolchain
 
 **Solutions**:
 
-1. **Install C++ support**:
+1. **Set cargo-ndk platform to API 26**:
    ```bash
-   $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;25.2.9519653"
+   cargo ndk -P 26 -t arm64-v8a -o app/app/src/main/jniLibs build
    ```
 
-2. **Configure Gradle**:
+2. **Verify Gradle uses platform 26**:
    ```kotlin
-   // app/build.gradle.kts
-   android {
-       defaultConfig {
-           externalNativeBuild {
-               cmake {
-                   arguments += "-DANDROID_STL=c++_shared"
-               }
-           }
-       }
-   }
+   // app/app/build.gradle.kts
+   baseArgs.addAll(listOf("ndk", "-P", "26"))
    ```
 
 **Verification**:
 ```bash
-ls $ANDROID_NDK_HOME/sources/c++/stl/c++_shared
-# Should show STL headers
+rg -n "cargo ndk -P 26" app/app/build.gradle.kts
 ```
 
 ## 🔧 Runtime Issues
@@ -203,6 +194,46 @@ adb shell pm list packages | grep kistaverk
 ```bash
 nm -D app/src/main/jniLibs/arm64-v8a/libkistaverk_core.so | grep gmp
 # Should show GMP symbols
+```
+
+### Issue: Missing C++ Runtime Symbols
+
+**Error**: `UnsatisfiedLinkError: ... cannot locate symbol "__cxa_pure_virtual"`, `__gxx_personality_v0` or `_ZTISt12length_error`
+
+**Symptoms**:
+- App crashes on startup or when initializing audio
+- Error mentions missing `__cxa_pure_virtual`, `__gxx_personality_v0`, or other C++ symbols
+
+**Cause**:
+- Rust dependencies (like `cpal`/`oboe`) require C++ runtime symbols.
+- Linking `libc++_static` with aggressive stripping (`--gc-sections`) often removes these symbols if Rust code doesn't explicitly use them.
+
+**Solutions**:
+1.  **Use a C++ Shim (Recommended)**:
+    Create `rust/src/android_glue.cpp` that uses standard C++ features (like exceptions) to force the linker to retain the runtime.
+    ```cpp
+    #include <exception>
+    extern "C" {
+        void __kistaverk_ensure_cpp_support() {
+            try { throw std::exception(); } catch (...) {}
+        }
+    }
+    ```
+    Then compile it in `rust/build.rs` using the `cc` crate:
+    ```rust
+    cc::Build::new().cpp(true).file("src/android_glue.cpp").compile("android_glue");
+    ```
+
+2.  **Ensure `libc++_static` is linked**:
+    In `rust/build.rs`:
+    ```rust
+    println!("cargo:rustc-link-lib=c++_static");
+    ```
+
+**Verification**:
+```bash
+nm -D app/src/main/jniLibs/arm64-v8a/libkistaverk_core.so | grep __cxa_pure_virtual
+# Should show the symbol defined (T)
 ```
 
 ### Issue: JNI errors

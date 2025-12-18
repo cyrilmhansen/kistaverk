@@ -17,7 +17,7 @@ This guide provides step-by-step instructions for setting up the Android develop
 |----------|---------|---------|
 | Java JDK | 11+ | Android development |
 | Android Studio | Latest | Android IDE |
-| Android NDK | 25+ | Native development |
+| Android NDK | 29+ | Native development |
 | Rust | 1.70+ | Rust toolchain |
 | Cargo | Latest | Rust package manager |
 | Gradle | 8.0+ | Build system |
@@ -59,7 +59,7 @@ Install Android SDK components:
 # Or manually download from: https://developer.android.com/ndk/downloads
 
 # Set environment variables
-export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/25.2.9519653
+export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/29.0.14206865
 export ANDROID_HOME=$HOME/Android/Sdk
 ```
 
@@ -104,18 +104,11 @@ kistaverk/
 ```kotlin
 // app/build.gradle.kts
 android {
-    compileSdk = 34
+    compileSdk = 36
     
     defaultConfig {
-        minSdk = 24
-        targetSdk = 34
-        
-        externalNativeBuild {
-            cmake {
-                arguments += "-DANDROID_STL=c++_shared"
-                arguments += "-DANDROID_NDK=$ANDROID_NDK_HOME"
-            }
-        }
+        minSdk = 26
+        targetSdk = 36
     }
     
     buildTypes {
@@ -133,12 +126,6 @@ android {
         }
     }
     
-    externalNativeBuild {
-        cmake {
-            path = "../../rust/CMakeLists.txt"
-            version = "3.22.1"
-        }
-    }
 }
 ```
 
@@ -153,6 +140,11 @@ crate-type = ["cdylib"]
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3"
 ```
+### Audio Backend
+
+The synthesizer uses Android's AAudio backend (API 26+).
+- **Requirement**: Set `minSdk = 26` and ensure cargo-ndk targets platform 26.
+- **Configuration**: handled in `app/app/build.gradle.kts` by passing `cargo ndk -P 26`.
 
 ## 🏗️ Building the Project
 
@@ -164,7 +156,7 @@ cd kistaverk
 
 # 2. Build Rust library for Android
 cd rust
-cargo build --target aarch64-linux-android --release
+cargo ndk -t arm64-v8a -P 26 -o ../app/app/src/main/jniLibs build --release
 
 # 3. Build Android application
 cd ../app
@@ -186,8 +178,8 @@ cd ../app
 
 ```bash
 # Build for all Android architectures
-cargo build --target aarch64-linux-android --release
-cargo build --target armv7-linux-androideabi --release
+cargo ndk -t arm64-v8a -P 26 -o ../app/app/src/main/jniLibs build --release
+cargo ndk -t armeabi-v7a -P 26 -o ../app/app/src/main/jniLibs build --release
 cargo build --target i686-linux-android --release
 cargo build --target x86_64-linux-android --release
 ```

@@ -163,6 +163,9 @@ mod tests {
 
     #[test]
     fn process_keeps_dimensions() {
+        let _guard = crate::features::storage::test_env_lock()
+            .lock()
+            .expect("lock env");
         let prev_temp = std::env::var("KISTAVERK_TEMP_DIR").ok();
         let mut img = RgbaImage::new(8, 8);
         for (x, y, p) in img.enumerate_pixels_mut() {

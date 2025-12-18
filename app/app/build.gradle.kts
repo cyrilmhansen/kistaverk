@@ -28,7 +28,7 @@ android {
 
     defaultConfig {
         applicationId = "aeska.kistaverk"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "0.0.0-dev"
@@ -179,6 +179,7 @@ android {
                 // Base command line arguments for cargo ndk build
                 val baseArgs = mutableListOf(
                     "ndk",
+                    "-P", "26",
                     "-t", androidAbi, // Use Android ABI here
                     "-o", currentAbiJniLibsDir.absolutePath, // Output to ABI-specific folder
                     "build", 
@@ -212,7 +213,7 @@ android {
                     environment("PATH", System.getenv("PATH") + ":${System.getProperty("user.home")}/.cargo/bin")
                     environment(
                         "RUSTFLAGS",
-                        "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init -C link-arg=-lc++_static"
+                        "-C link-arg=-Wl,--gc-sections -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-init=_init"
                     )
                     environment("CARGO_INCREMENTAL", "1")
                     environment("CFLAGS", "-Os")

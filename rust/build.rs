@@ -6,9 +6,6 @@ fn main() {
     // Ensure DT_INIT points to our _init shim for UPX (Android targets only)
     if std::env::var("CARGO_CFG_TARGET_OS").map(|v| v == "android").unwrap_or(false) {
         println!("cargo:rustc-link-arg=-Wl,-init=_init");
-        // Link the static C++ runtime (libc++_static.a) to satisfy dependencies (e.g., GMP/MIR)
-        // that require C++ symbols like __cxa_pure_virtual.
-        println!("cargo:rustc-link-lib=c++_static");
     }
 
     // Re-run if env vars change

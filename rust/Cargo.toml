@@ -42,7 +42,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 mir-sys = { path = "../../mir-sys" } # Local dependency
 libc = "0.2"
-cpal = "0.15"
 
 
 [features]
@@ -81,3 +80,5 @@ criterion = "0.5"
 [[bench]]
 name = "number_performance"
 harness = false
+
+[build-dependencies]

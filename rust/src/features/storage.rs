@@ -1,5 +1,14 @@
 use std::path::PathBuf;
 
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(test)]
+pub fn test_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
 pub fn parse_file_uri_path(uri: &str) -> Option<PathBuf> {
     if let Some(rest) = uri.strip_prefix("file://") {
         return Some(PathBuf::from(rest));

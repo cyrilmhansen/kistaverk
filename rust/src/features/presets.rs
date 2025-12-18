@@ -348,8 +348,10 @@ mod tests {
     fn test_persistence_cycle() {
         use std::env;
         use tempfile::tempdir;
+        use crate::features::storage::test_env_lock;
 
         // Setup a mock directory structure: /tmp/mock_app/cache
+        let _guard = test_env_lock().lock().expect("lock env");
         let root_dir = tempdir().expect("failed to create temp dir");
         let cache_dir = root_dir.path().join("cache");
         fs::create_dir(&cache_dir).expect("failed to create cache dir");
