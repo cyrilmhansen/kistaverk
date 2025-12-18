@@ -64,6 +64,11 @@ Unlike the thousands of "Unit Converter" or "PDF Merger" apps laden with ads, cl
 ### 3. Automation
 *   *(Moved to Completed Features)*
 
+### 4. PDF Tools Enhancements
+*   **Page Numbering:** Add "Page X / Y" numbering to pages.
+    *   *Implementation:* Post-processing step (after merge/rotate/delete).
+    *   *Reference:* `cpdf -add-text "Page %Page / %EndPage" -bottom 12 -font Helvetica -font-size 10 input.pdf -o input_numbered.pdf`
+
 ---
 
 ## 🧠 Architectural Goals
