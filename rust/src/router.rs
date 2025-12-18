@@ -42,6 +42,7 @@ use crate::features::plotting;
 use crate::features::plotting::render_plotting_screen;
 use crate::features::mir_scripting::handle_mir_scripting_actions;
 use crate::features::c_scripting::handle_c_scripting_actions;
+use crate::features::synthesizer::handle_synthesizer_actions;
 use crate::features::scheduler::{
     apply_scheduler_result, drain_events as drain_scheduler_events, render_scheduler_screen,
     runtime as scheduler_runtime,
@@ -1152,6 +1153,12 @@ pub(crate) enum Action {
     CScriptingToggleJit { enabled: bool },
     CScriptingToggleBenchmark { enabled: bool },
     CScriptingToggleThread { enabled: bool },
+    SynthesizerScreen,
+    SynthesizerPlay,
+    SynthesizerStop,
+    SynthesizerApply,
+    SynthesizerUpdateCode { source: String },
+    SynthesizerLoadExample,
 }
 
 struct FdHandle(Option<i32>);
@@ -1411,6 +1418,14 @@ fn parse_action(command: Command) -> Result<Action, String> {
             let enabled = bindings.get("c_scripting_run_in_thread").map(|v| v == "true").unwrap_or(false);
             Ok(Action::CScriptingToggleThread { enabled })
         }
+        "synthesizer_screen" => Ok(Action::SynthesizerScreen),
+        "synthesizer_play" => Ok(Action::SynthesizerPlay),
+        "synthesizer_stop" => Ok(Action::SynthesizerStop),
+        "synthesizer_apply" => Ok(Action::SynthesizerApply),
+        "synthesizer_update_code" => Ok(Action::SynthesizerUpdateCode {
+            source: bindings.get("synthesizer_source").cloned().unwrap_or_default(),
+        }),
+        "synthesizer_example" => Ok(Action::SynthesizerLoadExample),
         "settings_screen" => Ok(Action::SettingsScreen),
         "about" => Ok(Action::About),
         "scheduler_screen" => Ok(Action::SchedulerScreen),
@@ -2514,6 +2529,16 @@ fn handle_command(command: Command) -> Result<Value, String> {
         | a @ Action::CScriptingToggleBenchmark { .. }
         | a @ Action::CScriptingToggleThread { .. } => {
             if let Some(ui) = handle_c_scripting_actions(&mut state, a) {
+                return Ok(ui);
+            }
+        }
+        a @ Action::SynthesizerScreen
+        | a @ Action::SynthesizerPlay
+        | a @ Action::SynthesizerStop
+        | a @ Action::SynthesizerApply
+        | a @ Action::SynthesizerUpdateCode { .. }
+        | a @ Action::SynthesizerLoadExample => {
+            if let Some(ui) = handle_synthesizer_actions(&mut state, a) {
                 return Ok(ui);
             }
         }
@@ -4799,6 +4824,7 @@ fn render_ui(state: &AppState) -> Value {
         Screen::SqlQuery => render_sql_screen(state),
         Screen::MirScripting => features::mir_scripting::render_mir_scripting_screen(state),
         Screen::CScripting => features::c_scripting::render_c_scripting_screen(state),
+        Screen::Synthesizer => features::synthesizer::render_synthesizer_screen(state),
         Screen::Scheduler => render_scheduler_screen(state),
     }
 }
@@ -5474,6 +5500,14 @@ fn feature_catalog() -> Vec<Feature> {
             action: "c_scripting_screen",
             requires_file_picker: false,
             description: "Run C code (JIT)",
+        },
+        Feature {
+            id: "synthesizer",
+            name: "🎹 Synthesizer",
+            category: "🔊 Audio",
+            action: "synthesizer_screen",
+            requires_file_picker: false,
+            description: "JIT-compiled algos",
         },
     ]
 }

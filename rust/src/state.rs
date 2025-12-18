@@ -63,7 +63,31 @@ pub enum Screen {
     CScripting,
     Scheduler,
     UnitConverter,
+    Synthesizer,
     Settings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynthesizerState {
+    pub source_code: String,
+    pub param1: String, // String to allow empty/typing, parsed on use
+    pub param2: String,
+    pub is_playing: bool,
+    pub compilation_status: Option<String>,
+    pub compilation_error: bool,
+}
+
+impl SynthesizerState {
+    pub const fn new() -> Self {
+        Self {
+            source_code: String::new(),
+            param1: String::new(),
+            param2: String::new(),
+            is_playing: false,
+            compilation_status: None,
+            compilation_error: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -463,6 +487,7 @@ pub struct AppState {
     pub c_scripting: CScriptingState,
     pub scheduler: SchedulerState,
     pub unit_converter: UnitConverterState,
+    pub synthesizer: SynthesizerState,
     #[serde(skip)]
     pub sql_engine: Option<SqlEngine>,
     #[serde(skip)]
@@ -566,6 +591,7 @@ impl AppState {
             c_scripting: CScriptingState::new(),
             scheduler: SchedulerState::new(),
             unit_converter: UnitConverterState::new(),
+            synthesizer: SynthesizerState::new(),
             sql_engine: None,
             toast: None,
             haptic: false,
@@ -711,6 +737,7 @@ impl AppState {
         self.plotting = PlottingState::new();
         self.scheduler.reset();
         self.unit_converter = UnitConverterState::new();
+        self.synthesizer = SynthesizerState::new();
         self.image.batch_queue.clear();
         self.pdf.merge_queue.clear();
     }
